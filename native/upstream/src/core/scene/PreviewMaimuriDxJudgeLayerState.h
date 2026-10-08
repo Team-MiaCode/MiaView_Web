@@ -1,0 +1,18 @@
+#pragma once
+
+#include "core/scene/PreviewActiveMarkerView.h"
+#include "core/scene/PreviewFrameState.h"
+#include "core/scene/PreviewJudgeOverlayShared.h"
+#include "core/scene/PreviewSpriteDescriptor.h"
+
+namespace miacode::preview::scene {
+
+PreviewSpriteDescriptors buildPreviewMaimuriDxJudgeLayerSprites(
+    const PreviewFrameState& state,
+    const PreviewActiveMarkerView& markers,
+    const QVector<MuriJudgeSpriteEvent>& activeEvents,
+    const QRectF& playfieldRect,
+    SlideJudgeRenderGroup group = SlideJudgeRenderGroup::All
+);
+
+}  // namespace miacode::preview::scene

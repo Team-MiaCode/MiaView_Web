@@ -1,0 +1,16 @@
+{
+  "upstream": "MiaCodeWebGL",
+  "version": "miacode-web-sdk-1-c7f54f39d670",
+  "sourceRevision": "1e620ae6a1c3b82c614c523cdd5592e2801ceba16bbe30c4b8f1f751a83de00e",
+  "protocolVersion": 1,
+  "qtVersion": "6.8.3",
+  "emscriptenVersion": "3.1.56",
+  "width": 1920,
+  "height": 1080,
+  "supportedAspectRatios": [
+    "16:9",
+    "1:1"
+  ],
+  "maxRenderDimension": 4096,
+  "targetFps": 60
+}

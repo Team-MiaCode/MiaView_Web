@@ -1,0 +1,162 @@
+:root {
+  --preview-width: 1920px;
+  --preview-height: 1080px;
+  --preview-aspect: 16 / 9;
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+  background: #07090e;
+  color: #eee;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+#local-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+}
+button,
+select,
+.file-button {
+  background: #202630;
+  color: inherit;
+  border: 1px solid #4d5564;
+  border-radius: 5px;
+  padding: 7px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.file-button input {
+  display: none;
+}
+#stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: var(--preview-aspect);
+  overflow: hidden;
+  background: #000;
+}
+#viewport {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--preview-width);
+  height: var(--preview-height);
+  transform-origin: top left;
+}
+#qt-screen {
+  position: relative;
+  width: var(--preview-width);
+  height: var(--preview-height);
+  overflow: hidden;
+}
+#status {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #10141de8;
+  padding: 12px 16px;
+  border-radius: 6px;
+  max-width: 85%;
+  text-align: center;
+}
+#status[hidden] {
+  display: none;
+}
+#fps {
+  position: absolute;
+  z-index: 1;
+  top: 8px;
+  right: 8px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: #10141dcc;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+#transport {
+  display: flex;
+  height: 56px;
+  align-items: center;
+  gap: 8px;
+  background: #10141d;
+  padding: 10px 12px;
+  border-top: 1px solid #263040;
+}
+#transport button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+#seek {
+  flex: 1;
+  min-width: 0;
+}
+#settings-panel {
+  position: fixed;
+  z-index: 10;
+  right: 12px;
+  bottom: 68px;
+  width: min(320px, calc(100vw - 24px));
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  padding: 12px;
+  border: 1px solid #4d5564;
+  border-radius: 6px;
+  background: #10141df5;
+  box-shadow: 0 6px 24px #0008;
+  font-size: 14px;
+}
+#settings-panel[hidden] {
+  display: none;
+}
+.settings-heading,
+.range-setting,
+.select-setting {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.settings-heading {
+  margin-bottom: 10px;
+}
+#settings-close {
+  padding: 1px 8px;
+  font-size: 20px;
+}
+#settings-panel input[type="range"] {
+  display: block;
+  width: 100%;
+  margin: 8px 0 14px;
+}
+.select-setting {
+  margin-bottom: 12px;
+}
+#settings-error {
+  margin-top: 8px;
+  color: #ffb4b4;
+}
+body.embedded #local-controls {
+  display: none;
+}
+body.embedded #stage {
+  width: 100vw;
+  height: calc(100vh - 56px);
+  aspect-ratio: auto;
+}
+@media (max-width: 500px) {
+  button {
+    font-size: 12px;
+    padding: 5px;
+  }
+}

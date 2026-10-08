@@ -1,0 +1,31 @@
+{
+  "name": "miacode-web-preview",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Embeddable MiaCode realtime chart preview",
+  "main": "./sdk/index.mjs",
+  "types": "./sdk/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./sdk/index.d.mts",
+      "import": "./sdk/index.mjs"
+    }
+  },
+  "files": [
+    "sdk",
+    "renderer",
+    "native",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "test": "node --test tests/*.spec.mjs",
+    "check": "node scripts/verify.mjs",
+    "test:browser": "node tests/browser-smoke.mjs",
+    "build:native": "node native/build.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

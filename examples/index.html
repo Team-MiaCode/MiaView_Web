@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MiaCode 谱面预览</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 16px;
+        color: #eee;
+        background: #10141b;
+        font-family: system-ui, sans-serif;
+      }
+      #controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      button,
+      select,
+      .file-button {
+        padding: 6px 10px;
+        color: inherit;
+        background: #252c36;
+        border: 1px solid #596474;
+        border-radius: 4px;
+        font: inherit;
+      }
+      .file-button input {
+        display: none;
+      }
+      #preview {
+        max-width: 960px;
+      }
+      #status {
+        margin: 12px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="controls">
+      <label class="file-button"
+        >选择谱面文件夹<input id="files" type="file" multiple webkitdirectory
+      /></label>
+      <select id="resolution" aria-label="分辨率">
+        <option value="1920x1080">1920×1080</option>
+        <option value="1080x1080">1080×1080</option>
+      </select>
+      <select id="difficulty" aria-label="难度" disabled></select>
+      <button id="play" disabled>播放</button
+      ><button id="pause" disabled>暂停</button
+      ><button id="restart" disabled>重播</button
+      ><button id="destroy">销毁</button>
+    </div>
+    <div id="preview"></div>
+    <p id="status" role="status">请选择谱面文件夹</p>
+    <script type="module" src="./demo.mjs"></script>
+  </body>
+</html>

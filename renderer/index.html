@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MiaCode 谱面预览</title>
+    <link rel="stylesheet" href="player.css" />
+  </head>
+  <body>
+    <header id="local-controls">
+      <label class="file-button"
+        >选择谱面文件夹<input id="files" type="file" multiple webkitdirectory
+      /></label>
+      <select id="difficulty" aria-label="难度" disabled></select>
+    </header>
+    <main id="stage">
+      <div id="viewport"><div id="qt-screen"></div></div>
+      <div id="fps" aria-label="预览帧率">FPS: —</div>
+      <div id="status" role="status">正在加载播放器…</div>
+    </main>
+    <div id="transport" role="group" aria-label="播放控制">
+      <button id="play" type="button" disabled>播放</button>
+      <button id="restart" type="button" disabled>重播</button>
+      <input
+        id="seek"
+        type="range"
+        min="0"
+        max="1"
+        step="0.01"
+        value="0"
+        aria-label="播放位置"
+        disabled
+      />
+      <button
+        id="settings-toggle"
+        type="button"
+        aria-controls="settings-panel"
+        aria-expanded="false"
+        disabled
+      >
+        设置
+      </button>
+    </div>
+    <section id="settings-panel" aria-label="预览设置" hidden>
+      <div class="settings-heading">
+        <span>预览设置</span
+        ><button id="settings-close" type="button" aria-label="关闭设置">
+          ×
+        </button>
+      </div>
+      <label class="select-setting" for="preview-mode"
+        >预览模式<select id="preview-mode">
+          <option value="native">谱面确认</option>
+          <option value="maimuri_dx_style">无理检测</option>
+          <option value="erase_by_area">按区消去</option>
+        </select></label
+      >
+      <label class="range-setting" for="outer-brightness"
+        >外侧亮度
+        <output id="outer-value" for="outer-brightness">50%</output></label
+      >
+      <input
+        id="outer-brightness"
+        type="range"
+        min="0"
+        max="100"
+        step="1"
+        value="50"
+      />
+      <label class="range-setting" for="inner-brightness"
+        >内侧亮度
+        <output id="inner-value" for="inner-brightness">20%</output></label
+      >
+      <input
+        id="inner-brightness"
+        type="range"
+        min="0"
+        max="100"
+        step="1"
+        value="20"
+      />
+      <label class="range-setting" for="tap-speed"
+        >Tap 流速
+        <output id="tap-speed-value" for="tap-speed">7.5</output></label
+      >
+      <input
+        id="tap-speed"
+        type="range"
+        min="1"
+        max="10"
+        step="0.25"
+        value="7.5"
+      />
+      <label class="range-setting" for="touch-speed"
+        >Touch 流速
+        <output id="touch-speed-value" for="touch-speed">8</output></label
+      >
+      <input
+        id="touch-speed"
+        type="range"
+        min="1"
+        max="10"
+        step="0.25"
+        value="8"
+      />
+      <label class="select-setting" for="slide-order"
+        >Slide 叠放顺序<select id="slide-order">
+          <option value="earlier">较早的在上</option>
+          <option value="later">较晚的在上</option>
+        </select></label
+      >
+      <label class="select-setting" for="note-skin"
+        >Note 皮肤<select id="note-skin">
+          <option value="DX">DX</option>
+          <option value="SD">SD</option>
+        </select></label
+      >
+      <button id="settings-reset" type="button">恢复默认</button>
+      <div id="settings-error" role="alert" hidden></div>
+    </section>
+    <script src="qtloader.js"></script>
+    <script type="module" src="player.mjs"></script>
+  </body>
+</html>
