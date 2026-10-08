@@ -25,7 +25,7 @@ class MiaCodePreview {
     const document = container.ownerDocument;
     this.window = document.defaultView;
     if (!this.window || !this.window.crypto?.randomUUID)
-      throw new Error("MiaCode preview requires HTTPS or localhost");
+      throw new Error("MiaView Web requires HTTPS or localhost");
     const resolution = previewResolution(options.resolution);
     this.timeout = options.timeoutMs ?? 120000;
     if (!Number.isFinite(this.timeout) || this.timeout <= 0)
@@ -66,7 +66,7 @@ class MiaCodePreview {
       height: "100%",
       border: "0",
     });
-    this.iframe.title = "MiaCode 谱面预览";
+    this.iframe.title = "MiaView Web 谱面预览";
     this.iframe.allow = "autoplay; fullscreen";
     this.iframe.allowFullscreen = true;
     this.iframe.setAttribute("sandbox", "allow-scripts allow-same-origin");
@@ -127,7 +127,7 @@ class MiaCodePreview {
       try {
         listener(payload);
       } catch (error) {
-        console.error("MiaCode event handler failed", error);
+        console.error("MiaView Web event handler failed", error);
       }
     }
   }

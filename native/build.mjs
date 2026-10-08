@@ -110,7 +110,7 @@ for (const file of [
 }
 const identity = {
   upstream: "MiaCodeWebGL",
-  version: `miacode-web-sdk-1-${adapterHash.digest("hex").slice(0, 12)}`,
+  version: `miaview-web-1-${adapterHash.digest("hex").slice(0, 12)}`,
   sourceRevision: source.sourceRevision,
   protocolVersion: 1,
   qtVersion: "6.8.3",

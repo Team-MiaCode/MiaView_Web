@@ -32,15 +32,23 @@ async function load(chart) {
   );
   $("difficulty").value = info.difficultyId;
   enable(true);
-  status("");
+  status(`已加载：${info.title || "未命名谱面"}，点击播放开始预览`);
 }
-$("files").addEventListener("change", async () => {
+async function selectFiles(event) {
   try {
-    const files = [...$("files").files];
+    const files = [...event.target.files];
+    if (!files.length) {
+      status("没有读取到文件，请选择包含 maidata.txt 的谱面文件夹");
+      return;
+    }
+    status(`已选择 ${files.length} 个文件，正在检查谱面…`);
     const find = (pattern) => files.find((file) => pattern.test(file.name));
     const maidata = find(/^maidata\.txt$/i);
-    if (!maidata) throw new Error("请选择包含 maidata.txt 的文件夹");
-    if (!preview || !$("preview").childElementCount) await mount();
+    if (!maidata) throw new Error("请选择包含 maidata.txt 的谱面文件夹");
+    if (!preview || !$("preview").childElementCount) {
+      status("已找到 maidata.txt，正在初始化播放器…");
+      await mount();
+    }
     lastChart = {
       maidata,
       audio: find(/\.(mp3|wav|ogg|flac|m4a)$/i),
@@ -50,8 +58,12 @@ $("files").addEventListener("change", async () => {
     await load(lastChart);
   } catch (error) {
     status(error.message);
+  } finally {
+    // Allow retrying the same files after a failed load.
+    event.target.value = "";
   }
-});
+}
+$("files").addEventListener("change", selectFiles);
 $("resolution").addEventListener("change", async () => {
   try {
     await mount();

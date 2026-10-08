@@ -1,9 +1,9 @@
 {
-  "name": "miacode-web-preview",
+  "name": "miaview-web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Embeddable MiaCode realtime chart preview",
+  "description": "MiaView Web: embeddable Simai chart preview powered by MiaCode",
   "main": "./sdk/index.mjs",
   "types": "./sdk/index.d.mts",
   "exports": {

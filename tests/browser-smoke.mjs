@@ -359,7 +359,8 @@ try {
   writeFileSync(join(folder, "maidata.txt"), chart);
   writeFileSync(join(folder, "track.wav"), wave);
   writeFileSync(join(folder, "pv.webm"), video);
-  await page.goto(base + "/examples/index.html");
+  await page.goto(base + "/");
+  assert.equal(new URL(page.url()).pathname, "/examples/index.html");
   await page.locator("#files").setInputFiles(folder);
   await page.locator("#play:not([disabled])").waitFor({ timeout: 90000 });
   await page.locator("#resolution").selectOption("1080x1080");

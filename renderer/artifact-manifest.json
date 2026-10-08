@@ -2,13 +2,13 @@
   "files": [
     {
       "path": "build-identity.json",
-      "byteSize": 389,
-      "sha256": "8e59e5291e0e51f2cbe310941b113a4bfb9db1130e0731bae0bd7992c3e8fd44"
+      "byteSize": 385,
+      "sha256": "142f499e0bf33f72771c01101e4ea59313f2625cabc0826eacbb1a081e960904"
     },
     {
       "path": "index.html",
-      "byteSize": 3804,
-      "sha256": "49de923d63dd6ea9a6510067197563ee14299b355ed2c1fa5786b654d8016d54"
+      "byteSize": 3811,
+      "sha256": "9d86b46ccf49216501ab2ba305aa27bcb4fd69b195409c3e4d3c19b7078b7030"
     },
     {
       "path": "miacode-preview.js",

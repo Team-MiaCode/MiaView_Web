@@ -19,9 +19,13 @@ export function staticServer(directory = root) {
       const pathname = decodeURIComponent(
         new URL(req.url, "http://localhost").pathname,
       );
+      if (pathname === "/") {
+        res.writeHead(302, { Location: "/examples/index.html" }).end();
+        return;
+      }
       const path = resolve(
         directory,
-        `.${pathname === "/" ? "/examples/index.html" : pathname}`,
+        `.${pathname}`,
       );
       if (!path.startsWith(directory + sep) || !(await stat(path)).isFile()) {
         res.writeHead(404).end();
