@@ -1,4 +1,3 @@
-export const TARGET_FPS = 60;
 export const PLAYER_SOURCE = "MiaCodeWebGL";
 export const PROTOCOL_VERSION = 1;
 

@@ -11,6 +11,7 @@ const chart: ChartInput = {
 };
 const preview: MiaCodePreview = createPreview(document.createElement("div"), {
   resolution: { width: 720, height: 720 },
+  maxFps: 120,
 });
 void preview.load(chart);
 void preview.seek(1);
@@ -19,6 +20,10 @@ void preview.setSettings({ previewMode: "maimuri_dx_style" });
 // @ts-expect-error Unknown preview modes are rejected.
 void preview.setSettings({ previewMode: "unknown" });
 void preview.getState().then((state: PreviewState) => state.resolution.width);
+void preview.getState().then((state: PreviewState) => state.maxFps);
+createPreview(document.createElement("div"), { maxFps: "unlimited" });
+// @ts-expect-error Numeric strings are not frame rates.
+createPreview(document.createElement("div"), { maxFps: "120" });
 preview.on("paused", (event) => event.elapsedMs);
 preview.destroy();
 // @ts-expect-error Judgment effects are fixed and not configurable.

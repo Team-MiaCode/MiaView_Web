@@ -2,6 +2,7 @@ export interface Resolution {
   readonly width: number;
   readonly height: number;
 }
+export type MaxFps = number | "unlimited";
 export interface UrlResource {
   url: string;
   contentType?: string;
@@ -27,6 +28,7 @@ export interface PreviewSettings {
   noteSkin: "SD" | "DX";
 }
 export interface PreviewState {
+  maxFps: MaxFps;
   loaded: boolean;
   playing: boolean;
   currentTime: number;
@@ -49,6 +51,8 @@ export interface ChartInfo {
 }
 export interface PreviewOptions {
   resolution?: Resolution;
+  /** Integer >= 30, or "unlimited" to follow browser refresh cadence. Default 60. */
+  maxFps?: MaxFps;
   /** Defaults to ../renderer/index.html relative to the SDK module. */
   rendererUrl?: string;
   /** Startup and command timeout; default 120000 ms. */
@@ -88,3 +92,5 @@ export function createPreview(
 ): MiaCodePreview;
 export function previewResolution(value?: Resolution): Resolution;
 export const DEFAULT_RESOLUTION: Resolution;
+export function previewMaxFps(value?: MaxFps): MaxFps;
+export const DEFAULT_MAX_FPS: number;

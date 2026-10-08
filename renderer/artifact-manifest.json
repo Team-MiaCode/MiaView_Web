@@ -3,7 +3,12 @@
     {
       "path": "build-identity.json",
       "byteSize": 385,
-      "sha256": "142f499e0bf33f72771c01101e4ea59313f2625cabc0826eacbb1a081e960904"
+      "sha256": "c5c95a4ea671a51832ea960baa0cc9c8c78a5e1cce1687f0af45829ab25e85b3"
+    },
+    {
+      "path": "frame-rate.mjs",
+      "byteSize": 1460,
+      "sha256": "2becd9ee2ff3a3d52907375f10dab12d4f0306c86acac5a0843f452fc7d1e5b4"
     },
     {
       "path": "index.html",
@@ -27,8 +32,13 @@
     },
     {
       "path": "player.mjs",
-      "byteSize": 18697,
-      "sha256": "9663e14637706577b818c8b56de19cff5524afd6b752cea7bb716b196bc38b14"
+      "byteSize": 18439,
+      "sha256": "e33dc8ab730ef081c62ff0e31cfd6d3351d90e5764a7dc91962d7efe40fea4e5"
+    },
+    {
+      "path": "protocol.mjs",
+      "byteSize": 5146,
+      "sha256": "d5923cd9ef90e3f298e7730f8feeb3a6a07956028e1139e9c434d01aa24eae79"
     },
     {
       "path": "qtloader.js",
@@ -42,8 +52,13 @@
     },
     {
       "path": "runtime.mjs",
-      "byteSize": 18198,
-      "sha256": "d0394433cb6e8c438f95714fa89963f4c55cdba1550dafb739d8a33661d5ff0f"
+      "byteSize": 18168,
+      "sha256": "359a03346085d4ad5adcef4886d172b6f4d1462c5cdcec3e327205b0a2248842"
+    },
+    {
+      "path": "sdk-bridge.mjs",
+      "byteSize": 6146,
+      "sha256": "94a45fa5716d3d454f0ebf42b2ccac91a42f26340a8bc5a125c6291ba0134792"
     },
     {
       "path": "sfx/answer.wav",
@@ -104,16 +119,6 @@
       "path": "sfx/touch_hanabi.wav",
       "byteSize": 746472,
       "sha256": "8052100bf98b699bb2da27fa7f8ea3ae4853188654c7fddc315a70885cdea25c"
-    },
-    {
-      "path": "sdk-bridge.mjs",
-      "byteSize": 6146,
-      "sha256": "94a45fa5716d3d454f0ebf42b2ccac91a42f26340a8bc5a125c6291ba0134792"
-    },
-    {
-      "path": "protocol.mjs",
-      "byteSize": 5146,
-      "sha256": "d5923cd9ef90e3f298e7730f8feeb3a6a07956028e1139e9c434d01aa24eae79"
     }
   ]
 }

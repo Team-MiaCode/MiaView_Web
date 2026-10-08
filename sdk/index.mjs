@@ -1,4 +1,5 @@
 import { previewResolution } from "./resolution.mjs";
+import { previewMaxFps } from "./frame-rate.mjs";
 import {
   SDK_PROTOCOL,
   HOST_SOURCE,
@@ -10,6 +11,7 @@ import {
   difficultyId,
 } from "./protocol.mjs";
 export { previewResolution, DEFAULT_RESOLUTION } from "./resolution.mjs";
+export { previewMaxFps, DEFAULT_MAX_FPS } from "./frame-rate.mjs";
 
 export function createPreview(container, options = {}) {
   return new MiaCodePreview(container, options);
@@ -27,6 +29,7 @@ class MiaCodePreview {
     if (!this.window || !this.window.crypto?.randomUUID)
       throw new Error("MiaView Web requires HTTPS or localhost");
     const resolution = previewResolution(options.resolution);
+    const maxFps = previewMaxFps(options.maxFps);
     this.timeout = options.timeoutMs ?? 120000;
     if (!Number.isFinite(this.timeout) || this.timeout <= 0)
       throw new Error("timeoutMs must be positive");
@@ -39,6 +42,7 @@ class MiaCodePreview {
     );
     this.url.searchParams.set("width", String(resolution.width));
     this.url.searchParams.set("height", String(resolution.height));
+    this.url.searchParams.set("maxFps", String(maxFps));
     this.url.searchParams.set("hostOrigin", this.window.location.origin);
     this.origin = this.url.origin;
     this.sessionId = this.window.crypto.randomUUID();

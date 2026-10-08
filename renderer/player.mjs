@@ -1,5 +1,4 @@
 import {
-  TARGET_FPS,
   PreviewAudio,
   PreviewVideoFrames,
   PreviewMediaCache,
@@ -7,6 +6,7 @@ import {
   fetchVerified,
 } from "./runtime.mjs";
 import { DEFAULT_RESOLUTION, resolutionFromSearch } from "./resolution.mjs";
+import { PreviewFrameLimiter, maxFpsFromSearch } from "./frame-rate.mjs";
 
 let WIDTH = DEFAULT_RESOLUTION.width,
   HEIGHT = DEFAULT_RESOLUTION.height;
@@ -32,7 +32,7 @@ const videoCanvas = document.createElement("canvas");
 const videoContext = videoCanvas.getContext("2d", { willReadFrequently: true });
 const videoFrames = new PreviewVideoFrames(video);
 const mediaCache = new PreviewMediaCache();
-let nextFrameTime = -Infinity,
+let frameLimiter,
   fpsSampleTime = 0,
   fpsSampleFrames = 0,
   ready = false;
@@ -89,6 +89,7 @@ screen.getBoundingClientRect = () => {
 
 const boot = (async () => {
   const resolution = resolutionFromSearch(location.search);
+  frameLimiter = new PreviewFrameLimiter(maxFpsFromSearch(location.search));
   WIDTH = resolution.width;
   HEIGHT = resolution.height;
   document.documentElement.style.setProperty("--preview-width", `${WIDTH}px`);
@@ -464,15 +465,7 @@ function render(now) {
     fpsSampleFrames = frames;
     fpsSampleTime = now;
   }
-  if (!ready || !chart || now + 0.5 < nextFrameTime) return;
-  // Advance a deadline, even when a frame is accepted slightly early. Modulo
-  // on an almost-complete interval can repeat the previous boundary instead.
-  // Keep fractional time on non-60 Hz screens; skip catch-up after a stall.
-  const interval = 1000 / TARGET_FPS;
-  nextFrameTime =
-    Number.isFinite(nextFrameTime) && now - nextFrameTime < interval
-      ? nextFrameTime + interval
-      : now + interval;
+  if (!ready || !chart || !frameLimiter.accept(now)) return;
   if (audio.playing) {
     const second = audio.currentSecond();
     audio.schedule();
@@ -546,6 +539,7 @@ attachSdkBridge({
   fail,
   clear: () => { ++generation; abort?.abort(); mediaCache.clear(); clearInput(); status(""); },
   state: () => ({
+    maxFps: frameLimiter.maxFps,
     loaded: Boolean(chart), playing: audio?.playing ?? false,
     currentTime: audio?.currentSecond() ?? 0, duration: audio?.duration ?? 0,
     difficultyId: chart?.difficultyId ?? null,

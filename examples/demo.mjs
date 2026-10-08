@@ -13,7 +13,12 @@ function mount() {
   enable(false);
   const [width, height] = $("resolution").value.split("x").map(Number);
   $("preview").style.maxWidth = width === height ? "720px" : "960px";
-  preview = createPreview($("preview"), { resolution: { width, height } });
+  preview = createPreview($("preview"), {
+    resolution: { width, height },
+    maxFps: $("max-fps").value === "unlimited"
+      ? "unlimited"
+      : Number($("max-fps").value),
+  });
   preview.on("error", (event) => status(event.message));
   preview.on("progress", (event) => status(event.stage));
   return preview.ready;
@@ -64,14 +69,21 @@ async function selectFiles(event) {
   }
 }
 $("files").addEventListener("change", selectFiles);
-$("resolution").addEventListener("change", async () => {
+async function changePreviewOptions() {
+  $("resolution").disabled = true;
+  $("max-fps").disabled = true;
   try {
     await mount();
     if (lastChart) await load(lastChart);
   } catch (error) {
     status(error.message);
+  } finally {
+    $("resolution").disabled = false;
+    $("max-fps").disabled = false;
   }
-});
+}
+for (const id of ["resolution", "max-fps"])
+  $(id).addEventListener("change", changePreviewOptions);
 for (const name of ["play", "pause", "restart"])
   $(name).addEventListener("click", () => {
     void preview[name]().catch((error) => status(error.message));

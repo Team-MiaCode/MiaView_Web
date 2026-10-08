@@ -4,7 +4,7 @@ MiaView_Web 是一个可嵌入网站的 maimai 谱面实时预览库，支持 Si
 
 通过这个库，你可以在谱面网站或在线看谱器中加入实时播放器，查看谱面并播放音乐、判定音效。播放器通过 WebAssembly 运行原生代码，使用 Qt Quick 和 WebGL 2 绘制画面，使用 WebAudio 播放音频。
 
-当前基于 [MiaCode v1.2.0](https://github.com/Team-MiaCode/MiaCode/releases/tag/v1.2.0) 进行开发。
+当前基于 [MiaCode v1.2.0](https://github.com/Team-MiaCode/MiaCode/releases/tag/v1.2.0) 版本进行开发。
 
 ## 功能
 
@@ -13,6 +13,7 @@ MiaView_Web 是一个可嵌入网站的 maimai 谱面实时预览库，支持 Si
 - 播放、暂停、跳转、重播和切换难度。
 - 调整音符流速和画面亮度，切换 SD / DX 皮肤与预览模式。
 - 支持 16:9 与 1:1 画面，提供 ES module 接口和 TypeScript 类型声明。
+- 可配置最大预览帧率，支持不小于 30 的整数或不限帧率，默认 60 FPS。
 
 仓库提供可直接部署的预编译播放器，接入时无需编译 C++。本库专注于浏览器中的谱面预览，不包含 MiaCode 桌面版的完整编辑器和视频导出功能。
 
@@ -39,6 +40,15 @@ npm run dev
 无需执行 `npm install`。启动后，在浏览器中打开 <http://localhost:3030>，选择包含 `maidata.txt` 的谱面文件夹，加载完成后点击播放。文件夹可以同时包含音乐、背景图片和 PV；所选文件只在浏览器中读取，不会上传到示例服务器。
 
 示例服务器仅监听本机地址，用于本地开发。正式部署请使用静态托管服务。
+
+示例页顶部提供分辨率和「最大帧率」下拉框，可直接调整本地预览：
+
+| 选项 | 可选值 | 默认值 |
+| --- | --- | --- |
+| 分辨率 | 1920×1080（16:9）、1080×1080（1:1） | 1920×1080 |
+| 最大帧率 | 30、60、90、120、144、165、240 FPS、不限 | 60 FPS |
+
+切换任一选项后，示例页会自动重新创建播放器并加载当前谱面，回到起点并暂停，点击「播放」即可继续预览。「不限」表示取消程序限帧，实际帧率取决于屏幕刷新率、浏览器调度和设备性能。
 
 示例会按扩展名选取首个音乐、图片和视频文件。如果文件夹中有多个同类素材，请通过接入接口明确指定要使用的文件。
 
@@ -72,6 +82,7 @@ public/
   const preview = createPreview(document.getElementById("preview"), {
     rendererUrl: "/miacode/renderer/index.html",
     resolution: { width: 1920, height: 1080 },
+    maxFps: 60, // 可选：不小于 30 的整数，或 "unlimited"
   });
 
   preview.on("error", ({ message }) => {
@@ -97,6 +108,19 @@ public/
 ```
 
 将示例中的谱面和媒体路径替换为你自己的资源地址。播放器加载完成后默认暂停；点击内置播放按钮即可开始预览，也可以通过进度条跳转或在设置面板中调整画面。首次播放音频需要用户操作，以满足浏览器的自动播放限制。
+
+`maxFps` 设置最大预览帧率，默认 60，可配置为不小于 30 的整数（如 30、60、120、144、240），或 `"unlimited"` 取消程序限帧。实际帧率受屏幕刷新率、浏览器调度和设备性能影响；右上角的 FPS 显示实际绘制帧率，暂停时可能为 0。与分辨率一样，修改最大帧率需要销毁并重新创建实例，当前配置可通过 `(await preview.getState()).maxFps` 读取。
+
+接入自己的网站时，在 `createPreview()` 的配置中设置 `maxFps`；本地示例页的「最大帧率」下拉框也是通过这个参数控制帧率。代码配置支持任意不小于 30 的整数，不限于示例页列出的档位。
+
+```js
+const preview = createPreview(document.getElementById("preview"), {
+  resolution: { width: 1920, height: 1080 },
+  maxFps: "unlimited",
+});
+```
+
+直接嵌入播放器 HTML 时，也可以在 URL 中配置，例如 `/miacode/renderer/index.html?width=1920&height=1080&maxFps=120`。
 
 ### 3. 使用本地文件或谱面原文
 

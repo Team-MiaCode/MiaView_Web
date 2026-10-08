@@ -84,6 +84,7 @@ try {
       window.first = createPreview(document.getElementById("one"), {
         rendererUrl,
         resolution: { width: 1280, height: 720 },
+        maxFps: 30,
       });
       for (const name of [
         "ready",
@@ -131,6 +132,7 @@ try {
   );
   let state = await page.evaluate(() => first.getState());
   assert.equal(state.playing, false);
+  assert.equal(state.maxFps, 30);
   assert.equal(state.currentTime, 0);
   assert.ok(state.loaded);
   assert.equal(state.resolution.showChartInfoHud, true);
@@ -155,12 +157,15 @@ try {
       0,
   );
   await page.evaluate(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    await new Promise((resolve) => setTimeout(resolve, 1600));
     await first.pause();
   });
   state = await page.evaluate(() => first.getState());
   assert.equal(state.playing, false);
   assert.ok(state.currentTime > 0);
+  const displayedFps = Number((await firstFrame.locator("#fps").textContent()).replace("FPS: ", ""));
+  assert.ok(displayedFps > 0 && displayedFps <= 35,
+    `30 FPS cap must limit actual presented frames, got ${displayedFps}`);
   await page.evaluate(() => first.seek(1.5));
   const pausedPosition = (await page.evaluate(() => first.getState()))
     .currentTime;
@@ -235,6 +240,7 @@ try {
       window.second = createPreview(document.getElementById("two"), {
         rendererUrl,
         resolution: { width: 720, height: 720 },
+        maxFps: "unlimited",
       });
       await second.ready;
       await second.load({
@@ -253,6 +259,8 @@ try {
     { width: 720, height: 720 },
   );
   state = await page.evaluate(() => second.getState());
+  assert.equal(state.maxFps, "unlimited");
+  assert.equal((await page.evaluate(() => first.getState())).maxFps, 30);
   assert.equal(state.playing, false);
   assert.equal(state.resolution.showTimestamp, true);
   assert.equal(state.resolution.showChartInfoHud, false);
@@ -372,6 +380,16 @@ try {
       .evaluate((canvas) => ({ width: canvas.width, height: canvas.height })),
     { width: 1080, height: 1080 },
   );
+  for (const maxFps of ["30", "unlimited"]) {
+    await page.locator("#max-fps").selectOption(maxFps);
+    await page.locator("#play:not([disabled])").waitFor({ timeout: 90000 });
+    const url = new URL(await page.locator("#preview iframe").getAttribute("src"));
+    assert.equal(url.searchParams.get("maxFps"), maxFps);
+    assert.equal(url.searchParams.get("width"), "1080");
+    assert.equal(url.searchParams.get("height"), "1080");
+    assert.equal(await page.locator("#max-fps").isEnabled(), true);
+    assert.ok((await page.locator("#status").textContent()).startsWith("已加载："));
+  }
   await page.locator("#destroy").click();
   assert.equal(await page.locator("#preview iframe").count(), 0);
   assert.deepEqual(errors, []);

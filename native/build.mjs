@@ -92,6 +92,7 @@ for (const file of [
   "player.mjs",
   "runtime.mjs",
   "resolution.mjs",
+  "frame-rate.mjs",
   "player.css",
   "index.html",
 ]) {
@@ -101,6 +102,7 @@ for (const file of [
     "player.mjs",
     "runtime.mjs",
     "resolution.mjs",
+    "frame-rate.mjs",
     "player.css",
     "index.html",
   ].includes(file)
