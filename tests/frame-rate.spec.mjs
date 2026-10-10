@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
+import { previewMaxFps as sdkMaxFps } from "../sdk/frame-rate.mjs";
 import {
   previewMaxFps,
   maxFpsFromSearch,
@@ -8,6 +8,7 @@ import {
 } from "../renderer/frame-rate.mjs";
 
 test("maximum FPS accepts >=30 integers and unlimited; URL input is strict", () => {
+  assert.equal(sdkMaxFps, previewMaxFps);
   assert.equal(previewMaxFps(), 60);
   assert.equal(maxFpsFromSearch("?width=720&height=720"), 60);
   for (const value of [30, 45, 60, 120, 144, 240, 1000, "unlimited"]) {
@@ -18,11 +19,7 @@ test("maximum FPS accepts >=30 integers and unlimited; URL input is strict", () 
     assert.throws(() => previewMaxFps(value));
   for (const value of ["", "0", "29", "30.5", "Infinity", "060", "1e2", "60&maxFps=120"])
     assert.throws(() => maxFpsFromSearch(`?maxFps=${value}`));
-  assert.equal(
-    readFileSync(new URL("../sdk/frame-rate.mjs", import.meta.url), "utf8"),
-    readFileSync(new URL("../renderer/frame-rate.mjs", import.meta.url), "utf8"),
-    "SDK and standalone renderer must agree on validation",
-  );
+
 });
 
 test("frame limiter preserves requested cadence across display refresh rates", () => {

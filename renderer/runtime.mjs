@@ -1,3 +1,4 @@
+import { previewPvTimeout, scheduleTimeout } from "./pv-timeout.mjs";
 export const PLAYER_SOURCE = "MiaCodeWebGL";
 export const PROTOCOL_VERSION = 1;
 
@@ -147,7 +148,7 @@ export async function loadPreviewRuntime(
   preload.integrity = glue.integrity;
   preload.crossOrigin = "anonymous";
   document.head.append(preload);
-  // Fetch's integrity check rejects the wrong binary before instantiation.
+  // Compile during transfer; verify the complete binary before execution.
   let wasmModule;
   try {
     const cached = Number.isSafeInteger(wasm.byteSize)
@@ -159,26 +160,33 @@ export async function loadPreviewRuntime(
         })
       : await fetcher(wasm.url, {
           cache: "force-cache",
-          integrity: wasm.integrity,
+          credentials: "omit",
         });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const mime = response.headers.get("content-type")?.split(";")[0].trim();
     // Keep only the bounded disk copy; don't persist compiled/native instances.
     const saved =
       !cached && Number.isSafeInteger(wasm.byteSize) ? response.clone() : null;
-    wasmModule =
+    const verified = saved
+      ? saved.arrayBuffer().then(async (bytes) => {
+          if (
+            bytes.byteLength !== wasm.byteSize ||
+            (await sha256(bytes)) !== wasm.sha256
+          )
+            throw mismatch();
+          // Disk persistence is best effort and outside the startup critical path.
+          void Promise.resolve()
+            .then(() => cache.write(wasm.sha256, bytes))
+            .catch(() => {});
+        })
+      : Promise.resolve();
+    if (!cached && !saved) throw mismatch();
+    const compiled =
       typeof compiler.compileStreaming === "function" &&
       mime === "application/wasm"
-        ? await compiler.compileStreaming(response)
-        : await compiler.compile(await response.arrayBuffer());
-    if (saved) {
-      const bytes = await saved.arrayBuffer();
-      if (
-        bytes.byteLength === wasm.byteSize &&
-        (await sha256(bytes)) === wasm.sha256
-      )
-        await cache.write(wasm.sha256, bytes);
-    }
+        ? compiler.compileStreaming(response)
+        : response.arrayBuffer().then((bytes) => compiler.compile(bytes));
+    [wasmModule] = await Promise.all([compiled, verified]);
   } catch (cause) {
     preload.remove();
     throw new Error("播放器文件加载或校验失败，请刷新页面", { cause });
@@ -204,113 +212,12 @@ export async function loadPreviewRuntime(
   return { identity, wasmModule, entryFunction };
 }
 
-// Track decoded/presented frames, not the continuously advancing media clock.
-// The render loop consumes one dirty flag, so delayed frames never accumulate.
-export class PreviewVideoFrames {
-  constructor(video) {
-    this.video = video;
-    this.epoch = 0;
-    this.usesCallback =
-      typeof video.requestVideoFrameCallback === "function" &&
-      typeof video.cancelVideoFrameCallback === "function";
-    this.reset();
-    const invalidate = () => {
-      this.dirty = true;
-    };
-    video.addEventListener("loadeddata", invalidate);
-    video.addEventListener("seeked", invalidate);
-  }
-  reset() {
-    ++this.epoch;
-    if (this.handle != null) this.video.cancelVideoFrameCallback(this.handle);
-    this.handle = null;
-    this.dirty = false;
-    this.lastFrame = -1;
-    this.lastTime = -1;
-  }
-  start() {
-    this.reset();
-    if (!this.usesCallback) return;
-    const epoch = this.epoch;
-    const presented = () => {
-      if (epoch !== this.epoch) return;
-      this.dirty = true;
-      this.handle = this.video.requestVideoFrameCallback(presented);
-    };
-    this.handle = this.video.requestVideoFrameCallback(presented);
-  }
-  frameCount() {
-    const count =
-      this.video.getVideoPlaybackQuality?.().totalVideoFrames ??
-      this.video.webkitDecodedFrameCount;
-    return Number.isFinite(count) ? count : null;
-  }
-  needsUpload() {
-    if (this.video.readyState < 2 || this.video.seeking) return false;
-    if (this.usesCallback) return this.dirty;
-    const count = this.frameCount();
-    return (
-      this.dirty ||
-      (count !== null
-        ? count !== this.lastFrame
-        : this.video.currentTime !== this.lastTime)
-    );
-  }
-  consume() {
-    this.dirty = false;
-    this.lastFrame = this.frameCount();
-    this.lastTime = this.video.currentTime;
-  }
-}
-
 export function decodeMaidata(bytes) {
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
     return new TextDecoder("gb18030", { fatal: true }).decode(bytes);
   }
-}
-
-export function trustedHostMessage(event, parent, origin, sessionId) {
-  const message = event.data;
-  if (
-    event.source !== parent ||
-    event.origin !== origin ||
-    !message ||
-    message.source !== "maiChart" ||
-    message.protocolVersion !== PROTOCOL_VERSION ||
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      message.sessionId ?? "",
-    )
-  )
-    return null;
-  if (sessionId && message.sessionId !== sessionId) return null;
-  if (
-    !["initialize", "load", "pause", "resume", "reload", "destroy"].includes(
-      message.type,
-    )
-  )
-    return null;
-  if (message.type === "load") {
-    const payload = message.payload;
-    const manifest = payload?.manifest;
-    if (
-      !manifest ||
-      manifest.protocolVersion !== 1 ||
-      manifest.player?.upstream !== PLAYER_SOURCE ||
-      manifest.player.messageProtocolVersion !== PROTOCOL_VERSION ||
-      !manifest.maidata ||
-      !Array.isArray(manifest.assets) ||
-      !(
-        payload.chartIndex === null ||
-        (Number.isInteger(payload.chartIndex) &&
-          payload.chartIndex >= 1 &&
-          payload.chartIndex <= 7)
-      )
-    )
-      return null;
-  }
-  return message;
 }
 
 export async function fetchVerified(
@@ -352,17 +259,82 @@ export async function fetchVerified(
   const sha = await sha256(bytes);
   if (sha !== resource.sha256) throw new Error("资源校验失败，请重新加载谱面");
   signal?.throwIfAborted();
-  if (cacheable) await cache.write(resource.sha256, bytes, resource.cacheScope);
+  if (cacheable)
+    void Promise.resolve()
+      .then(() => cache.write(resource.sha256, bytes, resource.cacheScope))
+      .catch(() => {});
   return bytes;
 }
 
 // Exactly one chart's prepared media. Difficulty changes reuse decoded music
 // and verified PV bytes; switching charts/destroying drops the old reference.
 export class PreviewMediaCache {
+  constructor({ videoTimeoutMs = 30000, onVideoTimeout = () => {} } = {}) {
+    this.videoTimeoutMs = previewPvTimeout(videoTimeoutMs);
+    this.onVideoTimeout = onVideoTimeout;
+    this.skippedVideoUrls = new Set();
+    this.skippedVideoBlobs = new WeakSet();
+  }
+  videoKey(resource) {
+    return JSON.stringify([resource.url, resource.sha256, resource.byteSize]);
+  }
+  async loadVideo(resource, signal, getBlob, prepare) {
+    if (!resource) return null;
+    signal?.throwIfAborted();
+    const local = resource instanceof Blob;
+    const key = local ? resource : this.videoKey(resource);
+    const skipped = local ? this.skippedVideoBlobs : this.skippedVideoUrls;
+    if (skipped.has(key)) return null;
+    const controller = new AbortController();
+    const cancelled = () => controller.abort(signal.reason);
+    signal?.addEventListener("abort", cancelled, { once: true });
+    let timedOut = false;
+    const stopped = new Promise((_, reject) => {
+      controller.signal.addEventListener(
+        "abort",
+        () => reject(controller.signal.reason),
+        { once: true },
+      );
+    });
+    const cancelTimer = this.videoTimeoutMs === "unlimited" ? () => {} : scheduleTimeout(() => {
+      timedOut = true;
+      controller.abort(
+        new DOMException(`PV loading exceeded ${this.videoTimeoutMs / 1000} seconds`, "TimeoutError"),
+      );
+    }, this.videoTimeoutMs);
+    try {
+      return await Promise.race([
+        Promise.resolve()
+          .then(() => getBlob(controller.signal))
+          .then(async (blob) => {
+            controller.signal.throwIfAborted();
+            if (blob && prepare) await prepare(blob, controller.signal);
+            controller.signal.throwIfAborted();
+            return blob;
+          }),
+        stopped,
+      ]);
+    } catch (error) {
+      if (!timedOut) throw error;
+      skipped.add(key);
+      this.onVideoTimeout();
+      return null;
+    } finally {
+      cancelTimer();
+      signal?.removeEventListener("abort", cancelled);
+    }
+  }
   clear() {
     this.entry = null;
   }
-  load(resources, context, readBytes, signal) {
+  load(
+    resources,
+    context,
+    readBytes,
+    signal,
+    measure = async (_name, action) => action(),
+    prepareVideo = null,
+  ) {
     const kinds = ["maidata", "audio", "cover", "video"];
     const same = (a, b) =>
       a === b ||
@@ -377,11 +349,43 @@ export class PreviewMediaCache {
       this.entry &&
       (this.entry.complete || !this.entry.signal?.aborted) &&
       kinds.every((kind) => same(resources[kind], this.entry.resources[kind]))
-    )
-      return this.entry;
-    const read = (kind) =>
+    ) {
+      const cached = this.entry;
+      if (!prepareVideo) return cached;
+      return {
+        ...cached,
+        video: this.loadVideo(
+          resources.video,
+          signal,
+          () => cached.video,
+          prepareVideo,
+        ),
+      };
+    }
+    const resourceNames = {
+      maidata: "谱面",
+      audio: "音乐",
+      cover: "封面",
+      video: "PV",
+    };
+    const read = (kind, readSignal = signal) =>
       resources[kind]
-        ? readBytes(resources[kind], signal)
+        ? measure(kind === "video" ? "videoAssetRead" : `${kind}Read`, () =>
+            readBytes(resources[kind], readSignal),
+          ).catch((error) => {
+            if (
+              readSignal?.aborted ||
+              ["AbortError", "TimeoutError"].includes(error.name)
+            )
+              throw error;
+            const message =
+              error instanceof TypeError
+                ? "网络请求失败，请检查服务器是否运行、资源地址、浏览器离线/限速设置和跨域 CORS"
+                : error.message;
+            throw new Error(`${resourceNames[kind]}读取失败：${message}`, {
+              cause: error,
+            });
+          })
         : Promise.resolve(null);
     let entry;
     const text = read("maidata").then((bytes) => {
@@ -392,19 +396,27 @@ export class PreviewMediaCache {
     });
     const music = Promise.all([
       read("audio").then((bytes) =>
-        bytes ? context.decodeAudioData(bytes) : null,
+        bytes
+          ? measure("audioDecode", () => context.decodeAudioData(bytes))
+          : null,
       ),
       read("cover"),
     ]).then(([track, coverBytes]) => ({ track, coverBytes }));
-    const video = read("video").then((videoBytes) =>
-      videoBytes
-        ? new Blob([videoBytes], {
-            type:
-              resources.video.contentType ??
-              resources.video.type ??
-              "video/mp4",
-          })
-        : null,
+    const resource = resources.video;
+    // Download the entire PV before decoding/display. Only this branch has a
+    // deadline, so a slow PV cannot cancel chart, music or cover preparation.
+    const video = this.loadVideo(
+      resource,
+      signal,
+      async (videoSignal) => {
+        if (resource instanceof Blob)
+          return measure("videoAssetRead", async () => resource);
+        const videoBytes = await read("video", videoSignal);
+        return new Blob([videoBytes], {
+          type: resource.contentType ?? resource.type ?? "",
+        });
+      },
+      prepareVideo,
     );
     const media = Promise.all([music, video]).then(
       ([{ track, coverBytes }, videoBlob]) => {
@@ -543,6 +555,9 @@ export class PreviewAudio {
       this.events[this.eventIndex].second <= until
     ) {
       const event = this.events[this.eventIndex++];
+      this.onSchedule?.(
+        Math.max(0, this.currentSecond() - event.second) * 1000,
+      );
       const end =
         event.nextSameKindSecond > event.second
           ? event.nextSameKindSecond
@@ -560,6 +575,9 @@ export class PreviewAudio {
       this.segments[this.segmentIndex].startSecond <= until
     ) {
       const span = this.segments[this.segmentIndex++];
+      this.onSchedule?.(
+        Math.max(0, this.currentSecond() - span.startSecond) * 1000,
+      );
       this.voice(
         this.buffers.get("touch_Hold_riser.wav") ??
           this.buffers.get("touchHold_riser.wav"),

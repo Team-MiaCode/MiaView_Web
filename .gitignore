@@ -1,4 +1,24 @@
 node_modules/
 native/build-release/
+native/build-dev-refactor-release/
 *.tgz
 .vscode
+.logs/
+charts/
+.deps/
+artifacts/
+aqtinstall.log
+scripts/apply-upstream-preview.py
+# Built by CI (or build:native locally); never commit runtime artifacts.
+/renderer/miacode-preview.js
+/renderer/miacode-preview.wasm
+/renderer/*.br
+/renderer/*.gz
+/renderer/qtloader.js
+/renderer/theme.css
+/renderer/build-identity.json
+/renderer/artifact-manifest.json
+/renderer/LICENSE
+/renderer/LICENSE_SCOPE.md
+/renderer/THIRD_PARTY_NOTICES.md
+/renderer/sfx/

@@ -9,6 +9,9 @@ export const commands = new Set([
   "seek",
   "setSettings",
   "getState",
+  "getDiagnostics",
+  "setDiagnostics",
+  "resetDiagnostics",
   "selectDifficulty",
   "restart",
   "destroy",
@@ -76,6 +79,7 @@ export function trustedResponse(event, frame, origin, sessionId) {
       "error",
       "seeked",
       "settingsChanged",
+      "performance",
     ].includes(message.type) ||
     !message.payload ||
     typeof message.payload !== "object"

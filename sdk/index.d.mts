@@ -2,6 +2,7 @@ export interface Resolution {
   readonly width: number;
   readonly height: number;
 }
+export type PvTimeout = number | "unlimited";
 export type MaxFps = number | "unlimited";
 export interface UrlResource {
   url: string;
@@ -29,6 +30,7 @@ export interface PreviewSettings {
 }
 export interface PreviewState {
   maxFps: MaxFps;
+  pvTimeoutMs: PvTimeout;
   loaded: boolean;
   playing: boolean;
   currentTime: number;
@@ -49,16 +51,89 @@ export interface ChartInfo {
   noteCount: number;
   charts: Array<{ id: number; label: string }>;
 }
+export interface PerformanceMetric {
+  count: number;
+  meanMs: number;
+  p95Ms: number;
+  maxMs: number;
+  sampledCount: number;
+}
+export interface PerformanceReport {
+  schemaVersion: 1;
+  sequence: number;
+  timestamp: string;
+  durationMs: number;
+  ready: boolean;
+  loaded: boolean;
+  logKind?: "initialization" | "performance";
+  phase?: "engine-load" | "engine-init" | "chart-load" | "ready" | "error";
+  errors?: Array<{ stage: string; message: string }>;
+  loadingSteps?: Array<{
+    kind: string;
+    resource: string;
+    loadId: number;
+    startMs: number;
+    durationMs: number;
+    endMs: number;
+    status: "ok" | "timeout" | "cancelled" | "error";
+    byteSize?: number;
+  }>;
+  playing: boolean;
+  visible: boolean;
+  currentTime: number;
+  difficultyId: number | null;
+  noteCount: number;
+  resolution: Resolution;
+  maxFps: MaxFps;
+  pvTimeoutMs: PvTimeout;
+  hasVideo: boolean;
+  videoPipeline: "browser-compositor" | "none";
+  videoWidth: number;
+  videoHeight: number;
+  videoDecodedFrames: number | null;
+  videoDroppedFrames: number | null;
+  wasmHeapBytes: number;
+  presentedFrames: number;
+  presentedFps: number;
+  playerVersion: string | null;
+  sourceRevision: string | null;
+  settings: PreviewSettings | null;
+  /** Present on live events after backend delivery; exported history contains raw samples. */
+  backendLog?: {
+    ok: boolean;
+    text?: string;
+    terminalEnabled?: boolean;
+    fileEnabled?: boolean;
+    message?: string;
+  };
+  metrics: Record<string, PerformanceMetric>;
+  counters: Record<string, number>;
+}
+export interface DiagnosticsSnapshot {
+  schemaVersion: 1;
+  enabled: boolean;
+  startedAt: string;
+  historyLimit: number;
+  reports: PerformanceReport[];
+  definitions: Record<string, string>;
+}
 export interface PreviewOptions {
+  /** Initial player theme; default dark. The player also provides a theme toggle. */
+  theme?: "dark" | "light";
+  /** Initialization/load logs and playback-only performance reports sent to the renderer backend. Default true. */
+  diagnostics?: boolean;
   resolution?: Resolution;
   /** Integer >= 30, or "unlimited" to follow browser refresh cadence. Default 60. */
   maxFps?: MaxFps;
+  /** PV download, integrity verification and first frame preparation deadline. Integer ms >= 10000, or "unlimited". Default 30000. */
+  pvTimeoutMs?: PvTimeout;
   /** Defaults to ../renderer/index.html relative to the SDK module. */
   rendererUrl?: string;
-  /** Startup and command timeout; default 120000 ms. */
+  /** Startup and command timeout; default 120000 ms. Load/difficulty changes allow pvTimeoutMs plus this timeout; unlimited PV disables their command deadline. */
   timeoutMs?: number;
 }
 export interface PreviewEvents {
+  performance: PerformanceReport;
   ready: { playerVersion: string; sourceRevision: string };
   progress: { stage: string; progress: number };
   playing: { elapsedMs: number };
@@ -80,6 +155,9 @@ export interface MiaCodePreview {
   ): Promise<PreviewState["settings"]>;
   selectDifficulty(difficulty: number): Promise<ChartInfo>;
   getState(): Promise<PreviewState>;
+  getDiagnostics(): Promise<DiagnosticsSnapshot>;
+  resetDiagnostics(): Promise<DiagnosticsSnapshot>;
+  setDiagnostics(enabled: boolean): Promise<DiagnosticsSnapshot>;
   on<T extends keyof PreviewEvents>(
     type: T,
     listener: (payload: PreviewEvents[T]) => void,
