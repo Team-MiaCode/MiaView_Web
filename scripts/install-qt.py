@@ -68,12 +68,14 @@ def install(base, architecture, destination):
                         output.write(chunk)
         if hashlib.sha1(path.read_bytes()).hexdigest() != checksum:
             raise RuntimeError(f"Qt archive checksum mismatch: {archive}")
-        destination.mkdir(parents=True, exist_ok=True)
+        # Qt's ICU archive has bare library names, unlike the module archives.
+        archive_destination = destination / "lib" if archive.startswith("icu-") else destination
+        archive_destination.mkdir(parents=True, exist_ok=True)
         with py7zr.SevenZipFile(path) as source:
-            if any(not (destination / name).resolve().is_relative_to(destination.resolve())
+            if any(not (archive_destination / name).resolve().is_relative_to(archive_destination.resolve())
                    for name in source.getnames()):
                 raise RuntimeError("Qt archive contains a path outside its installation")
-            source.extractall(destination)
+            source.extractall(archive_destination)
 
 prefix = "https://download.qt.io/online/qtsdkrepository/"
 if args.target in ["wasm", "all"]:
