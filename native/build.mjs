@@ -87,6 +87,7 @@ if (!ninja && process.platform === "win32") {
   if (existsSync(bundled)) ninja = bundled;
 }
 if (ninja) configure.push(`-DCMAKE_MAKE_PROGRAM=${ninja}`);
+if (process.platform === "linux") run(join(qtHost, "bin/qsb"), ["--version"]);
 run("cmake", configure);
 run("cmake", ["--build", build, "--parallel", String(jobs)]);
 
