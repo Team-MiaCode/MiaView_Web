@@ -18,7 +18,7 @@
     {
       "path": "build-identity.json",
       "byteSize": 575,
-      "sha256": "beb5ae39ea4c26b49b7cb566cfc2f1288ffb3eed0510e5e3d6781d4c65e6dc87"
+      "sha256": "6268a18eea39ccc4b3de98013506120dbd72d4c3954092778ec95a63fb667aaa"
     },
     {
       "path": "frame-rate.mjs",
@@ -33,12 +33,12 @@
     {
       "path": "miacode-preview.js",
       "byteSize": 245900,
-      "sha256": "7699e5bc3eed8ca4a629a527a19a8fb3e7017b2e30d620ec06a579ba19e28c48"
+      "sha256": "54dba9d45dfb7f0839e83a19987d8bbe8440e56496fc7528655e934d79637369"
     },
     {
       "path": "miacode-preview.wasm",
-      "byteSize": 51496842,
-      "sha256": "fba7875cb4e568316a923a9f1d790410dd2b2b9795efd1f22ee63a6ae3de0777"
+      "byteSize": 51496982,
+      "sha256": "f4433d218ee0f0c29356f687f5f9c01c2c0e5fb66085c7b863605482810930d3"
     },
     {
       "path": "player.css",
@@ -138,7 +138,7 @@
     {
       "path": "theme.css",
       "byteSize": 882,
-      "sha256": "34ad92f6fc39c6ad984c84a15d113d60a8ea78c6f877164738af1b1e2d11e8de"
+      "sha256": "92c9747097fd53f6f717be8b780f0a8878a54a882f00a4acc4914b7d57828170"
     }
   ]
 }

@@ -1,9 +1,9 @@
 {
   "upstream": "MiaCodeWebGL",
-  "version": "miaview-web-2-525947ee82d5",
-  "sourceRevision": "4249d3e8b2700b77bfc992a76f9e2a9bf5c9ae993e5c001269b3158ecb9f0fc3",
-  "upstreamGitCommit": "54880613efbf89ca9a603da9a43c27b6f30d600f",
-  "upstreamTree": "6403dcbe5ccaff6d61236816c8f81725ddaf4e2c",
+  "version": "miaview-web-2-dd6de16e1468",
+  "sourceRevision": "a5eb3dbb8e50a15a803e7a82f214b5ae60da5e64499b3613158a9fe6e3dec244",
+  "upstreamGitCommit": "fb6fcd9eee1e92f2668e4e883db4567eff91006e",
+  "upstreamTree": "0b5ec38a6f92c731c8c06b286dea699ff252c2e4",
   "upstreamDirty": false,
   "protocolVersion": 1,
   "qtVersion": "6.11.1",

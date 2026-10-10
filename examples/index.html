@@ -4,13 +4,17 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>MiaView Web · 谱面预览</title>
+    <link rel="stylesheet" href="../renderer/theme.css" />
     <style>
       body {
         margin: 0;
         padding: 16px;
-        color: #eee;
-        background: #10141b;
-        font-family: system-ui, sans-serif;
+        color: var(--text);
+        background: var(--surface);
+        font-family: "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+        font-size: 13px;
+        max-width: 1280px;
+        margin: auto;
       }
       #controls {
         display: flex;
@@ -24,14 +28,24 @@
       .file-button {
         padding: 6px 10px;
         color: inherit;
-        background: #252c36;
-        border: 1px solid #596474;
+        background: var(--control);
+        border: 1px solid var(--control-border);
         border-radius: 4px;
         font: inherit;
       }
       .file-button input {
-        display: none;
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        clip-path: inset(50%);
       }
+      .file-button { cursor: pointer; }
+      .file-button:focus-within { outline: 2px solid var(--accent); }
+      .file-button:has(input:disabled) { color: var(--disabled); cursor: default; }
+      h1 { margin: 4px 0 10px; font-size: 22px; }
+      .intro { color: var(--muted); line-height: 1.7; max-width: 960px; }
+      #media-files { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+      #media-status { color: var(--muted); font-size: 12px; }
       #preview {
         max-width: 960px;
       }
@@ -41,6 +55,8 @@
     </style>
   </head>
   <body>
+    <h1>MiaView Web</h1>
+    <p class="intro">在浏览器中预览自己的谱面。选择包含 maidata.txt 的文件夹，可同时读取音乐、图片和 PV；也可加载后单独选择本地 PV 或音乐。所有文件仅在你的浏览器中读取，不会上传。</p>
     <div id="controls">
       <label class="file-button"
         >选择谱面文件夹<input id="files" type="file" multiple webkitdirectory
@@ -66,6 +82,12 @@
       ><button id="restart" disabled>重播</button
       ><button id="destroy">销毁</button>
     </div>
+    <div id="media-files">
+      <label class="file-button">选择本地 PV<input id="local-pv" type="file" accept="video/*,.mp4,.webm" disabled /></label>
+      <label class="file-button">选择本地音乐<input id="local-audio" type="file" accept="audio/*,.mp3,.wav,.ogg,.flac,.m4a" disabled /></label>
+      <button id="remove-pv" disabled>移除 PV</button>
+    </div>
+    <p id="media-status">尚未加载谱面。PV 用作视频背景；声音由音乐文件和判定音效提供。</p>
     <div id="preview"></div>
     <p id="status" role="status">请选择谱面文件夹</p>
     <script type="module" src="./demo.mjs"></script>

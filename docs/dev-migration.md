@@ -14,6 +14,8 @@
 上游改动已在本机提交；两仓尚未推送。当前电脑可以从本机 Git 对象构建与验证，其他电脑在上游提交发布前无法仅靠 GitHub 初始化该 submodule。
 发布顺序：先让共享改动进入可长期获取的 MiaCode 引用，再发布 Web。若上游以 squash / rebase 合并，必须用最终提交更新 gitlink、重建并验收，不能沿用旧 SHA。
 
+后续更新：上游 `54880613` 已发布并合入 dev；本仓当前升级到 dev 头 `fb6fcd9eee1e92f2668e4e883db4567eff91006e`，已重建 WASM 并通过源码一致性与浏览器检查。新增 GitHub Pages 展示页，只加载用户本地文件，无内置示例或大型 PV；项目路径、本地 PV/音乐替换、难度保持、移除 PV 与无上传请求检查通过。上述“尚未推送”描述保留首次迁移时的历史状态。
+
 ## 上游改动
 
 - `MIACODE_BUILD_APP=OFF` 提供最小构建入口，共用原模块清单，直接产出 base、chart、analysis、scene、preview_quick。

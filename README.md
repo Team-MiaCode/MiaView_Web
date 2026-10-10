@@ -6,6 +6,8 @@ MiaView_Web 是一个可嵌入网站的 maimai 谱面实时预览库，支持 Si
 
 当前跟进 MiaCode `dev`（2.0.0-alpha），通过 `vendor/MiaCode` submodule 固定上游提交。解析、分析、场景和 Qt Quick 预览直接链接上游模块；浏览器宿主、WebAudio、PV、JavaScript SDK 和网页界面由本仓维护。构建身份记录确切提交、源码树和工具链，不会随 `dev` 自动漂移。
 
+[GitHub Pages 在线展示](https://team-miacode.github.io/MiaView_Web/)：使用你自己的本地谱面、音乐和 PV，无内置示例或在线素材。文件仅在浏览器中读取，不会上传到 GitHub。
+
 ## 功能
 
 - 加载 `maidata.txt`，支持谱面原文、本地文件和网络 URL。
@@ -53,6 +55,8 @@ npm run dev
 切换任一选项后，示例页会自动重新创建播放器并加载当前谱面，回到起点并暂停，点击「播放」即可继续预览。「不限」表示取消程序限帧，实际帧率取决于屏幕刷新率、浏览器调度和设备性能。
 
 示例会按扩展名选取首个音乐、图片和视频文件。如果文件夹中有多个同类素材，请通过接入接口明确指定要使用的文件。
+
+加载谱面后，也可使用「选择本地 PV」「选择本地音乐」分别选取其他目录的文件，或「移除 PV」恢复静态背景。PV 用作视频背景，其自带音轨不单独播放；声音由音乐文件与判定音效提供。换素材后播放器回到起点并暂停。
 
 ## 接入自己的网站
 
@@ -227,6 +231,12 @@ Windows PowerShell 可设置 `$env:MIACODE_QT_HOST_PATH='C:/path/to/Qt/6.11.1/ms
 构建脚本会同步上游主题、许可证、播放器文件、构建身份和哈希清单。浏览器验证需另行准备 Playwright 1.62.1 / Chromium：`npm run test:browser` 检查加载播放和协议，`npm run test:ui` 检查主题、全屏、响应式设置面板并在 `artifacts/ui/` 输出真实截图。可通过 `MIACODE_PLAYWRIGHT_MODULE` 和 `MIACODE_CHROMIUM` 使用已安装的模块与浏览器。
 
 CI 同时检查已提交产物和从固定源码重新构建的播放器。首次发布此迁移必须先将上游提交发布至 MiaCode，随后再发布引用它的 Web 提交。两仓协作、升级与回退方式见 [迁移实现与验收](docs/dev-migration.md)。
+
+## GitHub Pages
+
+展示页复用 `examples/` 和公共 SDK，不附带示例谱面或 PV。`npm run build:pages` 只打包 `sdk/`、`renderer/`、`examples/`，保留项目路径下的相对资源地址；测试与上游源码不会部署到网站。`npm run test:pages` 验证项目路径、本地 PV / 音乐、难度保持和无上传请求。
+
+仓库的 Pages 发布源使用 GitHub Actions，`.github/workflows/pages.yml` 在 `main` 或 `feat/dev-preview` 推送时部署，也支持手动执行。完成迁移合并后，可移除功能分支的部署触发，仅保留 `main`。工作流使用 [GitHub 官方 Pages Actions](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)。
 
 ## 友链与致谢
 

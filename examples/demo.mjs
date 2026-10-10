@@ -5,8 +5,9 @@ const status = (text) => {
   $("status").textContent = text;
 };
 function enable(loaded) {
-  for (const id of ["play", "pause", "restart", "difficulty"])
+  for (const id of ["play", "pause", "restart", "difficulty", "local-pv", "local-audio"])
     $(id).disabled = !loaded;
+  $("remove-pv").disabled = !loaded || !lastChart?.video;
 }
 function mount() {
   preview?.destroy();
@@ -37,6 +38,7 @@ async function load(chart) {
   );
   $("difficulty").value = info.difficultyId;
   enable(true);
+  $("media-status").textContent = `音乐：${chart.audio?.name || "未选择"} · PV：${chart.video?.name || "未选择"}。文件只在浏览器中读取；PV 音轨不单独播放。`;
   status(`已加载：${info.title || "未命名谱面"}，点击播放开始预览`);
 }
 async function selectFiles(event) {
@@ -69,6 +71,26 @@ async function selectFiles(event) {
   }
 }
 $("files").addEventListener("change", selectFiles);
+async function replaceMedia(kind, file) {
+  if (!lastChart) return;
+  try {
+    lastChart = { ...lastChart, [kind]: file, difficulty: Number($("difficulty").value) };
+    await load(lastChart);
+  } catch (error) {
+    status(error.message);
+    // Let users replace an unsupported file or remove a failed PV and retry.
+    for (const id of ["local-pv", "local-audio"]) $(id).disabled = false;
+    $("remove-pv").disabled = !lastChart.video;
+  }
+}
+for (const [id, kind] of [["local-pv", "video"], ["local-audio", "audio"]]) {
+  $(id).addEventListener("change", event => {
+    const file = event.target.files[0];
+    event.target.value = "";
+    if (file) void replaceMedia(kind, file);
+  });
+}
+$("remove-pv").addEventListener("click", () => void replaceMedia("video", undefined));
 async function changePreviewOptions() {
   $("resolution").disabled = true;
   $("max-fps").disabled = true;
@@ -96,7 +118,9 @@ $("difficulty").addEventListener("change", () => {
 });
 $("destroy").addEventListener("click", () => {
   preview?.destroy();
+  lastChart = null;
   enable(false);
+  $("media-status").textContent = "预览已关闭；可重新选择本地谱面。";
   status("预览已关闭");
 });
 window.addEventListener("pagehide", () => preview?.destroy());

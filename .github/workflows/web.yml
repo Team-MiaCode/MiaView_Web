@@ -19,7 +19,7 @@ jobs:
       - run: npm install --no-save --package-lock=false playwright@1.62.1 typescript@5.9.3
       - run: npx tsc --noEmit --strict --module NodeNext --moduleResolution NodeNext --target ES2022 --lib ES2022,DOM tests/types.ts
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:browser && npm run test:ui
+      - run: npm run test:browser && npm run test:ui && npm run test:pages
       - uses: actions/upload-artifact@v4
         if: always()
         with:
