@@ -1,9 +1,24 @@
 {
   "files": [
     {
+      "path": "LICENSE",
+      "byteSize": 1068,
+      "sha256": "a080824e537d5bb5720f930ea30ae113887602af08ddd9cb8af0557f4a9c5edb"
+    },
+    {
+      "path": "LICENSE_SCOPE.md",
+      "byteSize": 2467,
+      "sha256": "f9f7a8068c17aa63c6d1288a577b860fb11905cfda13bfbbc08a60d652b692b0"
+    },
+    {
+      "path": "THIRD_PARTY_NOTICES.md",
+      "byteSize": 6123,
+      "sha256": "eaad5c314bb3aae3cd07afe8ac730d0158768f4798af98f4d91cbeb41fcd842b"
+    },
+    {
       "path": "build-identity.json",
-      "byteSize": 385,
-      "sha256": "c5c95a4ea671a51832ea960baa0cc9c8c78a5e1cce1687f0af45829ab25e85b3"
+      "byteSize": 575,
+      "sha256": "beb5ae39ea4c26b49b7cb566cfc2f1288ffb3eed0510e5e3d6781d4c65e6dc87"
     },
     {
       "path": "frame-rate.mjs",
@@ -12,28 +27,28 @@
     },
     {
       "path": "index.html",
-      "byteSize": 3811,
-      "sha256": "9d86b46ccf49216501ab2ba305aa27bcb4fd69b195409c3e4d3c19b7078b7030"
+      "byteSize": 4360,
+      "sha256": "1ed7e299ed704a9b58e0f6cc6db3620f3559347a4613f5083140b94665bea138"
     },
     {
       "path": "miacode-preview.js",
-      "byteSize": 283974,
-      "sha256": "4df711ddc81ffa25922d92dd77f64780930fc6602999fa0b5072e5dd77c70386"
+      "byteSize": 245900,
+      "sha256": "7699e5bc3eed8ca4a629a527a19a8fb3e7017b2e30d620ec06a579ba19e28c48"
     },
     {
       "path": "miacode-preview.wasm",
-      "byteSize": 32428960,
-      "sha256": "9256112c2e01bc1b4fccdd2f22abd7e6857acceb551d0ec4b3d2edfb587378eb"
+      "byteSize": 51496842,
+      "sha256": "fba7875cb4e568316a923a9f1d790410dd2b2b9795efd1f22ee63a6ae3de0777"
     },
     {
       "path": "player.css",
-      "byteSize": 2769,
-      "sha256": "ea2de8dd49d92c3940a2133c72a60170ecf33f87947eb3ed92315ea4c7e2a42a"
+      "byteSize": 5851,
+      "sha256": "562271e14a421233b986e330f7dc6483b59f64f07fe7fce669ce7b063dfa94bc"
     },
     {
       "path": "player.mjs",
-      "byteSize": 18439,
-      "sha256": "e33dc8ab730ef081c62ff0e31cfd6d3351d90e5764a7dc91962d7efe40fea4e5"
+      "byteSize": 20334,
+      "sha256": "212ffe98dc3ceb58041ccb62abeb3fc77717bc10d60fe30abf054707d3dd2312"
     },
     {
       "path": "protocol.mjs",
@@ -42,8 +57,8 @@
     },
     {
       "path": "qtloader.js",
-      "byteSize": 12354,
-      "sha256": "cea6b197476a2e44be30716dd733aa78d58db994a84a55cc554295a558ef4bd7"
+      "byteSize": 12127,
+      "sha256": "53c65136a33f3684ff942255753e9e53f325623d9bd3f1965c20d25f599196e9"
     },
     {
       "path": "resolution.mjs",
@@ -119,6 +134,11 @@
       "path": "sfx/touch_hanabi.wav",
       "byteSize": 746472,
       "sha256": "8052100bf98b699bb2da27fa7f8ea3ae4853188654c7fddc315a70885cdea25c"
+    },
+    {
+      "path": "theme.css",
+      "byteSize": 882,
+      "sha256": "34ad92f6fc39c6ad984c84a15d113d60a8ea78c6f877164738af1b1e2d11e8de"
     }
   ]
 }

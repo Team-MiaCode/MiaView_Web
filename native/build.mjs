@@ -1,156 +1,108 @@
 import { spawnSync } from "node:child_process";
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
+import { copyFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { delimiter, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { writeRendererInventory } from "../scripts/update-artifacts.mjs";
+import { syncTheme } from "../scripts/sync-theme.mjs";
+import { rendererVersion } from "../scripts/build-identity.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const qtRoot = resolve(process.env.MIACODE_QT_ROOT ?? "/tmp/miacode-qt/6.8.3");
-const emsdk = resolve(process.env.MIACODE_EMSDK_ROOT ?? "/tmp/miacode-emsdk");
-const build = resolve(
-  process.env.MIACODE_BUILD_DIR ?? join(here, "build-release"),
-);
-const publicRoot = resolve(here, "../renderer");
-if (
-  !existsSync(
-    join(qtRoot, "wasm_singlethread/lib/cmake/Qt6/qt.toolchain.cmake"),
-  )
-)
-  throw new Error(
-    "Install Qt 6.8.3 wasm_singlethread and matching desktop host tools first",
-  );
-const env = {
-  ...process.env,
-  EMSDK: emsdk,
-  PATH: `${join(emsdk, "upstream/emscripten")}:${process.env.PATH}`,
-};
-const compilerVersion = spawnSync(
-  join(emsdk, "upstream/emscripten/emcc"),
-  ["--version"],
-  { env, encoding: "utf8" },
-);
-if (
-  compilerVersion.status !== 0 ||
-  !/\b3\.1\.56\b/.test(compilerVersion.stdout ?? "")
-) {
-  throw new Error(
-    "Activate Emscripten 3.1.56 in MIACODE_EMSDK_ROOT before building",
-  );
+const root = resolve(here, "..");
+const toolchain = JSON.parse(readFileSync(join(here, "toolchain.json")));
+const development = process.argv.includes("--development");
+const source = resolve(process.env.MIACODE_SOURCE_DIR ?? join(root, "vendor/MiaCode"));
+const qtRoot = resolve(process.env.MIACODE_QT_ROOT ?? join(root, ".deps/qt", toolchain.qtVersion));
+const installedHost = join(qtRoot, process.platform === "win32" ? "msvc2022_64" : "gcc_64");
+const qtHost = resolve(process.env.MIACODE_QT_HOST_PATH ?? (existsSync(join(installedHost, "lib/cmake/Qt6/Qt6Config.cmake"))
+  ? installedHost : process.platform === "win32"
+  ? join(root, "../MiaCode/.qt", toolchain.qtVersion, "msvc2022_64")
+  : join(qtRoot, "gcc_64")));
+const emsdk = resolve(process.env.MIACODE_EMSDK_ROOT ?? join(root, ".deps/emsdk"));
+const build = resolve(process.env.MIACODE_BUILD_DIR ?? join(here, "build-release"));
+const jobs = Number(process.env.MIACODE_BUILD_JOBS ?? 4);
+if (!Number.isInteger(jobs) || jobs < 1 || jobs > 4)
+  throw new Error("MIACODE_BUILD_JOBS must be an integer from 1 to 4");
+if (!existsSync(join(source, "cmake/MiaCodePreviewBuild.cmake")))
+  throw new Error("Initialize vendor/MiaCode at the recorded preview-capable revision");
+if (!existsSync(join(qtRoot, toolchain.wasmArch, "lib/cmake/Qt6/qt.toolchain.cmake")))
+  throw new Error(`Install Qt ${toolchain.qtVersion} ${toolchain.wasmArch} in MIACODE_QT_ROOT`);
+if (!existsSync(join(qtHost, "lib/cmake/Qt6/Qt6Config.cmake")))
+  throw new Error(`Set MIACODE_QT_HOST_PATH to the matching Qt ${toolchain.qtVersion} host`);
+if (!development && source !== resolve(root, "vendor/MiaCode"))
+  throw new Error("Local source overrides require --development; release builds use the submodule");
+
+const env = { ...process.env, EMSDK: emsdk, EM_CONFIG: join(emsdk, ".emscripten"),
+  PATH: [join(emsdk, "upstream/emscripten"), process.env.PATH].join(delimiter) };
+const pythonDirectory = join(emsdk, "python");
+const bundledPython = existsSync(pythonDirectory)
+  ? readdirSync(pythonDirectory).find(name => existsSync(join(pythonDirectory, name, "python.exe"))) : undefined;
+const python = process.env.EMSDK_PYTHON ?? (process.platform === "win32" && bundledPython
+  ? join(pythonDirectory, bundledPython, "python.exe")
+  : process.platform === "win32" ? "python" : "python3");
+env.EMSDK_PYTHON = python;
+
+function capture(command, args, cwd = here) {
+  const result = spawnSync(command, args, { cwd, env, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+  if (result.error || result.status !== 0)
+    throw new Error(`${command} failed: ${result.error?.message ?? result.stderr}`);
+  return result.stdout;
 }
+const git = (...args) => capture("git", ["-C", source, ...args]);
+const upstreamGitCommit = git("rev-parse", "HEAD").trim();
+const upstreamTree = git("rev-parse", "HEAD^{tree}").trim();
+const sourcePaths = ["CMakeLists.txt", "src", "cmake", "resources", "assets"];
+const changes = git("diff", "--binary", "HEAD", "--", ...sourcePaths);
+const untracked = git("ls-files", "--others", "--exclude-standard", "-z", "--", ...sourcePaths)
+  .split("\0").filter(Boolean).sort();
+const upstreamDirty = changes.length > 0 || untracked.length > 0;
+if (upstreamDirty && !development)
+  throw new Error("Upstream source is dirty; commit it and update the submodule, or use --development");
+if (!development) {
+  const recorded = capture("git", ["ls-files", "--stage", "vendor/MiaCode"], root).split(" ")[1];
+  if (recorded !== upstreamGitCommit)
+    throw new Error("MiaCode checkout differs from the recorded submodule commit");
+}
+const sourceHash = createHash("sha256").update(upstreamTree).update(changes);
+for (const path of untracked) sourceHash.update(path).update(readFileSync(join(source, path)));
+const sourceRevision = sourceHash.digest("hex");
+
+const compilerVersion = capture(python, [join(emsdk, "upstream/emscripten/emcc.py"), "--version"]);
+if (!compilerVersion.includes(` ${toolchain.emscriptenVersion} `))
+  throw new Error(`Activate Emscripten ${toolchain.emscriptenVersion} to match this Qt build`);
 function run(command, args) {
   const result = spawnSync(command, args, { cwd: here, env, stdio: "inherit" });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
-run("cmake", [
-  "-S",
-  here,
-  "-B",
-  build,
-  "-G",
-  "Ninja",
-  "-DCMAKE_BUILD_TYPE=Release",
-  `-DCMAKE_TOOLCHAIN_FILE=${qtRoot}/wasm_singlethread/lib/cmake/Qt6/qt.toolchain.cmake`,
-  `-DQT_HOST_PATH=${qtRoot}/gcc_64`,
-]);
-run("cmake", [
-  "--build",
-  build,
-  "--parallel",
-  process.env.MIACODE_BUILD_JOBS ?? "6",
-]);
-mkdirSync(publicRoot, { recursive: true });
-for (const name of [
-  "miacode-preview.js",
-  "miacode-preview.wasm",
-  "qtloader.js",
-]) {
-  copyFileSync(join(build, name), join(publicRoot, name));
+const configure = ["-S", here, "-B", build, "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release",
+  `-DCMAKE_TOOLCHAIN_FILE=${qtRoot}/${toolchain.wasmArch}/lib/cmake/Qt6/qt.toolchain.cmake`,
+  `-DQT_HOST_PATH=${qtHost}`, `-DMIACODE_SOURCE_DIR=${source}`];
+let ninja = process.env.MIACODE_NINJA;
+if (!ninja && process.platform === "win32") {
+  const cmake = capture("where.exe", ["cmake"]).trim().split(/\r?\n/)[0];
+  const bundled = resolve(dirname(cmake), "../../Ninja/ninja.exe");
+  if (existsSync(bundled)) ninja = bundled;
 }
-const source = JSON.parse(
-  readFileSync(join(here, "upstream-manifest.json"), "utf8"),
-);
-const adapterHash = createHash("sha256");
-for (const file of [
-  "browser-host.cpp",
-  "CMakeLists.txt",
-  "build.mjs",
-  "upstream-sources.cmake",
-  "shims/UiText.h",
-  "shims/common/OperationLog.h",
-  "shims/common/DebugLog.h",
-  "shims/preview/runtime/PreviewRuntime.h",
-  "sdk-bridge.mjs",
-  "protocol.mjs",
-  "player.mjs",
-  "runtime.mjs",
-  "resolution.mjs",
-  "frame-rate.mjs",
-  "player.css",
-  "index.html",
-]) {
-  const path = [
-    "sdk-bridge.mjs",
-    "protocol.mjs",
-    "player.mjs",
-    "runtime.mjs",
-    "resolution.mjs",
-    "frame-rate.mjs",
-    "player.css",
-    "index.html",
-  ].includes(file)
-    ? join(publicRoot, file)
-    : join(here, file);
-  adapterHash.update(file).update(readFileSync(path));
+if (ninja) configure.push(`-DCMAKE_MAKE_PROGRAM=${ninja}`);
+run("cmake", configure);
+run("cmake", ["--build", build, "--parallel", String(jobs)]);
+
+const publicRoot = join(root, "renderer");
+syncTheme(source, upstreamGitCommit);
+copyFileSync(join(build, "miacode-preview.wasm"), join(publicRoot, "miacode-preview.wasm"));
+// Keep generated text reproducible across host line-ending conventions.
+for (const name of ["miacode-preview.js", "qtloader.js", "LICENSE", "LICENSE_SCOPE.md", "THIRD_PARTY_NOTICES.md"]) {
+  const input = join(name.endsWith(".js") ? build : source, name);
+  const text = readFileSync(input, "utf8").replace(/\r\n/g, "\n").replace(/^[ \t]+$/gm, "");
+  writeFileSync(join(publicRoot, name), text);
 }
 const identity = {
-  upstream: "MiaCodeWebGL",
-  version: `miaview-web-1-${adapterHash.digest("hex").slice(0, 12)}`,
-  sourceRevision: source.sourceRevision,
-  protocolVersion: 1,
-  qtVersion: "6.8.3",
-  emscriptenVersion: "3.1.56",
-  width: 1920,
-  height: 1080,
-  supportedAspectRatios: ["16:9", "1:1"],
-  maxRenderDimension: 4096,
-  targetFps: 60,
+  upstream: "MiaCodeWebGL", version: rendererVersion(sourceRevision, toolchain, here, publicRoot),
+  sourceRevision, upstreamGitCommit, upstreamTree, upstreamDirty,
+  protocolVersion: 1, ...toolchain, width: 1920, height: 1080,
+  supportedAspectRatios: ["16:9", "1:1"], maxRenderDimension: 4096, targetFps: 60,
 };
-writeFileSync(
-  join(publicRoot, "build-identity.json"),
-  JSON.stringify(identity, null, 2) + "\n",
-);
-const artifacts = readdirSync(publicRoot).filter(
-  (name) =>
-    /\.(wasm|js|mjs|css|html|json)$/.test(name) &&
-    name !== "artifact-manifest.json",
-);
-artifacts.push(
-  ...readdirSync(join(publicRoot, "sfx")).map((name) => `sfx/${name}`),
-);
-writeFileSync(
-  join(publicRoot, "artifact-manifest.json"),
-  JSON.stringify(
-    {
-      files: artifacts.map((path) => ({
-        path,
-        byteSize: readFileSync(join(publicRoot, path)).byteLength,
-        sha256: createHash("sha256")
-          .update(readFileSync(join(publicRoot, path)))
-          .digest("hex"),
-      })),
-    },
-    null,
-    2,
-  ) + "\n",
-);
-for (const file of ["LICENSE", "LICENSE_SCOPE.md", "THIRD_PARTY_NOTICES.md"])
-  copyFileSync(join(here, "upstream", file), join(publicRoot, file));
-console.log(`Built local preview: ${identity.version}`);
+writeFileSync(join(publicRoot, "build-identity.json"), JSON.stringify(identity, null, 2) + "\n");
+writeRendererInventory(publicRoot);
+console.log(`Built ${identity.version} from MiaCode ${upstreamGitCommit}${upstreamDirty ? " (development changes)" : ""}`);

@@ -1,10 +1,14 @@
 {
   "upstream": "MiaCodeWebGL",
-  "version": "miaview-web-1-e32eccb17613",
-  "sourceRevision": "1e620ae6a1c3b82c614c523cdd5592e2801ceba16bbe30c4b8f1f751a83de00e",
+  "version": "miaview-web-2-525947ee82d5",
+  "sourceRevision": "4249d3e8b2700b77bfc992a76f9e2a9bf5c9ae993e5c001269b3158ecb9f0fc3",
+  "upstreamGitCommit": "54880613efbf89ca9a603da9a43c27b6f30d600f",
+  "upstreamTree": "6403dcbe5ccaff6d61236816c8f81725ddaf4e2c",
+  "upstreamDirty": false,
   "protocolVersion": 1,
-  "qtVersion": "6.8.3",
-  "emscriptenVersion": "3.1.56",
+  "qtVersion": "6.11.1",
+  "emscriptenVersion": "4.0.7",
+  "wasmArch": "wasm_singlethread",
   "width": 1920,
   "height": 1080,
   "supportedAspectRatios": [

@@ -1,6 +1,6 @@
 {
   "name": "miaview-web",
-  "version": "0.1.0",
+  "version": "0.2.0-dev",
   "private": true,
   "type": "module",
   "description": "MiaView Web: embeddable Simai chart preview powered by MiaCode",
@@ -15,14 +15,15 @@
   "files": [
     "sdk",
     "renderer",
-    "native",
     "README.md"
   ],
   "scripts": {
     "dev": "node scripts/serve.mjs",
     "test": "node --test tests/*.spec.mjs",
     "check": "node scripts/verify.mjs",
+    "check:source": "node scripts/verify.mjs --source",
     "test:browser": "node tests/browser-smoke.mjs",
+    "test:ui": "node tests/ui-smoke.mjs",
     "build:native": "node native/build.mjs"
   },
   "engines": {

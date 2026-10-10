@@ -1,5 +1,6 @@
 import { previewResolution } from "./resolution.mjs";
 import { previewMaxFps } from "./frame-rate.mjs";
+import { TRANSPORT_HEIGHT } from "./layout.mjs";
 import {
   SDK_PROTOCOL,
   HOST_SOURCE,
@@ -30,6 +31,8 @@ class MiaCodePreview {
       throw new Error("MiaView Web requires HTTPS or localhost");
     const resolution = previewResolution(options.resolution);
     const maxFps = previewMaxFps(options.maxFps);
+    const theme = options.theme ?? "dark";
+    if (!["dark", "light"].includes(theme)) throw new Error("theme must be dark or light");
     this.timeout = options.timeoutMs ?? 120000;
     if (!Number.isFinite(this.timeout) || this.timeout <= 0)
       throw new Error("timeoutMs must be positive");
@@ -43,6 +46,7 @@ class MiaCodePreview {
     this.url.searchParams.set("width", String(resolution.width));
     this.url.searchParams.set("height", String(resolution.height));
     this.url.searchParams.set("maxFps", String(maxFps));
+    this.url.searchParams.set("theme", theme);
     this.url.searchParams.set("hostOrigin", this.window.location.origin);
     this.origin = this.url.origin;
     this.sessionId = this.window.crypto.randomUUID();
@@ -57,7 +61,7 @@ class MiaCodePreview {
       position: "relative",
       width: "100%",
       paddingTop: `${(resolution.height / resolution.width) * 100}%`,
-      paddingBottom: "56px",
+      paddingBottom: `${TRANSPORT_HEIGHT}px`,
       overflow: "hidden",
       background: "#000",
       boxSizing: "content-box",

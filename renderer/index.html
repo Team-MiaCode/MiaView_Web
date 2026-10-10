@@ -4,33 +4,35 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>MiaView Web · 谱面预览</title>
+    <link rel="stylesheet" href="theme.css" />
     <link rel="stylesheet" href="player.css" />
   </head>
   <body>
     <header id="local-controls">
+      <span class="brand">MiaView <span>谱面预览</span></span>
       <label class="file-button"
         >选择谱面文件夹<input id="files" type="file" multiple webkitdirectory
       /></label>
       <select id="difficulty" aria-label="难度" disabled></select>
     </header>
+    <div class="player-layout">
     <main id="stage">
       <div id="viewport"><div id="qt-screen"></div></div>
       <div id="fps" aria-label="预览帧率">FPS: —</div>
       <div id="status" role="status">正在加载播放器…</div>
     </main>
     <div id="transport" role="group" aria-label="播放控制">
+      <div class="progress-row">
+        <input id="seek" type="range" min="0" max="1" step="0.01"
+          value="0" aria-label="播放位置" disabled />
+        <output id="time" aria-live="off">0:00 / 0:00</output>
+      </div>
+      <div class="control-row">
       <button id="play" type="button" disabled>播放</button>
       <button id="restart" type="button" disabled>重播</button>
-      <input
-        id="seek"
-        type="range"
-        min="0"
-        max="1"
-        step="0.01"
-        value="0"
-        aria-label="播放位置"
-        disabled
-      />
+      <span id="chart-title">未加载谱面</span>
+      <button id="theme-toggle" type="button" aria-label="切换到浅色主题">浅色</button>
+      <button id="fullscreen" type="button" aria-label="进入全屏">全屏</button>
       <button
         id="settings-toggle"
         type="button"
@@ -40,6 +42,8 @@
       >
         设置
       </button>
+      </div>
+      <span id="transport-error" role="alert" hidden></span>
     </div>
     <section id="settings-panel" aria-label="预览设置" hidden>
       <div class="settings-heading">
@@ -118,6 +122,7 @@
       <button id="settings-reset" type="button">恢复默认</button>
       <div id="settings-error" role="alert" hidden></div>
     </section>
+    </div>
     <script src="qtloader.js"></script>
     <script type="module" src="player.mjs"></script>
   </body>

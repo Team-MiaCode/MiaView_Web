@@ -1,0 +1,66 @@
+name: Web preview
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shipped-player:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm test && npm run check
+      - run: npm install --no-save --package-lock=false playwright@1.62.1 typescript@5.9.3
+      - run: npx tsc --noEmit --strict --module NodeNext --moduleResolution NodeNext --target ES2022 --lib ES2022,DOM tests/types.ts
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser && npm run test:ui
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-screenshots
+          path: artifacts/ui
+
+  rebuild-from-source:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build libopengl0 libxcb-cursor0 libxkbcommon-x11-0
+      - run: python -m pip install -r scripts/qt-requirements.txt
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .deps/qt
+            .deps/downloads
+          key: qt-preview-${{ runner.os }}-${{ hashFiles('native/toolchain.json', 'scripts/install-qt.py') }}
+      - run: python scripts/install-qt.py
+      - name: Install Emscripten matched to Qt
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git .deps/emsdk
+          version=$(node -p "JSON.parse(require('fs').readFileSync('native/toolchain.json')).emscriptenVersion")
+          .deps/emsdk/emsdk install "$version"
+          .deps/emsdk/emsdk activate "$version"
+      - run: npm run build:native && npm run check:source
+      - run: npm install --no-save --package-lock=false playwright@1.62.1
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser && npm run test:ui
+      - uses: actions/upload-artifact@v4
+        with:
+          name: miaview-dev-static
+          path: |
+            sdk
+            renderer
+          retention-days: 14

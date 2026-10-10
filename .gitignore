@@ -2,3 +2,7 @@ node_modules/
 native/build-release/
 *.tgz
 .vscode
+.deps/
+artifacts/
+aqtinstall.log
+scripts/apply-upstream-preview.py

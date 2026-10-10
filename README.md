@@ -4,7 +4,7 @@ MiaView_Web 是一个可嵌入网站的 maimai 谱面实时预览库，支持 Si
 
 通过这个库，你可以在谱面网站或在线看谱器中加入实时播放器，查看谱面并播放音乐、判定音效。播放器通过 WebAssembly 运行原生代码，使用 Qt Quick 和 WebGL 2 绘制画面，使用 WebAudio 播放音频。
 
-当前基于 [MiaCode v1.2.0](https://github.com/Team-MiaCode/MiaCode/releases/tag/v1.2.0) 版本进行开发。
+当前跟进 MiaCode `dev`（2.0.0-alpha），通过 `vendor/MiaCode` submodule 固定上游提交。解析、分析、场景和 Qt Quick 预览直接链接上游模块；浏览器宿主、WebAudio、PV、JavaScript SDK 和网页界面由本仓维护。构建身份记录确切提交、源码树和工具链，不会随 `dev` 自动漂移。
 
 ## 功能
 
@@ -19,20 +19,22 @@ MiaView_Web 是一个可嵌入网站的 maimai 谱面实时预览库，支持 Si
 
 ## 效果展示
 
-本地示例页中的 1:1 谱面预览：
+dev 模块在浏览器中运行的真实截图，桌面预览与设置侧栏：
 
-![本地示例页的 1:1 谱面预览](.assets/dev.png)
+![dev 预览与设置侧栏](.assets/dev-desktop.png)
 
-嵌入实际网站的 16:9 谱面预览，图中同时展示了预览设置面板：
+浅色主题与 320px 窄屏播放器：
 
-![实际网站中的 16:9 谱面预览与设置面板](.assets/web.png)
+![浅色主题](.assets/dev-light.png)
+
+![窄屏播放器](.assets/dev-mobile.png)
 
 ## 本地试用
 
 安装 Node.js 22 或更高版本，然后运行：
 
 ```sh
-git clone https://github.com/teleaki/MiaView_Web.git
+git clone https://github.com/Team-MiaCode/MiaView_Web.git
 cd MiaView_Web
 npm run dev
 ```
@@ -83,6 +85,7 @@ public/
     rendererUrl: "/miacode/renderer/index.html",
     resolution: { width: 1920, height: 1080 },
     maxFps: 60, // 可选：不小于 30 的整数，或 "unlimited"
+    theme: "dark", // 可选："dark" 或 "light"，播放器内也可切换
   });
 
   preview.on("error", ({ message }) => {
@@ -120,7 +123,7 @@ const preview = createPreview(document.getElementById("preview"), {
 });
 ```
 
-直接嵌入播放器 HTML 时，也可以在 URL 中配置，例如 `/miacode/renderer/index.html?width=1920&height=1080&maxFps=120`。
+直接嵌入播放器 HTML 时，也可以在 URL 中配置，例如 `/miacode/renderer/index.html?width=1920&height=1080&maxFps=120&theme=light`。网页主题从上游 `Theme.qml` 生成；桌面设置在侧栏显示，窄屏设置在画面下方展开。SDK 容器自动预留 80px 播放控制区。
 
 ### 3. 使用本地文件或谱面原文
 
@@ -189,20 +192,41 @@ const unsubscribe = preview.on("paused", ({ elapsedMs }) => {
 
 ```sh
 npm test       # SDK 与消息协议测试
-npm run check  # 产物哈希和上游存档完整性检查
+npm run check  # 产物哈希与构建身份检查，无需初始化源码 submodule
 ```
 
-修改原生代码或内嵌素材后，需要重新构建播放器。当前构建脚本面向 Linux，依赖 Node.js 22+、CMake 3.24+、Ninja、Qt 6.8.3 的 `wasm_singlethread` 和同版本 `gcc_64` 主机工具，以及已激活的 Emscripten 3.1.56。Qt 组件包含 Core、Gui、Quick、Svg 和 ShaderTools。
+修改原生代码、内嵌素材或网页界面后，重新构建播放器。工具链固定在 `native/toolchain.json`：Qt 6.11.1 `wasm_singlethread`、同版本 Qt 主机工具（Windows `msvc2022_64` / Linux `gcc_64`）和 Emscripten 4.0.7；另需 Node.js 22+、Python、CMake 3.24+、Ninja。Qt 组件为 Core、Gui、Quick、Qml、Svg、ShaderTools，不需要 BASS 或 FFmpeg。
+
+初始化固定源码并安装工具链（已有 Qt 时可跳过下载，设置下述环境变量）：
 
 ```sh
-MIACODE_QT_ROOT=/path/to/Qt/6.8.3 \
+git submodule update --init vendor/MiaCode
+python -m pip install -r scripts/qt-requirements.txt
+python scripts/install-qt.py
+git clone https://github.com/emscripten-core/emsdk.git .deps/emsdk
+```
+
+Linux 执行 `.deps/emsdk/emsdk install 4.0.7` 和 `.deps/emsdk/emsdk activate 4.0.7`；Windows 执行同目录的 `emsdk.bat`。Qt 安装脚本从官方仓库下载，校验元数据 SHA-256 和压缩包校验值；[Qt 官方包目录](https://download.qt.io/online/qtsdkrepository/)提供对应版本的原始文件。
+
+Linux 构建示例（默认路径已指向本仓 `.deps`）：
+
+```sh
+MIACODE_QT_ROOT=/path/to/Qt/6.11.1 \
+MIACODE_QT_HOST_PATH=/path/to/Qt/6.11.1/gcc_64 \
 MIACODE_EMSDK_ROOT=/path/to/emsdk \
 MIACODE_BUILD_JOBS=1 \
 npm run build:native
 npm run check
+npm run check:source
 ```
 
-构建脚本会更新播放器文件、构建身份和哈希清单。若需在真实浏览器中验证加载与播放流程，可运行 `npm run test:browser`；运行前需另行准备 Playwright 和 Chromium。
+Windows PowerShell 可设置 `$env:MIACODE_QT_HOST_PATH='C:/path/to/Qt/6.11.1/msvc2022_64'` 后执行 `npm run build:native`。并发默认 4，可通过 `MIACODE_BUILD_JOBS` 设置 1–4。
+
+默认构建拒绝未提交的上游源码及与 gitlink 不一致的 checkout。联调本机 MiaCode 时使用 `MIACODE_SOURCE_DIR` 和 `node native/build.mjs --development`；这种构建会记录开发状态，不能作为可发布产物。开发完成后在 MiaCode 提交改动、更新本仓 gitlink，再运行默认构建。
+
+构建脚本会同步上游主题、许可证、播放器文件、构建身份和哈希清单。浏览器验证需另行准备 Playwright 1.62.1 / Chromium：`npm run test:browser` 检查加载播放和协议，`npm run test:ui` 检查主题、全屏、响应式设置面板并在 `artifacts/ui/` 输出真实截图。可通过 `MIACODE_PLAYWRIGHT_MODULE` 和 `MIACODE_CHROMIUM` 使用已安装的模块与浏览器。
+
+CI 同时检查已提交产物和从固定源码重新构建的播放器。首次发布此迁移必须先将上游提交发布至 MiaCode，随后再发布引用它的 Web 提交。两仓协作、升级与回退方式见 [迁移实现与验收](docs/dev-migration.md)。
 
 ## 友链与致谢
 
@@ -210,6 +234,6 @@ npm run check
 
 ## 许可说明
 
-上游源码的 MIT 许可证、资源许可范围和第三方声明分别保留在 [native/upstream/LICENSE](native/upstream/LICENSE)、[LICENSE_SCOPE.md](native/upstream/LICENSE_SCOPE.md) 和 [THIRD_PARTY_NOTICES.md](native/upstream/THIRD_PARTY_NOTICES.md) 中，播放器目录也保留了相应文件。
+上游源码的 MIT 许可证、资源许可范围和第三方声明分别位于 [vendor/MiaCode/LICENSE](vendor/MiaCode/LICENSE)、[LICENSE_SCOPE.md](vendor/MiaCode/LICENSE_SCOPE.md) 和 [THIRD_PARTY_NOTICES.md](vendor/MiaCode/THIRD_PARTY_NOTICES.md)。可直接部署的播放器目录保留了这三个文件。
 
 上游源码的 MIT 许可不覆盖所有字体、音效、皮肤或 Qt 运行时。本库尚未完成独立的公开发布许可审核，使用或再分发时请核对各组件的适用条款。

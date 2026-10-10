@@ -50,6 +50,8 @@ export interface ChartInfo {
   charts: Array<{ id: number; label: string }>;
 }
 export interface PreviewOptions {
+  /** Initial control theme. Default dark; the stage keeps its chart colors. */
+  theme?: "dark" | "light";
   resolution?: Resolution;
   /** Integer >= 30, or "unlimited" to follow browser refresh cadence. Default 60. */
   maxFps?: MaxFps;

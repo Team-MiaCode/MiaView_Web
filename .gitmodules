@@ -1,0 +1,3 @@
+[submodule "vendor/MiaCode"]
+	path = vendor/MiaCode
+	url = https://github.com/Team-MiaCode/MiaCode.git

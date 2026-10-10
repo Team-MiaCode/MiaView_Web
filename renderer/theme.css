@@ -1,0 +1,36 @@
+/* Generated from MiaCode Theme.qml (54880613efbf89ca9a603da9a43c27b6f30d600f); run scripts/sync-theme.mjs. */
+:root { --transport-height: 80px; --ui-font-size: 13px; }
+:root {
+  color-scheme: dark;
+  --surface: #121314;
+  --panel: #191A1B;
+  --elevated: #202122;
+  --control: #121314;
+  --border: #2A2B2C;
+  --control-border: #333536;
+  --text: #E8E8E8;
+  --muted: #AEAEAE;
+  --disabled: #6E6E6E;
+  --accent: #297AA0;
+  --hover: #1E2021;
+  --pressed: #282A2B;
+  --slider-rail: #333536;
+  --slider-fill: #6C6F72;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --surface: #F4F6F8;
+  --panel: #EBEFF3;
+  --elevated: #FFFFFF;
+  --control: #FFFFFF;
+  --border: #C8D2DE;
+  --control-border: #AAB8C8;
+  --text: #2F3B4A;
+  --muted: #5D6B7C;
+  --disabled: #9AA6B4;
+  --accent: #526F98;
+  --hover: #E5E9E1;
+  --pressed: #C8D1C2;
+  --slider-rail: #CDD5DF;
+  --slider-fill: #7E8DA0;
+}

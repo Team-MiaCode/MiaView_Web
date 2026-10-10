@@ -14,6 +14,28 @@ let WIDTH = DEFAULT_RESOLUTION.width,
 const $ = (id) => document.getElementById(id);
 const embedded = window.parent !== window;
 document.body.classList.toggle("embedded", embedded);
+const themeButton = $("theme-toggle");
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  themeButton.textContent = theme === "dark" ? "浅色" : "深色";
+  themeButton.setAttribute("aria-label", `切换到${theme === "dark" ? "浅色" : "深色"}主题`);
+}
+setTheme(new URLSearchParams(location.search).get("theme") === "light" ? "light" : "dark");
+themeButton.addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
+$("fullscreen").addEventListener("click", async () => {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+    $("transport-error").hidden = true;
+  } catch {
+    $("transport-error").textContent = "当前页面未允许全屏";
+    $("transport-error").hidden = false;
+  }
+});
+document.addEventListener("fullscreenchange", () => {
+  $("fullscreen").textContent = document.fullscreenElement ? "退出全屏" : "全屏";
+  $("fullscreen").setAttribute("aria-label", document.fullscreenElement ? "退出全屏" : "进入全屏");
+});
 let identity,
   module,
   chart,
@@ -190,8 +212,12 @@ function applySettings() {
 }
 function toggleSettings(open) {
   $("settings-panel").hidden = !open;
+  document.body.classList.toggle("settings-open", open);
   $("settings-toggle").setAttribute("aria-expanded", String(open));
   (open ? $("settings-close") : $("settings-toggle")).focus();
+  if (open && matchMedia("(max-width: 640px)").matches)
+    window.scrollTo({ top: $("settings-panel").offsetTop, behavior: "smooth" });
+  if (!open) window.scrollTo({ top: 0 });
 }
 $("settings-toggle").addEventListener("click", () =>
   toggleSettings($("settings-panel").hidden),
@@ -246,6 +272,11 @@ function seek(second) {
   call("miacode_seek", null, ["number"], [audio.offset]);
   if (video.src) video.currentTime = audio.offset;
   $("seek").value = String(audio.offset);
+  updateTime();
+}
+function updateTime() {
+  const format = second => `${Math.floor(second / 60)}:${String(Math.floor(second % 60)).padStart(2, "0")}`;
+  $("time").textContent = `${format(audio?.currentSecond() ?? 0)} / ${format(audio?.duration ?? 0)}`;
 }
 function clearInput() {
   audio?.reset();
@@ -258,6 +289,8 @@ function clearInput() {
   videoCanvas.width = 0;
   videoCanvas.height = 0;
   chart = null;
+  $("chart-title").textContent = "未加载谱面";
+  $("time").textContent = "0:00 / 0:00";
   for (const id of ["play", "restart", "seek", "difficulty"])
     $(id).disabled = true;
   if (module) {
@@ -380,10 +413,13 @@ async function load(resources, difficultyId) {
   }
   if (token !== generation) return;
   chart = parsed;
+  $("chart-title").textContent = parsed.title || "未命名谱面";
+  $("chart-title").title = [parsed.title, parsed.artist].filter(Boolean).join(" · ");
   audio.track = track;
   audio.events = parsed.sfx;
   audio.segments = parsed.touchholdSegments;
   audio.duration = Math.max(parsed.duration, track?.duration ?? 0);
+  updateTime();
   $("seek").max = String(audio.duration);
   $("seek").value = "0";
   $("difficulty").replaceChildren(
@@ -471,6 +507,7 @@ function render(now) {
     audio.schedule();
     call("miacode_tick", null, ["number"], [second]);
     $("seek").value = String(second);
+    updateTime();
     if (second >= audio.duration) {
       pause();
       emit("ended", { elapsedMs: elapsed() });

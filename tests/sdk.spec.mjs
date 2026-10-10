@@ -81,6 +81,7 @@ test("SDK mounts without touching host content, serializes commands and releases
     rendererUrl: "https://renderer.example/engine/index.html",
     resolution: { width: 720, height: 720 },
     maxFps: 120,
+    theme: "light",
   });
   await preview.ready;
   const iframe = container.children[1].children[0];
@@ -88,6 +89,7 @@ test("SDK mounts without touching host content, serializes commands and releases
   assert.equal(url.searchParams.get("hostOrigin"), "https://host.example");
   assert.equal(url.searchParams.get("width"), "720");
   assert.equal(url.searchParams.get("maxFps"), "120");
+  assert.equal(url.searchParams.get("theme"), "light");
   assert.equal(iframe.referrerPolicy, "no-referrer");
   await Promise.all([
     preview.load({ maidata: "&inote_5=1,E" }),
@@ -146,6 +148,8 @@ test("invalid resolutions are rejected before adding any iframe", () => {
     () => createPreview(container, { resolution: { width: 800, height: 600 } }),
     /分辨率/,
   );
+  assert.equal(container.children.length, 0);
+  assert.throws(() => createPreview(container, { theme: "invalid" }), /theme/);
   assert.equal(container.children.length, 0);
 });
 test("maximum FPS is validated before mounting and unlimited reaches the renderer", async () => {

@@ -14,12 +14,13 @@
 #include "preview/quick_scene/PreviewQuickHudLayer.h"
 #include "preview/runtime/PreviewSceneAssetLoader.h"
 #include "core/chart/document/SimaiDocument.h"
-#include "core/chart/parser/SimaiNativeParser.h"
+#include "core/chart/parser/SimaiParser.h"
 #include "core/scene/PreviewFrameState.h"
-#include "common/PreviewSfxTimeline.h"
-#include "common/PreviewSfxAssets.h"
-#include "timeline/TimelineMarkerOffset.h"
-#include "tools/muri/MuriAnalyzer.h"
+#include "core/scene/PreviewSfxTimeline.h"
+#include "core/scene/PreviewSfxAssets.h"
+#include "core/chart/model/TimelineMarkerOffset.h"
+#include "core/analysis/MuriAnalyzer.h"
+#include "core/video/AssetPaths.h"
 
 using namespace miacode::preview::scene;
 namespace {
@@ -74,7 +75,7 @@ QJsonObject settings() {
         {"tapFlowSpeed", state.render.tapFlowSpeed},
         {"touchFlowSpeed", state.render.touchFlowSpeed},
         {"earlierSlideOnTop", state.render.slideEarlierSecondAndTextOnTop},
-        {"showJudgeEffects", state.render.showJudgeEffects},
+        {"showJudgeEffects", true},
         {"noteSkin", useDxSkin ? "DX" : "SD"},
         {"previewMode", muriRenderModeToken(state.muriRenderOptions.renderMode)}};
 }
@@ -188,7 +189,7 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_load(const char* text, int difficultyId
     chartLoaded = false;
     cachedLoadResponse.clear();
     const auto* difficulty = doc.difficulty(difficultyId);
-    const auto parsed = SimaiNativeParser::parseForTimeline(difficulty->chart, miacode::simai::buildTimingMetadata(doc));
+    const auto parsed = SimaiParser::parseForTimeline(difficulty->chart, miacode::simai::buildTimingMetadata(doc));
     if (!parsed.ok) {
         QJsonArray errors;
         for (const auto& error : parsed.errors) errors.append(QString("第 %1 行：%2").arg(error.line).arg(error.message));
@@ -297,6 +298,7 @@ int main(int argc, char** argv) {
     QSurfaceFormat::setDefaultFormat(surface);
     QGuiApplication app(argc, argv);
     mountAssets();
+    miacode::assets::setAssetRoot(QStringLiteral("/assets"));
     const auto loaded = miacode::preview::runtime::PreviewSceneAssetLoader::load("/assets/skin/skinDX", PreviewOutlineVariant::Line);
     state.assets = loaded.assetState;
     state.skin = loaded.skinAssets;
@@ -312,7 +314,6 @@ int main(int argc, char** argv) {
     state.render.smoothBrightness = false;
     state.render.fixHudTextLayout = false;
     state.render.judgeEffectStyle = PreviewJudgeEffectStyle::Starry;
-    state.render.showJudgeEffects = true;
     state.render.centerDisplayMode = miacode::preview_gameplay::CenterDisplayMode::Combo;
     state.framePacingTargetFps = 60;
     QQuickWindow window;

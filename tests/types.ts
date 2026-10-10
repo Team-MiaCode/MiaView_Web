@@ -12,6 +12,7 @@ const chart: ChartInput = {
 const preview: MiaCodePreview = createPreview(document.createElement("div"), {
   resolution: { width: 720, height: 720 },
   maxFps: 120,
+  theme: "light",
 });
 void preview.load(chart);
 void preview.seek(1);
@@ -22,6 +23,8 @@ void preview.setSettings({ previewMode: "unknown" });
 void preview.getState().then((state: PreviewState) => state.resolution.width);
 void preview.getState().then((state: PreviewState) => state.maxFps);
 createPreview(document.createElement("div"), { maxFps: "unlimited" });
+// @ts-expect-error Unknown themes are rejected by the interface.
+createPreview(document.createElement("div"), { theme: "system" });
 // @ts-expect-error Numeric strings are not frame rates.
 createPreview(document.createElement("div"), { maxFps: "120" });
 preview.on("paused", (event) => event.elapsedMs);
