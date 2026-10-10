@@ -4,7 +4,9 @@ MiaView_Web 是一个可嵌入网站的 maimai 谱面实时预览库，支持 Si
 
 通过这个库，你可以在谱面网站或在线看谱器中加入实时播放器，查看谱面并播放音乐、判定音效。播放器通过 WebAssembly 运行原生代码，使用 Qt Quick 和 WebGL 2 绘制画面，使用 WebAudio 播放音频。
 
-当前基于 [MiaCode v1.2.0](https://github.com/Team-MiaCode/MiaCode/releases/tag/v1.2.0) 版本进行开发。
+当前跟进 MiaCode `dev`（2.0.0-alpha），通过 `vendor/MiaCode` submodule 固定上游提交。解析、分析、场景和 Qt Quick 预览直接链接上游模块；浏览器宿主、WebAudio、PV、JavaScript SDK 和网页界面由本仓维护。构建身份记录确切提交、源码树和工具链，不会随 `dev` 自动漂移。
+
+[GitHub Pages 在线展示](https://team-miacode.github.io/MiaView_Web/)：使用你自己的本地谱面、音乐和 PV，无内置示例或在线素材。文件仅在浏览器中读取，不会上传到 GitHub。
 
 ## 功能
 
@@ -15,31 +17,35 @@ MiaView_Web 是一个可嵌入网站的 maimai 谱面实时预览库，支持 Si
 - 支持 16:9 与 1:1 画面，提供 ES module 接口和 TypeScript 类型声明。
 - 可配置最大预览帧率，支持不小于 30 的整数或不限帧率，默认 60 FPS。
 
-仓库提供可直接部署的预编译播放器，接入时无需编译 C++。本库专注于浏览器中的谱面预览，不包含 MiaCode 桌面版的完整编辑器和视频导出功能。
+Git 仓库只保存源码。预编译播放器由 [Web preview CI](https://github.com/Team-MiaCode/MiaView_Web/actions/workflows/web.yml) 从固定 MiaCode 提交构建，验证通过后提供 `miaview-preview` 和 `miaview-pages` 构建产物。接入时可下载对应提交的产物，无需自行编译 C++。本库专注于浏览器中的谱面预览，不包含完整编辑器和视频导出功能。
 
 ## 效果展示
 
-本地示例页中的 1:1 谱面预览：
+dev 模块在浏览器中运行的真实截图，桌面预览与设置侧栏：
 
-![本地示例页的 1:1 谱面预览](.assets/dev.png)
+![dev 预览与设置侧栏](.assets/dev-desktop.png)
 
-嵌入实际网站的 16:9 谱面预览，图中同时展示了预览设置面板：
+浅色主题与 320px 窄屏播放器：
 
-![实际网站中的 16:9 谱面预览与设置面板](.assets/web.png)
+![浅色主题](.assets/dev-light.png)
+
+![窄屏播放器](.assets/dev-mobile.png)
 
 ## 本地试用
 
 安装 Node.js 22 或更高版本，然后运行：
 
 ```sh
-git clone https://github.com/teleaki/MiaView_Web.git
+git clone https://github.com/Team-MiaCode/MiaView_Web.git
 cd MiaView_Web
+# 先从对应提交的 CI miaview-preview 产物复制完整 renderer/ 到此目录，
+# 或按“开发与构建”安装工具链后运行 npm run build:native。
 npm run dev
 ```
 
-无需执行 `npm install`。启动后，在浏览器中打开 <http://localhost:3030>，选择包含 `maidata.txt` 的谱面文件夹，加载完成后点击播放。文件夹可以同时包含音乐、背景图片和 PV；所选文件只在浏览器中读取，不会上传到示例服务器。
+无需执行 `npm install`。启动后，在浏览器中打开 <http://localhost:3030>，选择包含 `maidata.txt` 的谱面文件夹，加载完成后点击播放。文件夹可以同时包含音乐、背景图片和 PV；dev 宿主先上传到本机开发服务器，再通过公开 SDK 加载 HTTP URL，以验证下载、缓存和加载性能。
 
-示例服务器仅监听本机地址，用于本地开发。正式部署请使用静态托管服务。
+开发服务器仅监听本机地址，提供临时谱面上传与后台诊断。纯静态本地文件示例位于 `examples/pages.html`，文件仅在浏览器中读取；正式展示请使用 `npm run build:pages` 的静态输出。
 
 示例页顶部提供分辨率和「最大帧率」下拉框，可直接调整本地预览：
 
@@ -51,6 +57,8 @@ npm run dev
 切换任一选项后，示例页会自动重新创建播放器并加载当前谱面，回到起点并暂停，点击「播放」即可继续预览。「不限」表示取消程序限帧，实际帧率取决于屏幕刷新率、浏览器调度和设备性能。
 
 示例会按扩展名选取首个音乐、图片和视频文件。如果文件夹中有多个同类素材，请通过接入接口明确指定要使用的文件。
+
+静态示例加载谱面后，也可使用「选择本地 PV」「选择本地音乐」分别选取其他目录的文件，或「移除 PV」恢复静态背景。PV 用作视频背景，其自带音轨不单独播放；声音由音乐文件与判定音效提供。换素材后播放器回到起点并暂停。
 
 ## 接入自己的网站
 
@@ -83,6 +91,9 @@ public/
     rendererUrl: "/miacode/renderer/index.html",
     resolution: { width: 1920, height: 1080 },
     maxFps: 60, // 可选：不小于 30 的整数，或 "unlimited"
+    theme: "dark", // 可选："dark" 或 "light"，播放器内也可切换
+    pvTimeoutMs: 30000, // PV 下载、校验与首帧共用预算；也支持 "unlimited"
+    diagnostics: false, // 纯静态托管关闭后台日志；dev 默认开启
   });
 
   preview.on("error", ({ message }) => {
@@ -120,7 +131,7 @@ const preview = createPreview(document.getElementById("preview"), {
 });
 ```
 
-直接嵌入播放器 HTML 时，也可以在 URL 中配置，例如 `/miacode/renderer/index.html?width=1920&height=1080&maxFps=120`。
+直接嵌入播放器 HTML 时，也可以在 URL 中配置，例如 `/miacode/renderer/index.html?width=1920&height=1080&maxFps=120&theme=light`。网页主题从上游 `Theme.qml` 生成；桌面设置在侧栏显示，窄屏设置在画面下方展开。SDK 容器自动预留 80px 播放控制区。
 
 ### 3. 使用本地文件或谱面原文
 
@@ -152,6 +163,8 @@ await preview.load({ maidata: maidataFile, audio: musicFile });
 | `selectDifficulty(id)` | 切换已有难度，编号为 1–7 |
 | `setSettings(settings)` | 修改预览设置 |
 | `getState()` | 获取播放位置、难度和设置等状态 |
+| `getDiagnostics()` / `resetDiagnostics()` | 获取或重置加载与播放诊断历史 |
+| `setDiagnostics(enabled)` | 控制初始化日志与播放期间的性能采样 |
 | `on(event, listener)` | 订阅事件，返回取消订阅函数 |
 | `destroy()` | 销毁播放器并释放资源 |
 
@@ -172,7 +185,11 @@ const unsubscribe = preview.on("paused", ({ elapsedMs }) => {
 });
 ```
 
-完整的参数、返回类型和事件定义见 [sdk/index.d.mts](sdk/index.d.mts)，示例代码见 [examples/demo.mjs](examples/demo.mjs)。在 React、Vue 等框架中使用时，请在组件挂载后创建实例，并在组件卸载时调用 `destroy()` 释放资源。
+完整的参数、返回类型和事件定义见 [sdk/index.d.mts](sdk/index.d.mts)，静态示例代码见 [examples/pages-demo.mjs](examples/pages-demo.mjs)。在 React、Vue 等框架中使用时，请在组件挂载后创建实例，并在组件卸载时调用 `destroy()` 释放资源。
+
+组件只负责播放与设置；文件选择、上传和难度选择由宿主调用公开 SDK。内部由 engine、controller、controls 和 SDK bridge 装配，界面与 SDK 命令共用控制器。PV 通过浏览器 `<video>` 合成，透明 Qt 画布叠加 Note、亮度遮罩和 HUD，无逐帧 RGBA 搬运。音乐、谱面、封面和 PV 并行准备；PV 超时只跳过视频，同一实例不重复下载超时素材。
+
+诊断默认开启，报告发往播放器同源 `__performance` 后台；dev 会显示后台返回的原文，可选保存 JSONL。性能采样仅在播放期间运行。纯静态托管请设置 `diagnostics: false`，需要日志时可部署 `backend/` 对应服务。
 
 ## 部署注意事项
 
@@ -188,21 +205,51 @@ const unsubscribe = preview.on("paused", ({ elapsedMs }) => {
 ## 开发与构建
 
 ```sh
-npm test       # SDK 与消息协议测试
-npm run check  # 产物哈希和上游存档完整性检查
+npm test            # 源码单元测试，无需播放器二进制
+npm run check:repo  # 源码边界、生成产物不入 Git、大文件限制
+npm run check       # 构建/下载产物后的哈希与身份检查
 ```
 
-修改原生代码或内嵌素材后，需要重新构建播放器。当前构建脚本面向 Linux，依赖 Node.js 22+、CMake 3.24+、Ninja、Qt 6.8.3 的 `wasm_singlethread` 和同版本 `gcc_64` 主机工具，以及已激活的 Emscripten 3.1.56。Qt 组件包含 Core、Gui、Quick、Svg 和 ShaderTools。
+修改原生代码、内嵌素材或工具链后，重新构建播放器。仅修改 JS/CSS/HTML 时可运行 `npm run sync:artifacts`：它保留并核对原生构建身份，重新生成版本、压缩文件与清单；若原生输入或上游状态改变会拒绝同步，要求先原生重建。工具链固定在 `native/toolchain.json`：Qt 6.11.1 `wasm_singlethread`、同版本 Qt 主机工具（Windows `msvc2022_64` / Linux `gcc_64`）和 Emscripten 4.0.7；另需 Node.js 22+、Python、CMake 3.24+、Ninja。Qt 组件为 Core、Gui、Quick、Qml、Svg、ShaderTools，不需要 BASS 或 FFmpeg。
+
+初始化固定源码并安装工具链（已有 Qt 时可跳过下载，设置下述环境变量）：
 
 ```sh
-MIACODE_QT_ROOT=/path/to/Qt/6.8.3 \
+git submodule update --init vendor/MiaCode
+python -m pip install -r scripts/qt-requirements.txt
+python scripts/install-qt.py
+git clone https://github.com/emscripten-core/emsdk.git .deps/emsdk
+```
+
+Linux 执行 `.deps/emsdk/emsdk install 4.0.7` 和 `.deps/emsdk/emsdk activate 4.0.7`；Windows 执行同目录的 `emsdk.bat`。Qt 安装脚本从官方仓库下载，校验元数据 SHA-256 和压缩包校验值；[Qt 官方包目录](https://download.qt.io/online/qtsdkrepository/)提供对应版本的原始文件。
+
+Linux 构建示例（默认路径已指向本仓 `.deps`）：
+
+```sh
+MIACODE_QT_ROOT=/path/to/Qt/6.11.1 \
+MIACODE_QT_HOST_PATH=/path/to/Qt/6.11.1/gcc_64 \
 MIACODE_EMSDK_ROOT=/path/to/emsdk \
 MIACODE_BUILD_JOBS=1 \
 npm run build:native
 npm run check
+npm run check:source
 ```
 
-构建脚本会更新播放器文件、构建身份和哈希清单。若需在真实浏览器中验证加载与播放流程，可运行 `npm run test:browser`；运行前需另行准备 Playwright 和 Chromium。
+Windows PowerShell 可设置 `$env:MIACODE_QT_HOST_PATH='C:/path/to/Qt/6.11.1/msvc2022_64'` 后执行 `npm run build:native`。并发默认 4，可通过 `MIACODE_BUILD_JOBS` 设置 1–4。
+
+默认构建拒绝未提交的上游源码及与 gitlink 不一致的 checkout。联调本机 MiaCode 时使用 `MIACODE_SOURCE_DIR` 和 `node native/build.mjs --development`；这种构建会记录开发状态，不能作为可发布产物。开发完成后在 MiaCode 提交改动、更新本仓 gitlink，再运行默认构建。
+
+构建脚本会同步上游主题、许可证、播放器文件、构建身份和哈希清单。浏览器验证需另行准备 Playwright 1.62.1 / Chromium：`npm run test:browser` 检查加载播放和协议，`npm run test:ui` 检查主题、全屏、响应式设置面板并在 `artifacts/ui/` 输出真实截图。可通过 `MIACODE_PLAYWRIGHT_MODULE` 和 `MIACODE_CHROMIUM` 使用已安装的模块与浏览器。
+
+CI 先运行源码策略、单测和严格类型检查，再从固定子模块构建播放器、生成音效/主题/许可证/压缩文件/身份清单，并运行源码溯源与三组浏览器验证。成功后上传 `miaview-preview`（SDK、renderer 和日志后台）及 `miaview-pages`（完整静态网站），保留 14 天。更新后的二进制不回写 Git。下载时选择与源码相同提交的 CI 运行，解压后使用完整目录；仅复制 WASM 会造成版本不一致。
+
+WASM、生成 JS、Qt loader、主题、音效和构建元数据均为忽略文件。本地构建后不会进入 Git 提交。当前 PR 分支在 main 之上的历史已重建为源码提交，避免推送时携带旧的生成产物提交。两仓协作记录见 [迁移实现与验收](docs/dev-migration.md)。
+
+## GitHub Pages
+
+展示页使用 `examples/pages.html`、`examples/pages-demo.mjs` 和公共 SDK，不附带示例谱面或 PV。`npm run build:pages` 将静态入口映射为输出的 `examples/index.html`，打包完整 `sdk/` 与 `renderer/`，保留项目路径下的相对地址。dev 与后台模块不部署到 Pages，诊断显式关闭。`npm run test:pages` 使用仅支持 GET/HEAD 的服务器验证项目路径、本地 PV / 音乐、难度保持、资源无 404 和无上传请求。
+
+Pages 发布合并到 `.github/workflows/web.yml`：`main` 的推送或手动运行完成全部构建与验证后，部署同一次构建生成的网站。功能分支和 PR 只构建、验证并上传产物，不部署 Pages。工作流使用 [GitHub 官方 Pages Actions](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)。
 
 ## 友链与致谢
 
@@ -210,6 +257,6 @@ npm run check
 
 ## 许可说明
 
-上游源码的 MIT 许可证、资源许可范围和第三方声明分别保留在 [native/upstream/LICENSE](native/upstream/LICENSE)、[LICENSE_SCOPE.md](native/upstream/LICENSE_SCOPE.md) 和 [THIRD_PARTY_NOTICES.md](native/upstream/THIRD_PARTY_NOTICES.md) 中，播放器目录也保留了相应文件。
+上游源码的 MIT 许可证、资源许可范围和第三方声明分别位于 [vendor/MiaCode/LICENSE](vendor/MiaCode/LICENSE)、[LICENSE_SCOPE.md](vendor/MiaCode/LICENSE_SCOPE.md) 和 [THIRD_PARTY_NOTICES.md](vendor/MiaCode/THIRD_PARTY_NOTICES.md)。可直接部署的播放器目录保留了这三个文件。
 
 上游源码的 MIT 许可不覆盖所有字体、音效、皮肤或 Qt 运行时。本库尚未完成独立的公开发布许可审核，使用或再分发时请核对各组件的适用条款。

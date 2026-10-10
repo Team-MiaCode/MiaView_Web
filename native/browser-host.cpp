@@ -14,12 +14,13 @@
 #include "preview/quick_scene/PreviewQuickHudLayer.h"
 #include "preview/runtime/PreviewSceneAssetLoader.h"
 #include "core/chart/document/SimaiDocument.h"
-#include "core/chart/parser/SimaiNativeParser.h"
+#include "core/chart/parser/SimaiParser.h"
 #include "core/scene/PreviewFrameState.h"
-#include "common/PreviewSfxTimeline.h"
-#include "common/PreviewSfxAssets.h"
-#include "timeline/TimelineMarkerOffset.h"
-#include "tools/muri/MuriAnalyzer.h"
+#include "core/scene/PreviewSfxTimeline.h"
+#include "core/scene/PreviewSfxAssets.h"
+#include "core/chart/model/TimelineMarkerOffset.h"
+#include "core/analysis/MuriAnalyzer.h"
+#include "core/video/AssetPaths.h"
 
 using namespace miacode::preview::scene;
 namespace {
@@ -74,7 +75,7 @@ QJsonObject settings() {
         {"tapFlowSpeed", state.render.tapFlowSpeed},
         {"touchFlowSpeed", state.render.touchFlowSpeed},
         {"earlierSlideOnTop", state.render.slideEarlierSecondAndTextOnTop},
-        {"showJudgeEffects", state.render.showJudgeEffects},
+        {"showJudgeEffects", true},
         {"noteSkin", useDxSkin ? "DX" : "SD"},
         {"previewMode", muriRenderModeToken(state.muriRenderOptions.renderMode)}};
 }
@@ -188,7 +189,7 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_load(const char* text, int difficultyId
     chartLoaded = false;
     cachedLoadResponse.clear();
     const auto* difficulty = doc.difficulty(difficultyId);
-    const auto parsed = SimaiNativeParser::parseForTimeline(difficulty->chart, miacode::simai::buildTimingMetadata(doc));
+    const auto parsed = SimaiParser::parseForTimeline(difficulty->chart, miacode::simai::buildTimingMetadata(doc));
     if (!parsed.ok) {
         QJsonArray errors;
         for (const auto& error : parsed.errors) errors.append(QString("第 %1 行：%2").arg(error.line).arg(error.message));
@@ -273,17 +274,16 @@ EMSCRIPTEN_KEEPALIVE int miacode_background(const unsigned char* data, int size)
     refresh();
     return 1;
 }
-EMSCRIPTEN_KEEPALIVE void miacode_video_frame(const unsigned char* data, int width, int height) {
-    if (!data || width <= 0 || height <= 0 || width > renderSize.width() || height > renderSize.height()) return;
-    const QImage image(data, width, height, QImage::Format_RGBA8888);
-    state.media.mediaFrame = image.copy();
-    state.media.resolvedStageImage = state.media.mediaFrame;
-    state.media.resolvedStageImageCacheable = false;
-    state.media.stageMediaAvailable = true;
-    ++state.media.stageMediaSerial;
-    // Video does not change HUD content or gameplay statistics. Request only
-    // a scene frame, rather than a second full HUD upload on the same tick.
-    if (scene) scene->setFrameState(&state);
+EMSCRIPTEN_KEEPALIVE void miacode_external_video(int enabled) {
+    // The browser compositor presents the DOM video beneath our transparent
+    // canvas. Keep dimming/notes/HUD in Qt, with no per-frame pixel transfer.
+    state.media = PreviewMediaFrameState();
+    if (enabled) {
+        state.media.presentationMode = PreviewStageMediaPresentationMode::ExternalQuickMediaItem;
+        state.media.externalMediaType = PreviewExternalStageMediaType::Video;
+        state.media.stageMediaAvailable = true;
+    }
+    refresh();
 }
 }
 
@@ -292,11 +292,13 @@ int main(int argc, char** argv) {
     QSurfaceFormat surface;
     surface.setRenderableType(QSurfaceFormat::OpenGLES);
     surface.setVersion(3, 0);
+    surface.setAlphaBufferSize(8);
     surface.setDepthBufferSize(24);
     surface.setStencilBufferSize(8);
     QSurfaceFormat::setDefaultFormat(surface);
     QGuiApplication app(argc, argv);
     mountAssets();
+    miacode::assets::setAssetRoot(QStringLiteral("/assets"));
     const auto loaded = miacode::preview::runtime::PreviewSceneAssetLoader::load("/assets/skin/skinDX", PreviewOutlineVariant::Line);
     state.assets = loaded.assetState;
     state.skin = loaded.skinAssets;
@@ -312,7 +314,6 @@ int main(int argc, char** argv) {
     state.render.smoothBrightness = false;
     state.render.fixHudTextLayout = false;
     state.render.judgeEffectStyle = PreviewJudgeEffectStyle::Starry;
-    state.render.showJudgeEffects = true;
     state.render.centerDisplayMode = miacode::preview_gameplay::CenterDisplayMode::Combo;
     state.framePacingTargetFps = 60;
     QQuickWindow window;
@@ -321,7 +322,7 @@ int main(int argc, char** argv) {
         ++presentedFrames;
     });
     window.setFlags(Qt::Window | Qt::FramelessWindowHint);
-    window.setColor(Qt::black);
+    window.setColor(Qt::transparent);
     window.resize(renderSize);
     scene = new PreviewQuickSceneRoot(window.contentItem());
     hud = new PreviewQuickHudLayer(window.contentItem());

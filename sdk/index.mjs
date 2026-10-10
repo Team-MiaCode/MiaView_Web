@@ -1,4 +1,6 @@
 import { previewResolution } from "./resolution.mjs";
+import { TRANSPORT_HEIGHT } from "./layout.mjs";
+import { previewPvTimeout, scheduleTimeout } from "../renderer/pv-timeout.mjs";
 import { previewMaxFps } from "./frame-rate.mjs";
 import {
   SDK_PROTOCOL,
@@ -30,6 +32,15 @@ class MiaCodePreview {
       throw new Error("MiaView Web requires HTTPS or localhost");
     const resolution = previewResolution(options.resolution);
     const maxFps = previewMaxFps(options.maxFps);
+    const theme = options.theme ?? "dark";
+    if (theme !== "dark" && theme !== "light")
+      throw new Error("theme must be dark or light");
+    this.pvTimeoutMs = previewPvTimeout(options.pvTimeoutMs);
+    if (
+      options.diagnostics !== undefined &&
+      typeof options.diagnostics !== "boolean"
+    )
+      throw new Error("diagnostics must be a boolean");
     this.timeout = options.timeoutMs ?? 120000;
     if (!Number.isFinite(this.timeout) || this.timeout <= 0)
       throw new Error("timeoutMs must be positive");
@@ -43,6 +54,12 @@ class MiaCodePreview {
     this.url.searchParams.set("width", String(resolution.width));
     this.url.searchParams.set("height", String(resolution.height));
     this.url.searchParams.set("maxFps", String(maxFps));
+    this.url.searchParams.set("theme", theme);
+    this.url.searchParams.set("pvTimeoutMs", String(this.pvTimeoutMs));
+    this.url.searchParams.set(
+      "diagnostics",
+      options.diagnostics === false ? "0" : "1",
+    );
     this.url.searchParams.set("hostOrigin", this.window.location.origin);
     this.origin = this.url.origin;
     this.sessionId = this.window.crypto.randomUUID();
@@ -57,7 +74,7 @@ class MiaCodePreview {
       position: "relative",
       width: "100%",
       paddingTop: `${(resolution.height / resolution.width) * 100}%`,
-      paddingBottom: "56px",
+      paddingBottom: `${TRANSPORT_HEIGHT}px`,
       overflow: "hidden",
       background: "#000",
       boxSizing: "content-box",
@@ -157,7 +174,7 @@ class MiaCodePreview {
       message.sourceRevision !== this.identity.sourceRevision
     ) {
       for (const { reject, timer } of this.pending.values()) {
-        clearTimeout(timer);
+        timer();
         reject(new Error("Renderer build identity mismatch"));
       }
       this.pending.clear();
@@ -170,7 +187,7 @@ class MiaCodePreview {
     const request = this.pending.get(message.requestId);
     if (!request) return;
     this.pending.delete(message.requestId);
-    clearTimeout(request.timer);
+    request.timer();
     if (message.ok) request.resolve(message.value);
     else
       request.reject(
@@ -182,10 +199,12 @@ class MiaCodePreview {
       return Promise.reject(new Error("Preview has been destroyed"));
     const requestId = this.window.crypto.randomUUID();
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
+      const loading = type === "load" || type === "selectDifficulty";
+      const waitMs = loading ? (this.pvTimeoutMs === "unlimited" ? "unlimited" : Math.min(Number.MAX_SAFE_INTEGER, this.timeout + this.pvTimeoutMs)) : this.timeout;
+      const timer = waitMs === "unlimited" ? () => {} : scheduleTimeout(() => {
         this.pending.delete(requestId);
         reject(new Error(`Preview command timed out: ${type}`));
-      }, this.timeout);
+      }, waitMs);
       this.pending.set(requestId, { resolve, reject, timer });
       try {
         this.iframe.contentWindow.postMessage(
@@ -200,7 +219,7 @@ class MiaCodePreview {
           this.origin,
         );
       } catch (error) {
-        clearTimeout(timer);
+        timer();
         this.pending.delete(requestId);
         reject(error);
       }
@@ -261,6 +280,17 @@ class MiaCodePreview {
   getState() {
     return this.command("getState");
   }
+  getDiagnostics() {
+    return this.command("getDiagnostics");
+  }
+  resetDiagnostics() {
+    return this.command("resetDiagnostics");
+  }
+  setDiagnostics(enabled) {
+    if (typeof enabled !== "boolean")
+      return Promise.reject(new Error("diagnostics must be a boolean"));
+    return this.command("setDiagnostics", { enabled });
+  }
   destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
@@ -268,7 +298,7 @@ class MiaCodePreview {
     this.abort.abort();
     this.rejectStartup(error);
     for (const request of this.pending.values()) {
-      clearTimeout(request.timer);
+      request.timer();
       request.reject(error);
     }
     this.pending.clear();
