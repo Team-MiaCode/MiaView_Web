@@ -34,6 +34,8 @@ if (!development && source !== resolve(root, "vendor/MiaCode"))
 
 const env = { ...process.env, EMSDK: emsdk, EM_CONFIG: join(emsdk, ".emscripten"),
   PATH: [join(emsdk, "upstream/emscripten"), process.env.PATH].join(delimiter) };
+if (process.platform === "linux")
+  env.LD_LIBRARY_PATH = [join(qtHost, "lib"), process.env.LD_LIBRARY_PATH].filter(Boolean).join(delimiter);
 const pythonDirectory = join(emsdk, "python");
 const bundledPython = existsSync(pythonDirectory)
   ? readdirSync(pythonDirectory).find(name => existsSync(join(pythonDirectory, name, "python.exe"))) : undefined;

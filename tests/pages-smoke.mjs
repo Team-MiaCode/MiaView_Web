@@ -42,6 +42,9 @@ try {
   assert.equal(iframeUrl.pathname, "/MiaView_Web/renderer/index.html");
   await page.locator("#difficulty").selectOption("3");
   await page.waitForFunction(() => document.getElementById("status").textContent === "");
+  await page.locator("#local-pv").setInputFiles({ name: "unsupported.webm", mimeType: "video/webm", buffer: Buffer.from("invalid video") });
+  await page.waitForFunction(() => document.getElementById("status").textContent.includes("无法解码"));
+  assert.equal(await page.locator("#local-pv").isEnabled(), true, "A failed PV must remain replaceable");
   await page.locator("#local-pv").setInputFiles(join(root, "tests/fixtures/bg-pattern.webm"));
   await page.locator("#play:not([disabled])").waitFor();
   assert.equal(await page.locator("#difficulty").inputValue(), "3");

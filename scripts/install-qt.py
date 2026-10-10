@@ -45,13 +45,15 @@ def install(base, architecture, destination):
             continue
         for archive in package.findtext("DownloadableArchives", "").split(","):
             archive = archive.strip()
-            if not archive.startswith(("qtbase-", "qtdeclarative-", "qtsvg-", "qtshadertools-")):
+            if not archive.startswith(("qtbase-", "qtdeclarative-", "qtsvg-", "qtshadertools-", "icu-")):
                 continue
             selected.append((archive, base + package.findtext("Name") + "/" +
                              package.findtext("Version") + archive))
     if not all(any(name.startswith(module + "-") for name, _ in selected)
                for module in ["qtbase", "qtdeclarative", "qtsvg", "qtshadertools"]):
         raise RuntimeError(f"Qt {architecture} package layout changed; review the installer")
+    if architecture == "linux_gcc_64" and not any(name.startswith("icu-") for name, _ in selected):
+        raise RuntimeError("Qt Linux host tools require their matching ICU archive")
     for archive, url in selected:
         print(f"Qt {architecture}: {archive}", flush=True)
         if args.metadata_only:
