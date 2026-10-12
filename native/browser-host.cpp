@@ -108,6 +108,9 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_resolution() {
         {"showChartInfoHud", state.render.showChartInfoHud},
         {"showObjectStatsHud", state.render.showObjectStatsHud}});
 }
+EMSCRIPTEN_KEEPALIVE int miacode_firework_ready() {
+    return scene != nullptr && scene->fireworkReady();
+}
 EMSCRIPTEN_KEEPALIVE const char* miacode_set_resolution(double width, double height) {
     // Match resolution.mjs, including its bounded allocation budget. Validate
     // before mutating geometry or HUD; malformed private calls leave both intact.
@@ -320,6 +323,9 @@ int main(int argc, char** argv) {
     previewWindow = &window;
     QObject::connect(&window, &QQuickWindow::frameSwapped, &window, [] {
         ++presentedFrames;
+        // Publish the layer's post-swap readiness on its next sync, then block
+        // the retained warm-up node. window.update() alone need not sync an item.
+        if (scene != nullptr && !scene->fireworkReady()) scene->update();
     });
     window.setFlags(Qt::Window | Qt::FramelessWindowHint);
     window.setColor(Qt::transparent);

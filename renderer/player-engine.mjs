@@ -208,6 +208,11 @@ export function createPlayerEngine(view) {
     if (configured.error) throw new Error(configured.error);
     defaultSettings = JSON.parse(call("miacode_settings", "string", [], []));
     view.settings(defaultSettings);
+    // Qt renders asynchronously. Wait for a presented transparent firework draw,
+    // including its real pipeline and mipmapped ball, before accepting playback.
+    while (!call("miacode_firework_ready", "number", [], [])) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
     $("settings-toggle").disabled = false;
     fpsSampleTime = performance.now();
     fpsSampleFrames = call("miacode_frame_count", "number", [], []);

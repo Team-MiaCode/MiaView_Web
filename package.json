@@ -26,6 +26,7 @@
     "check:repo": "node scripts/check-repository.mjs",
     "check:source": "node scripts/verify.mjs --source",
     "test:browser": "node tests/browser-smoke.mjs",
+    "test:firework": "node tests/firework-smoke.mjs",
     "test:ui": "node tests/ui-smoke.mjs",
     "test:pages": "node tests/pages-smoke.mjs",
     "build:native": "node native/build.mjs",
