@@ -19,8 +19,8 @@ try {
   page.on("pageerror", error => errors.push(error.message));
   await page.addInitScript(() => {
     // Observe real WebGL work, including deferred Qt renders, rather than JS tick time.
-    const shaders = new WeakMap(), programs = new WeakMap();
-    window.fireworkGpu = { mipmaps: 0, draws: 0, links: 0 };
+    const shaders = new WeakMap(), programs = new WeakMap(), timingLocations = new WeakMap();
+    window.fireworkGpu = { mipmaps: 0, draws: 0, links: 0, angles: [] };
     const proto = WebGL2RenderingContext.prototype;
     const wrap = (name, observe) => {
       const original = proto[name];
@@ -43,7 +43,20 @@ try {
     wrap("generateMipmap", () => window.fireworkGpu.mipmaps++);
     for (const name of ["drawArrays", "drawElements"]) {
       wrap(name, function () {
-        if (isFirework(this.getParameter(this.CURRENT_PROGRAM))) window.fireworkGpu.draws++;
+        const program = this.getParameter(this.CURRENT_PROGRAM);
+        if (!isFirework(program)) return;
+        window.fireworkGpu.draws++;
+        // Qt's GLES backend exposes the shared block as ordinary uniforms.
+        // Find the fragment timing vector without hard-coding SPIR-V names.
+        if (!timingLocations.has(program)) {
+          const names = Array.from({ length: this.getProgramParameter(program, this.ACTIVE_UNIFORMS) },
+            (_, index) => this.getActiveUniform(program, index).name);
+          const timing = names.filter(name => /(^|\.)timing$/.test(name)).at(-1);
+          if (!timing) throw new Error("Firework timing uniform missing");
+          timingLocations.set(program, this.getUniformLocation(program, timing));
+        }
+        const timing = this.getUniform(program, timingLocations.get(program));
+        window.fireworkGpu.angles.push(timing[2]);
       });
     }
   });
@@ -95,9 +108,29 @@ try {
   assert.ok(restarted.draws > warmed.draws);
   assert.equal(restarted.mipmaps, warmed.mipmaps);
   assert.equal(restarted.links, warmed.links);
+
+  // Replaying the same burst at the same elapsed time must still choose a new
+  // angle. 0.15s also exercises the equality with the synthetic warm-up lead.
+  const angles = [];
+  for (let i = 0; i < 2; i++) {
+    await page.evaluate(() => preview.seek(3.5));
+    await settled();
+    const idle = await gpu();
+    await page.evaluate(() => preview.seek(2.15));
+    await settled();
+    const replay = await gpu();
+    assert.ok(replay.draws > idle.draws);
+    assert.equal(replay.mipmaps, warmed.mipmaps);
+    assert.equal(replay.links, warmed.links);
+    const angle = replay.angles.at(-1);
+    assert.ok(Number.isFinite(angle) && angle >= 0 && angle < 4096);
+    angles.push(angle);
+  }
+  assert.notEqual(angles[0], angles[1], "independent repeated bursts retain upstream randomization");
+  const { mipmaps, draws, links } = await gpu();
   await page.evaluate(() => preview.destroy());
   assert.deepEqual(errors, []);
-  console.log(`Firework warm-up, idle blocking and touch/hold/seek reuse passed: ${JSON.stringify(restarted)}`);
+  console.log(`Firework warm-up, idle blocking, reuse and random restart passed: ${JSON.stringify({ mipmaps, draws, links })}`);
   await page.close();
 } finally {
   await browser.close();

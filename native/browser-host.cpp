@@ -10,6 +10,7 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <emscripten/emscripten.h>
+#include "firework-layer.h"
 #include "preview/quick_scene/PreviewQuickSceneRoot.h"
 #include "preview/quick_scene/PreviewQuickHudLayer.h"
 #include "preview/runtime/PreviewSceneAssetLoader.h"
@@ -109,7 +110,7 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_resolution() {
         {"showObjectStatsHud", state.render.showObjectStatsHud}});
 }
 EMSCRIPTEN_KEEPALIVE int miacode_firework_ready() {
-    return scene != nullptr && scene->fireworkReady();
+    return scene != nullptr && miaview::firework::ready();
 }
 EMSCRIPTEN_KEEPALIVE const char* miacode_set_resolution(double width, double height) {
     // Match resolution.mjs, including its bounded allocation budget. Validate
@@ -323,9 +324,9 @@ int main(int argc, char** argv) {
     previewWindow = &window;
     QObject::connect(&window, &QQuickWindow::frameSwapped, &window, [] {
         ++presentedFrames;
-        // Publish the layer's post-swap readiness on its next sync, then block
-        // the retained warm-up node. window.update() alone need not sync an item.
-        if (scene != nullptr && !scene->fireworkReady()) scene->update();
+        // Sync the retained node after the warm-up draw so the adapter can
+        // block its idle subtree. window.update() alone need not sync an item.
+        if (scene != nullptr && !miaview::firework::ready()) scene->update();
     });
     window.setFlags(Qt::Window | Qt::FramelessWindowHint);
     window.setColor(Qt::transparent);

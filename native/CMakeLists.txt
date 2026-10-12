@@ -18,6 +18,34 @@ set(MIACODE_BUILD_APP OFF CACHE BOOL "MiaView consumes preview libraries only" F
 set(MIACODE_PREVIEW_MULTIMEDIA OFF CACHE BOOL "HTMLVideo supplies Web media" FORCE)
 add_subdirectory("${MIACODE_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/miacode")
 
+# Compile the upstream renderer under a private class name, then expose its
+# original interface through the Web lifecycle adapter. No dependency files
+# are copied into the repository or changed on disk.
+get_target_property(preview_sources miacode_preview_quick SOURCES)
+list(FILTER preview_sources INCLUDE REGEX "(^|/)PreviewQuickJudgeFireworkLayer\\.cpp$")
+list(LENGTH preview_sources firework_source_count)
+if(NOT firework_source_count EQUAL 1)
+    message(FATAL_ERROR "MiaCode firework source layout changed; review the Web adapter")
+endif()
+list(GET preview_sources 0 upstream_firework_source)
+get_target_property(preview_source_dir miacode_preview_quick SOURCE_DIR)
+get_filename_component(upstream_firework_source "${upstream_firework_source}"
+    ABSOLUTE BASE_DIR "${preview_source_dir}")
+get_filename_component(upstream_firework_dir "${upstream_firework_source}" DIRECTORY)
+set(upstream_firework_header "${upstream_firework_dir}/PreviewQuickJudgeFireworkLayer.h")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${upstream_firework_header}")
+file(READ "${upstream_firework_header}" upstream_firework_interface)
+string(REPLACE "PreviewQuickJudgeFireworkLayer" "MiaViewUpstreamJudgeFireworkLayer"
+    upstream_firework_interface "${upstream_firework_interface}")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/upstream-firework-layer.h" "${upstream_firework_interface}")
+set_property(SOURCE "${upstream_firework_source}" TARGET_DIRECTORY miacode_preview_quick
+    APPEND PROPERTY COMPILE_DEFINITIONS
+    PreviewQuickJudgeFireworkLayer=MiaViewUpstreamJudgeFireworkLayer)
+target_include_directories(miacode_preview_quick PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_sources(miacode_preview_quick PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/firework-layer.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/firework-layer.h")
+
 configure_file(browser-assets.qrc.in browser-assets.qrc @ONLY)
 qt_add_executable(miacode-preview browser-host.cpp
     "${CMAKE_CURRENT_BINARY_DIR}/browser-assets.qrc")
