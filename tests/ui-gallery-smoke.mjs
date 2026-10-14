@@ -104,6 +104,12 @@ try {
       const box = await page.locator(".metadata-page").boundingBox();
       const nativeImage = readFileSync(resolve(".assets/ui-reference", `${key}-${theme}.png`));
       assert.ok(Math.abs(box.width - nativeImage.readUInt32BE(16)) <= 1 && Math.abs(box.height - nativeImage.readUInt32BE(20)) <= 1, `${theme}/${key} original page geometry: ${JSON.stringify(box)}`);
+      for (const font of ["Arial", "serif"]) {
+        await page.evaluate(font => document.documentElement.style.setProperty("--ui-font-family", font), font);
+        const fallback = await page.locator(".metadata-page").boundingBox();
+        assert.equal(fallback.height, box.height, `${theme}/${key}/${font} fallback font page height`);
+      }
+      await page.evaluate(() => document.documentElement.style.removeProperty("--ui-font-family"));
       await captureRegion(page, ".metadata-page", resolve(output, `${key}-${theme}.png`));
     }
     for (const key of ["difficulty-header", "difficulty-header-narrow", "designer-slots"]) {
