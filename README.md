@@ -1,8 +1,11 @@
 # MiaView_Web
 
-**[点击进入网页测试](https://team-miacode.github.io/MiaView_Web/)**
+| 网页入口 | 对应分支 | 测试内容 |
+| --- | --- | --- |
+| **[Feature 编辑器测试版](https://team-miacode.github.io/MiaView_Web/feature/)** | `feature/web-editor-migration` | 网页编辑器与阶段功能 |
+| [Main 发布版](https://team-miacode.github.io/MiaView_Web/) | `main` | 已发布的谱面预览 |
 
-打开网页后，可选择本地谱面、音乐、背景图片和 PV 视频进行测试，文件在浏览器中读取。在线入口对应 GitHub Pages 发布版本。
+Feature 测试版通过“打开”选择谱面文件夹，载入其中的 `maidata.txt`、`track.*`、`bg.*` 和 PV。文件在浏览器中读取。各入口随对应分支的阶段提交更新。
 
 MiaView_Web 提供 maimai 谱面编辑工作台与实时预览 SDK，支持 Simai 格式。它基于 [MiaCode](https://github.com/Team-MiaCode/MiaCode) 的原生解析器和预览场景，通过 WebAssembly、Qt Quick 和 WebGL 2 绘制画面，通过 WebAudio 播放音乐与判定音效。工作台采用 HTML/CSS 与原生 ES modules，入口为 `index.html`。
 
@@ -432,14 +435,15 @@ npm run check:source
 
 ## GitHub Pages
 
-[在线展示](https://team-miacode.github.io/MiaView_Web/)使用 `examples/pages.html`、`examples/pages-demo.mjs` 和公共 SDK，不附带示例谱面或媒体。打包时将页面映射为 `examples/index.html`，保留项目子路径下的相对地址。Pages 只部署静态内容，关闭诊断，不部署 dev 或日志后台。
+[Main 发布版](https://team-miacode.github.io/MiaView_Web/)部署在网站根目录；[Feature 编辑器测试版](https://team-miacode.github.io/MiaView_Web/feature/)部署在 `feature/`。两个入口分别来自 `main` 与 `feature/web-editor-migration` 的源码和运行时。工作台主入口为 `index.html`，预览示例位于 `examples/index.html`，各入口使用包内的相对资源地址。
 
 自动构建与发布配置位于 [.github/workflows/web.yml](.github/workflows/web.yml)：
 
 - 所有推送、PR 和手动运行都会执行源码检查、单测、类型检查、播放器构建及三组浏览器验证。
 - 成功运行上传 `miaview-preview` 与 `miaview-pages`，供下载使用；生成产物不会回写 Git。
-- `main` 的推送或选择 `main` 的手动运行，在构建和验证完成后部署同一次构建的静态网站。
-- 功能分支和 PR 提供验证与产物下载，不部署 Pages。
+- `main` 与 `feature/web-editor-migration` 的推送或手动运行，分别构建两个分支，组合为根目录发布版与 `feature/` 编辑器测试版后部署。
+- `deployment.json` 记录两个网页入口对应的分支与提交号。
+- PR 和其他分支提供验证与产物下载。
 
 在自己的 GitHub 仓库中使用该工作流时，将 Settings → Pages 的构建来源设为 GitHub Actions。需要在其他平台托管时，使用 `miaview-pages` 产物或本地 `build:pages` 输出即可。
 

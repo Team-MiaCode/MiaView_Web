@@ -23,11 +23,15 @@ jobs:
 
   build-preview:
     needs: source-checks
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
+      - id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -51,14 +55,18 @@ jobs:
           .deps/emsdk/emsdk activate "$version"
       - run: npm run build:native && npm run check:source
       - run: npm install --no-save --package-lock=false playwright@1.62.1
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium firefox webkit chrome msedge
       - run: npm run test:browser && npm run test:ui && npm run test:pages
       - name: Validate workbench and isolated editor template
         env:
-          MIACODE_TEST_ENGINES: chromium
-          MIACODE_DENSITY_ENGINES: chromium
+          MIACODE_TEST_ENGINES: chromium,firefox,webkit
+          MIACODE_DENSITY_ENGINES: chrome,msedge,firefox,webkit
         run: npm run test:workbench && npm run test:density && npm run test:gallery && npm run test:folder && npm run test:cover && npm run test:transport && npm run test:timeline && npm run test:document && npm run test:analysis-ui && npm run test:editor-tabs && npm run test:workbench-chrome && npm run test:source-editor-ui && npm run test:ime && npm run test:stage1 && npm run sync:products -- --runtime && npm run test:editor-template
       - run: npm run build:pages
+      - name: Validate feature Pages prefix
+        env:
+          MIACODE_PAGES_PREFIX: /MiaView_Web/feature/
+        run: npm run test:pages
       - uses: actions/upload-artifact@v4
         with:
           name: miaview-preview
@@ -75,10 +83,6 @@ jobs:
           path: artifacts/pages
           if-no-files-found: error
           retention-days: 14
-      - uses: actions/upload-pages-artifact@v4
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        with:
-          path: artifacts/pages
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -90,9 +94,84 @@ jobs:
           name: workbench-screenshots
           path: artifacts/workbench-ui
 
+  build-alternate-pages:
+    needs: source-checks
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/web-editor-migration')
+    runs-on: ubuntu-24.04
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    env:
+      MIACODE_BUILD_DIR: ${{ github.workspace }}/build-devtools
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref == 'refs/heads/main' && 'feature/web-editor-migration' || 'main' }}
+          submodules: true
+      - id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build libegl1 libopengl0 libxcb-cursor0 libxkbcommon-x11-0
+      - run: python -m pip install -r scripts/qt-requirements.txt
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .deps/qt
+            .deps/downloads
+          key: qt-preview-${{ runner.os }}-${{ hashFiles('native/toolchain.json', 'scripts/install-qt.py') }}
+      - run: python scripts/install-qt.py
+      - name: Install Emscripten matched to Qt
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git .deps/emsdk
+          version=$(node -p "JSON.parse(require('fs').readFileSync('native/toolchain.json')).emscriptenVersion")
+          .deps/emsdk/emsdk install "$version"
+          .deps/emsdk/emsdk activate "$version"
+      - run: npm run check:repo && npm test && npm run build:native && npm run check:source && npm run build:pages
+      - uses: actions/upload-artifact@v4
+        with:
+          name: miaview-alternate-pages
+          path: artifacts/pages
+          if-no-files-found: error
+          retention-days: 14
+
+  prepare-pages:
+    needs: [build-preview, build-alternate-pages]
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/web-editor-migration')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: miaview-pages
+          path: artifacts/current
+      - uses: actions/download-artifact@v4
+        with:
+          name: miaview-alternate-pages
+          path: artifacts/alternate
+      - name: Compose main and feature sites
+        env:
+          MAIN_SHA: ${{ github.ref == 'refs/heads/main' && needs.build-preview.outputs.source_sha || needs.build-alternate-pages.outputs.source_sha }}
+          FEATURE_SHA: ${{ github.ref == 'refs/heads/main' && needs.build-alternate-pages.outputs.source_sha || needs.build-preview.outputs.source_sha }}
+        run: |
+          if [ "$GITHUB_REF" = refs/heads/main ]; then
+            node scripts/compose-pages.mjs artifacts/current artifacts/alternate artifacts/deploy
+          else
+            node scripts/compose-pages.mjs artifacts/alternate artifacts/current artifacts/deploy
+          fi
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: artifacts/deploy
+
   deploy-pages:
-    needs: build-preview
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: prepare-pages
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/web-editor-migration')
     runs-on: ubuntu-24.04
     permissions:
       pages: write
