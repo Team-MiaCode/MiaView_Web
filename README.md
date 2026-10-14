@@ -43,7 +43,8 @@ Git 仓库和源码 ZIP 只包含源码，不包含运行所需的生成 JS / WA
 
 | 方式 | 用途 | 是否需要本地编译 |
 | --- | --- | --- |
-| [在线预览](https://team-miacode.github.io/MiaView_Web/) | 直接查看自己的本地谱面 | 否 |
+| [Main 发布版](https://team-miacode.github.io/MiaView_Web/) | 查看自己的本地谱面 | 否 |
+| [Feature 编辑器测试版](https://team-miacode.github.io/MiaView_Web/feature/) | 打开谱面文件夹并测试网页编辑器 | 否 |
 | CI 产物 `miaview-preview` | 嵌入其他网站，或配合源码进行本地测试 | 否 |
 | CI 产物 `miaview-pages` | 部署完整的静态预览网站 | 否 |
 | [从源码构建](#开发与构建) | 修改播放器、更新上游或获取没有现成产物的版本 | 是 |

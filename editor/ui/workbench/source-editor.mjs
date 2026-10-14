@@ -11,7 +11,13 @@ export class SourceEditor {
     this.gutter = element("pre", { className: "line-numbers", "aria-hidden": "true" });
     this.paint = element("pre", { className: "source-paint", "aria-hidden": "true" });
     this.followHighlight = `miacode-follow-${crypto.randomUUID()}`;
-    const followStyle = element("style", {}, `.source-paint::highlight(${this.followHighlight}) { background-color: color-mix(in srgb, var(--state-follow-highlight) 25%, transparent); }`);
+    this.syntaxHighlights = new Map(["keyword", "comment", "duration"].map(kind => {
+      const name = `miacode-${kind}-${crypto.randomUUID()}`, highlight = new Highlight();
+      CSS.highlights.set(name, highlight);
+      return [kind, { name, highlight }];
+    }));
+    const followStyle = element("style", {}, `.source-paint::highlight(${this.followHighlight}) { background-color: color-mix(in srgb, var(--state-follow-highlight) 25%, transparent); }\n`
+      + [...this.syntaxHighlights].map(([kind, { name }]) => `.source-paint::highlight(${name}) { color: var(--syntax-${kind}); }`).join("\n"));
     this.input = element("textarea", {
       className: "source-input", "aria-label": "Simai 谱面正文", spellcheck: false,
       autocapitalize: "off", autocomplete: "off", autocorrect: "off", wrap: "off",
@@ -60,14 +66,25 @@ export class SourceEditor {
     if (!this.input.clientWidth) return;
     const lines = this.input.value.split("\n");
     this.root.style.setProperty("--gutter-width", `calc(${String(lines.length).length}ch + 18px)`);
-    this.paint.style.width = `${this.input.clientWidth}px`;
+    const scrollbarWidth = this.input.offsetWidth - this.input.clientWidth;
+    this.paint.style.width = `calc(${getComputedStyle(this.input).width} - ${scrollbarWidth}px)`;
     this.paint.style.height = `${this.input.clientHeight}px`;
     this.paint.replaceChildren();
+    for (const { highlight } of this.syntaxHighlights.values()) highlight.clear();
     const styles = styleSourceLines(this.input.value);
     for (const spans of styles) {
       const line = element("div", { className: "source-code-line" });
-      for (const span of spans) line.append(span.kind ? element("span", { className: `syntax-${span.kind}` }, span.text) : document.createTextNode(span.text));
-      if (!spans.length) line.append(document.createTextNode("\u200b"));
+      const text = document.createTextNode(spans.map(span => span.text).join("") || "\u200b");
+      line.append(text);
+      let offset = 0;
+      for (const span of spans) {
+        if (span.kind) {
+          const range = document.createRange();
+          range.setStart(text, offset); range.setEnd(text, offset + span.text.length);
+          this.syntaxHighlights.get(span.kind).highlight.add(range);
+        }
+        offset += span.text.length;
+      }
       this.paint.append(line);
     }
     const heights = [...this.paint.children].map(line => line.getBoundingClientRect().height);
@@ -167,5 +184,5 @@ export class SourceEditor {
     this.root.classList.toggle("wrap", enabled);
     this.draw();
   }
-  destroy() { CSS.highlights.delete(this.followHighlight); this.resize.disconnect(); cancelAnimationFrame(this.drawFrame); document.fonts.removeEventListener("loadingdone", this.fontLoaded); this.completion.destroy(); }
+  destroy() { CSS.highlights.delete(this.followHighlight); for (const { name } of this.syntaxHighlights.values()) CSS.highlights.delete(name); this.resize.disconnect(); cancelAnimationFrame(this.drawFrame); document.fonts.removeEventListener("loadingdone", this.fontLoaded); this.completion.destroy(); }
 }
