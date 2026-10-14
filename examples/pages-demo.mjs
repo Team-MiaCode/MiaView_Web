@@ -1,4 +1,5 @@
 import { createPreview } from "../sdk/index.mjs";
+import { inspectChartFolder } from "../services/chart-folder.mjs";
 const $ = (id) => document.getElementById(id);
 let preview, lastChart;
 const status = (text) => {
@@ -50,19 +51,13 @@ async function selectFiles(event) {
       return;
     }
     status(`已选择 ${files.length} 个文件，正在检查谱面…`);
-    const find = (pattern) => files.find((file) => pattern.test(file.name));
-    const maidata = find(/^maidata\.txt$/i);
-    if (!maidata) throw new Error("请选择包含 maidata.txt 的谱面文件夹");
+    const { preferred } = inspectChartFolder(files);
+    if (!preferred) throw new Error("请选择单个谱面文件夹");
     if (!preview || !$("preview").childElementCount) {
       status("已找到 maidata.txt，正在初始化播放器…");
       await mount();
     }
-    lastChart = {
-      maidata,
-      audio: find(/\.(mp3|wav|ogg|flac|m4a)$/i),
-      cover: find(/\.(png|jpe?g|webp)$/i),
-      video: find(/\.(mp4|webm)$/i),
-    };
+    lastChart = preferred.chart;
     await load(lastChart);
   } catch (error) {
     status(error.message);

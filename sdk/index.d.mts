@@ -18,6 +18,19 @@ export interface ChartInput {
   cover?: Resource;
   video?: Resource;
   difficulty?: number | null;
+  filePath?: string;
+}
+export interface DocumentSnapshot {
+  sourceText: string; chartText: string; filePath: string;
+  activeDifficultyId: number; revision: number; dirty: boolean; metadataDirty: boolean;
+  hasDocument: boolean; dirtyDifficultyIds: number[]; documentOpenGeneration: number;
+  title: string; artist: string; designer: string; first: string;
+  metadataTitle: string; metadataArtist: string; metadataDesigner: string; metadataFirst: string;
+  metadataClockCount: string; metadataExtraText: string; metadataVideoPath: string;
+  currentDifficultyLevel: string; currentDifficultyDesigner: string; currentDifficultyOffset: string;
+  unifiedDesignerEnabled: boolean;
+  charts: Array<{ id: number; level: string; designer: string; hasChart: boolean }>;
+  designerSlots: Array<{ id: number; name: string; designer: string; hasChart: boolean }>;
 }
 export interface PreviewSettings {
   previewMode: "native" | "maimuri_dx_style" | "erase_by_area";
@@ -28,7 +41,102 @@ export interface PreviewSettings {
   earlierSlideOnTop: boolean;
   noteSkin: "SD" | "DX";
 }
+export interface PlaybackSettings {
+  rate: number;
+  rangePlaybackEnabled: boolean;
+  exportStartSeconds: number;
+  exportEndSeconds: number;
+}
+export interface TimelineOptions extends Resolution {
+  colors: Record<string, string | [number, number, number, number]>;
+  noteSkin?: "DX" | "SD";
+  zoomScale?: number;
+  contentScale?: number;
+  horizontalScrollValue?: number;
+  playbackEntrySeconds?: number;
+  playheadSeconds?: number;
+  cursorSeconds?: number;
+  showSlideTracks?: boolean;
+  waveformBrightness?: number;
+  measureLineBrightness?: number;
+  waveformPhaseCompensationSeconds?: number;
+  headerLeftLimit?: number;
+  headerRightLimit?: number;
+}
+export interface TimelineFollowState { active: boolean; start?: number; end?: number; caret?: number; second?: number; }
+export interface TimelinePoint { x: number; y: number; }
+export interface TimelineRect extends TimelinePoint { width: number; height: number; }
+export interface TimelineLine { start: TimelinePoint; end: TimelinePoint; color: string; width: number; }
+export interface TimelineRectangle { rect: TimelineRect; color: string; }
+export interface TimelineTriangle { a: TimelinePoint; b: TimelinePoint; c: TimelinePoint; color: string; }
+export interface TimelineLabel { text: string; topLeft: TimelinePoint; color: string; font: { family: string; pixelSize: number; ascent: number }; }
+export interface TimelineSprite { center: TimelinePoint; spriteType: string; scale: number; rotationDegrees: number; mirrorX: boolean; imageKey: string; }
+export interface TimelineHoldSpan { startX: number; endX: number; rowTop: number; laneHeight: number; spriteType: string; baseIconScale: number; leftKey: string; rightKey: string; bodyKey: string; }
+export interface TimelineGlyph { rect: TimelineRect; shape: number; fillColor: string; strokeColor: string; strokeWidth: number; radius: number; tooltipText: string; }
+export interface TimelineSceneState {
+  viewportSize: Resolution;
+  timelineLeft: number; timelineTop: number; timelineHeight: number; laneHeight: number; laneCount: number;
+  horizontalScrollValue: number; contentWidth: number; displayStartSeconds: number; pixelsPerSecond: number; leadingCenteringPadding: number; maxNavigableSecond: number;
+  baseBackgroundRects: TimelineRectangle[]; laneOverlayRects: TimelineRectangle[]; waveformBars: TimelineRectangle[]; gridLines: TimelineLine[];
+  frameRects: TimelineRectangle[]; frameLines: TimelineLine[]; laneLabels: TimelineLabel[]; headerLabels: TimelineLabel[]; headerMarkers: TimelineTriangle[];
+  fireworkBands: TimelineRectangle[]; trackLines: TimelineLine[]; touchHoldLines: TimelineLine[];
+  noteSprites: TimelineSprite[]; trackSprites: TimelineSprite[]; holdSpans: TimelineHoldSpan[]; muriDots: TimelineGlyph[];
+  images: Record<string, { url: string; width: number; height: number }>;
+  hasEntryMarker: boolean; entryMarker: TimelineTriangle; hasCursorMarker: boolean; cursorMarker: TimelineTriangle;
+  hasCursorLine: boolean; cursorLine: TimelineLine; hasPlayheadLine: boolean; playheadLine: TimelineLine; hasDragCenterLine: boolean; dragCenterLine: TimelineLine;
+}
+export interface CoverLayer {
+  key: string;
+  kind: "card" | "chartFrame" | "image" | "text";
+  nx: number;
+  ny: number;
+  sizeFraction: number;
+  z: number;
+  visible: boolean;
+  locked: boolean;
+  opacity: number;
+  label?: string;
+  text?: string;
+  textColor?: string;
+  textBold?: boolean;
+  fontPath?: string;
+  imagePath?: string;
+  frameSeconds?: number;
+  frameBgMode?: "image" | "transparent" | "pv" | "pvFit";
+  frameBgBrightness?: number;
+  frameBgTransparency?: number;
+}
+export interface CoverComposition {
+  layout?: { layers: CoverLayer[] };
+  outputWidth?: number;
+  outputHeight?: number;
+  activeLayerKey?: string;
+  trackOverrides?: Record<string, string | number | boolean>;
+  jacketImage?: string;
+  backgroundImage?: string;
+  backgroundMode?: 0 | 1 | 2;
+  blurEnabled?: boolean;
+  coverBgBrightness?: number;
+  cardShadowEnabled?: boolean;
+  coverTemplate?: Record<string, unknown>;
+}
+export interface CoverCompositionState {
+  layout: { layers: CoverLayer[] };
+  activeLayerKey: string;
+  outputWidth: number;
+  outputHeight: number;
+}
+export interface NoteStatistic {
+  kind: "tap" | "hold" | "slide" | "touch" | "break" | "total";
+  played: number;
+  total: number;
+  value: string;
+}
 export interface PreviewState {
+  statistics: NoteStatistic[];
+  statisticsAvailable: boolean;
+  playback: PlaybackSettings;
+  media: { hidePv: boolean };
   maxFps: MaxFps;
   pvTimeoutMs: PvTimeout;
   loaded: boolean;
@@ -119,7 +227,11 @@ export interface DiagnosticsSnapshot {
 }
 export interface PreviewOptions {
   /** Initial player theme; default dark. The player also provides a theme toggle. */
-  theme?: "dark" | "light";
+  theme?: "dark" | "light" | "legacy" | "legacy_light";
+  /** Intrinsic aspect ratio, or fill a workbench container with its own height. */
+  layout?: "intrinsic" | "fit";
+  /** Render the built-in transport; default true. A workbench can supply its own controls. */
+  controls?: boolean;
   /** Initialization/load logs and playback-only performance reports sent to the renderer backend. Default true. */
   diagnostics?: boolean;
   resolution?: Resolution;
@@ -133,6 +245,7 @@ export interface PreviewOptions {
   timeoutMs?: number;
 }
 export interface PreviewEvents {
+  documentChanged: DocumentSnapshot;
   performance: PerformanceReport;
   ready: { playerVersion: string; sourceRevision: string };
   progress: { stage: string; progress: number };
@@ -142,6 +255,9 @@ export interface PreviewEvents {
   error: { code: string; message: string; elapsedMs?: number };
   seeked: { currentTime: number };
   settingsChanged: PreviewState["settings"];
+  playbackChanged: PlaybackSettings;
+  timeupdate: { currentTime: number; duration: number; playing: boolean; rate: number; statistics: NoteStatistic[]; statisticsAvailable: boolean };
+  coverChanged: CoverCompositionState;
 }
 export interface MiaCodePreview {
   readonly ready: Promise<MiaCodePreview>;
@@ -153,7 +269,19 @@ export interface MiaCodePreview {
   setSettings(
     settings: Partial<PreviewSettings>,
   ): Promise<PreviewState["settings"]>;
-  selectDifficulty(difficulty: number): Promise<ChartInfo>;
+  setTheme(theme: NonNullable<PreviewOptions["theme"]>): Promise<NonNullable<PreviewOptions["theme"]>>;
+  setPlayback(settings: Partial<PlaybackSettings>): Promise<PlaybackSettings>;
+  setMediaSettings(settings: { hidePv: boolean }): Promise<{ hidePv: boolean }>;
+  setCanvasSize(size: Resolution): Promise<Resolution>;
+  getTimeline(options: TimelineOptions): Promise<TimelineSceneState>;
+  navigateTimeline(point: TimelinePoint): Promise<{ second: number; line: number; column: number; position: number; resolved: boolean }>;
+  getTimelineFollow(second: number): Promise<TimelineFollowState>;
+  getDocument(): Promise<DocumentSnapshot>;
+  documentCommand(id: string, args?: Record<string, unknown>): Promise<{ accepted: boolean; document: DocumentSnapshot; previewError?: string }>;
+  getDocumentSaveText(section?: number): Promise<{ sourceText: string; revision: number }>;
+  setCoverComposition(composition: CoverComposition): Promise<CoverCompositionState>;
+  getCoverComposition(): Promise<CoverCompositionState>;
+  selectDifficulty(difficulty: number): Promise<ChartInfo | DocumentSnapshot>;
   getState(): Promise<PreviewState>;
   getDiagnostics(): Promise<DiagnosticsSnapshot>;
   resetDiagnostics(): Promise<DiagnosticsSnapshot>;

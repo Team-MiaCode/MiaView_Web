@@ -15,7 +15,7 @@ const build = spawnSync(process.execPath, ["scripts/build-pages.mjs", join(outpu
 assert.equal(build.status, 0, build.stderr);
 const siteRoot = join(output, "site");
 const mime = { ".html": "text/html", ".mjs": "text/javascript", ".js": "text/javascript",
-  ".wasm": "application/wasm", ".css": "text/css", ".json": "application/json", ".wav": "audio/wav" };
+  ".wasm": "application/wasm", ".css": "text/css", ".json": "application/json", ".wav": "audio/wav", ".svg": "image/svg+xml" };
 const server = createServer((request, response) => {
   // Deliberately omit dev upload/log routes: this must run on static hosting.
   if (!["GET", "HEAD"].includes(request.method)) { response.writeHead(405).end(); return; }
@@ -39,8 +39,16 @@ try {
   page.on("pageerror", error => errors.push(error.message));
   page.on("request", request => methods.push(request.method()));
   page.on("response", response => { if (response.status() >= 400) missing.push(response.url()); });
+  await page.goto(pathToFileURL(join(siteRoot, "index.html")).href);
+  await page.locator(".local-server-help").waitFor();
+  assert.equal(await page.locator(".local-server-help code").textContent(), "npm run dev");
+  assert.equal(await page.locator(".local-server-help a").getAttribute("href"), "http://127.0.0.1:3030/index.html");
+  assert.equal(await page.locator("iframe").count(), 0);
+  assert.deepEqual(errors, [], "File entry displays the local HTTP startup instructions");
   await page.goto(base + "index.html");
-  await page.waitForURL(base + "examples/index.html");
+  await page.locator(".welcome-title").waitFor();
+  await page.evaluate(() => document.getElementById("workbench").editor.ready);
+  await page.goto(base + "examples/index.html");
   assert.equal(await page.locator("#local-pv").isDisabled(), true);
   const folder = join(output, "chart");
   mkdirSync(folder);

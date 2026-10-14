@@ -1,0 +1,8 @@
+{
+  "score": 92,
+  "verdict": "pass",
+  "category_match": true,
+  "differences": ["正文、分隔线与两行输入控件的垂直位置存在约 1 至 4 像素差异。", "Qt 与浏览器使用不同的文字抗锯齿。"],
+  "suggestions": ["媒体处理接入沿用 isTrack、beats、bpm、inputName 与备份字段。"],
+  "reasoning": "音轨与 PV 补空白表单的摘要、拍数、BPM、检测入口和四主题对应原始 QML；输入值保持 v2 边界，摘要随数值变化。评分范围为两种补空白内容表单。"
+}

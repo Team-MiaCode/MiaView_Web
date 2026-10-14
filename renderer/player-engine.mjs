@@ -10,6 +10,7 @@ import { DEFAULT_RESOLUTION, resolutionFromSearch } from "./resolution.mjs";
 import { PreviewFrameLimiter, maxFpsFromSearch } from "./frame-rate.mjs";
 import { PreviewDiagnostics } from "./diagnostics.mjs";
 import { PerformanceTransport } from "./performance-transport.mjs";
+import { DEFAULT_PLAYBACK, playbackSettings } from "./playback.mjs";
 
 // Each renderer document owns one engine; UI and SDK share its controller.
 export function createPlayerEngine(view) {
@@ -19,6 +20,9 @@ export function createPlayerEngine(view) {
   const $ = (id) => document.getElementById(id);
   const embedded = window.parent !== window;
   document.body.classList.toggle("embedded", embedded);
+  document.body.classList.toggle("external-controls", new URLSearchParams(location.search).get("controls") === "0");
+  let playback = { ...DEFAULT_PLAYBACK };
+  let hidePv = false, loadedCover;
   let identity,
     module,
     chart,
@@ -120,7 +124,19 @@ export function createPlayerEngine(view) {
   );
   const elapsed = () =>
     Math.max(0, Math.round((audio?.currentSecond() ?? 0) * 1000));
-  const updateTransport = () => view.transport?.(audio?.currentSecond() ?? 0, audio?.duration ?? 0);
+  let lastTimeUpdate = -Infinity;
+  const statistics = () => ready && chart ? JSON.parse(call("miacode_statistics", "string", [], []))
+    : { statistics: [], statisticsAvailable: false };
+  const updateTransport = (force = true) => {
+    const currentTime = audio?.currentSecond() ?? 0;
+    const duration = audio?.duration ?? 0;
+    view.transport?.(currentTime, duration);
+    const now = performance.now();
+    if (force || now - lastTimeUpdate >= 100) {
+      lastTimeUpdate = now;
+      emit("timeupdate", { currentTime, duration, playing: audio?.playing ?? false, rate: playback.rate, ...statistics() });
+    }
+  };
   const fail = (error) => {
     playbackDiagnostics.setEnabled(false);
     diagnostics.error(phase, error);
@@ -148,6 +164,14 @@ export function createPlayerEngine(view) {
     $("viewport").style.top =
       `${($("stage").clientHeight - HEIGHT * scale) / 2}px`;
   }
+  function setSurfaceSize(width, height) {
+    WIDTH = width;
+    HEIGHT = height;
+    document.documentElement.style.setProperty("--preview-width", `${width}px`);
+    document.documentElement.style.setProperty("--preview-height", `${height}px`);
+    document.documentElement.style.setProperty("--preview-aspect", `${width} / ${height}`);
+    resize();
+  }
   new ResizeObserver(resize).observe($("stage"));
   resize();
   // Qt measures its screen through getBoundingClientRect. Keep that measurement
@@ -171,15 +195,7 @@ export function createPlayerEngine(view) {
   const boot = (async () => {
     const resolution = resolutionFromSearch(location.search);
     frameLimiter = new PreviewFrameLimiter(maxFpsFromSearch(location.search));
-    WIDTH = resolution.width;
-    HEIGHT = resolution.height;
-    document.documentElement.style.setProperty("--preview-width", `${WIDTH}px`);
-    document.documentElement.style.setProperty("--preview-height", `${HEIGHT}px`);
-    document.documentElement.style.setProperty(
-      "--preview-aspect",
-      `${WIDTH} / ${HEIGHT}`,
-    );
-    resize();
+    setSurfaceSize(resolution.width, resolution.height);
     const runtime = await diagnostics.measureAsync("engineLoad", () =>
       loadPreviewRuntime(import.meta.url),
     );
@@ -207,6 +223,7 @@ export function createPlayerEngine(view) {
     );
     if (configured.error) throw new Error(configured.error);
     defaultSettings = JSON.parse(call("miacode_settings", "string", [], []));
+    module.onCoverChanged = value => emit("coverChanged", JSON.parse(value));
     view.settings(defaultSettings);
     // Qt renders asynchronously. Wait for a presented transparent firework draw,
     // including its real pipeline and mipmapped ball, before accepting playback.
@@ -261,16 +278,20 @@ export function createPlayerEngine(view) {
   async function play() {
     if (!chart) return;
     await audio.context.resume();
+    if (playback.rangePlaybackEnabled && (audio.offset < playback.exportStartSeconds || audio.offset >= playback.exportEndSeconds))
+      seek(playback.exportStartSeconds);
     diagnostics.flush();
     audio.start();
     playbackDiagnostics.setEnabled(diagnostics.enabled);
     status("");
     $("play").textContent = "暂停";
-    if (video.src) {
+    if (video.src && !hidePv) {
       video.currentTime = audio.offset;
+      video.playbackRate = playback.rate;
       void video.play().catch(() => {});
     }
     emit("playing", { elapsedMs: elapsed() });
+    updateTransport();
   }
   function seek(second) {
     if (!chart) return;
@@ -283,6 +304,7 @@ export function createPlayerEngine(view) {
   function clearInput() {
     playbackDiagnostics.setEnabled(false);
     audio?.reset();
+    playback = { ...DEFAULT_PLAYBACK, rate: playback.rate };
     video.hidden = true;
     video.pause();
     video.removeAttribute("src");
@@ -290,12 +312,14 @@ export function createPlayerEngine(view) {
     if (videoUrl) URL.revokeObjectURL(videoUrl);
     videoUrl = null;
     chart = null;
+    loadedCover = undefined;
     view.chart?.(null);
     updateTransport();
     for (const id of ["play", "restart", "seek"])
       $(id).disabled = true;
     if (module) {
       call("miacode_background", "number", ["number", "number"], [0, 0]);
+      call("miacode_waveform", null, ["number", "number", "number"], [0, 0, 0]);
     }
   }
   async function bytes(resource, signal) {
@@ -388,7 +412,9 @@ export function createPlayerEngine(view) {
     emit("progress", { stage: "正在加载谱面", progress: 0.05 });
     await boot;
     if (token !== generation) return;
-    audio ??= new PreviewAudio(new AudioContext());
+    const AudioContextClass = globalThis.AudioContext ?? globalThis.webkitAudioContext;
+    if (!AudioContextClass) throw new Error("当前浏览器需要启用 WebAudio 才能播放谱面");
+    audio ??= new PreviewAudio(new AudioContextClass());
     audio.onSchedule = (lateMs) => {
       playbackDiagnostics.record("audioScheduleLate", lateMs);
       if (lateMs > 5) playbackDiagnostics.count("audioLateEvents");
@@ -427,11 +453,17 @@ export function createPlayerEngine(view) {
       call(
         "miacode_load",
         "string",
-        ["string", "number"],
-        [text, difficultyId ?? 0],
+        ["string", "number", "string"],
+        [text, difficultyId ?? 0, resources.filePath || ""],
       ),
     );
     if (parsed.error) throw new Error(parsed.error);
+    if (document.body.classList.contains("cover-view")) {
+      document.body.classList.remove("cover-view");
+      $("transport").hidden = false;
+      const resolution = resolutionFromSearch(location.search);
+      setSurfaceSize(resolution.width, resolution.height);
+    }
     const bufferFiles = [
       ...new Set(parsed.sfx.map((e) => e.file).filter(Boolean)),
     ];
@@ -469,15 +501,32 @@ export function createPlayerEngine(view) {
     ]);
     if (token !== generation) return;
     if (videoBlob) {
-      call("miacode_external_video", null, ["number"], [1]);
-      video.hidden = false;
+      call("miacode_external_video", null, ["number"], [Number(!hidePv)]);
+      video.hidden = hidePv;
+      if (hidePv) await setBackground(coverBytes);
     }
+    loadedCover = coverBytes;
     chart = parsed;
     view.chart?.(parsed);
     audio.track = track;
     audio.events = parsed.sfx;
     audio.segments = parsed.touchholdSegments;
     audio.duration = Math.max(parsed.duration, track?.duration ?? 0);
+    if (track) {
+      const mono = new Float32Array(track.length);
+      for (let channel = 0; channel < track.numberOfChannels; channel++) {
+        const samples = track.getChannelData(channel);
+        for (let index = 0; index < mono.length; index++) mono[index] += samples[index] / track.numberOfChannels;
+      }
+      const pointer = module._malloc(mono.byteLength);
+      try {
+        module.HEAPU8.set(new Uint8Array(mono.buffer), pointer);
+        call("miacode_waveform", null, ["number", "number", "number"], [pointer, mono.length, track.duration]);
+      } finally { module._free(pointer); }
+    } else call("miacode_waveform", null, ["number", "number", "number"], [0, 0, 0]);
+    audio.rate = playback.rate;
+    playback.exportEndSeconds = audio.duration;
+    emit("playbackChanged", { ...playback });
     updateTransport();
     $("seek").max = String(audio.duration);
     $("seek").value = "0";
@@ -489,6 +538,39 @@ export function createPlayerEngine(view) {
     if (token !== generation) return;
     for (const id of ["play", "restart", "seek"])
       $(id).disabled = false;
+  }
+
+  async function documentCommand(request) {
+    const wasPlaying = audio?.playing ?? false;
+    const second = request.id === "document.selectDifficulty" ? 0 : audio?.currentSecond() ?? 0;
+    pause();
+    const result = JSON.parse(call("miacode_document_command", "string", ["string"], [JSON.stringify(request)]));
+    if (result.error) throw new Error(result.error);
+    const parsed = result.preview;
+    if (parsed.error) {
+      chart = undefined;
+      if (audio) { audio.events = []; audio.segments = []; }
+      result.previewError = parsed.error;
+      updateTransport();
+    } else {
+      const files = [...new Set(parsed.sfx.map(event => event.file).filter(Boolean))];
+      if (parsed.touchholdSegments.length) files.push("touch_Hold_riser.wav");
+      await Promise.all(files.filter(file => !audio.buffers.has(file)).map(async file => {
+        const response = await fetch(`./sfx/${encodeURIComponent(file)}`);
+        if (!response.ok) throw new Error(`音效缺失：${file}`);
+        audio.buffers.set(file, await audio.context.decodeAudioData(await response.arrayBuffer()));
+      }));
+      chart = parsed;
+      view.chart?.(parsed);
+      audio.events = parsed.sfx;
+      audio.segments = parsed.touchholdSegments;
+      audio.duration = Math.max(parsed.duration, audio.track?.duration ?? 0);
+      seek(Math.min(second, audio.duration));
+      if (wasPlaying) await play();
+    }
+    delete result.preview;
+    emit("documentChanged", result.document);
+    return result;
   }
 
   document.addEventListener("visibilitychange", () => {
@@ -521,13 +603,15 @@ export function createPlayerEngine(view) {
         playbackDiagnostics.measure("wasmTick", () =>
           call("miacode_tick", null, ["number"], [second]));
         $("seek").value = String(second);
-        updateTransport();
-        if (second >= audio.duration) {
+        updateTransport(false);
+        const end = playback.rangePlaybackEnabled ? playback.exportEndSeconds : audio.duration;
+        if (second >= end) {
           pause();
+          seek(end);
           emit("ended", { elapsedMs: elapsed() });
         }
       }
-      if (video.readyState >= 2 && !video.seeking) {
+      if (!hidePv && video.readyState >= 2 && !video.seeking) {
         const audioSecond = audio.currentSecond();
         const videoSecond = Number.isFinite(video.duration)
           ? Math.min(audioSecond, video.duration)
@@ -579,6 +663,9 @@ export function createPlayerEngine(view) {
       status("");
     },
     state: () => ({
+      ...statistics(),
+      playback: { ...playback },
+      media: { hidePv },
       maxFps: frameLimiter.maxFps,
       pvTimeoutMs,
       loaded: Boolean(chart),
@@ -590,6 +677,54 @@ export function createPlayerEngine(view) {
       resolution: JSON.parse(call("miacode_resolution", "string", [], [])),
     }),
     defaultSettings: () => defaultSettings,
+    getTimeline: options => JSON.parse(call("miacode_timeline", "string", ["string"], [JSON.stringify(options)])),
+    navigateTimeline: point => JSON.parse(call("miacode_timeline_navigate", "string", ["number", "number"], [point.x, point.y])),
+    getTimelineFollow: second => JSON.parse(call("miacode_timeline_follow", "string", ["number"], [second])),
+    getDocument: () => JSON.parse(call("miacode_document", "string", [], [])),
+    getDocumentSaveText: section => JSON.parse(call("miacode_document_save_text", "string", ["number"], [section])),
+    documentCommand,
+    setCanvasSize: size => {
+      const result = JSON.parse(call("miacode_set_canvas_size", "string", ["number", "number"], [size.width, size.height]));
+      if (!result.error) setSurfaceSize(result.width, result.height);
+      return result;
+    },
+    setMediaSettings: async settings => {
+      if (!settings || Object.keys(settings).length !== 1 || typeof settings.hidePv !== "boolean")
+        throw new Error("Media settings require a boolean hidePv");
+      hidePv = settings.hidePv;
+      if (video.src) {
+        video.hidden = hidePv;
+        if (hidePv) { video.pause(); await setBackground(loadedCover); }
+        else {
+          call("miacode_external_video", null, ["number"], [1]);
+          video.currentTime = audio.currentSecond();
+          if (audio.playing) void video.play().catch(() => {});
+        }
+      }
+      return { hidePv };
+    },
+    setPlayback: changes => {
+      const result = playbackSettings(playback, changes, audio?.duration ?? 0);
+      if (audio && result.rate !== playback.rate) audio.setRate(result.rate);
+      playback = result;
+      video.playbackRate = result.rate;
+      if (result.rangePlaybackEnabled && audio && (audio.offset < result.exportStartSeconds || audio.offset > result.exportEndSeconds))
+        seek(result.exportStartSeconds);
+      updateTransport();
+      return { ...result };
+    },
+    setTheme: theme => { view.theme?.(theme); return theme; },
+    setCoverComposition: composition => {
+      pause();
+      const result = JSON.parse(call("miacode_cover", "string", ["string"], [JSON.stringify(composition)]));
+      if (!result.error) {
+        document.body.classList.add("cover-view");
+        $("transport").hidden = true;
+        setSurfaceSize(result.outputWidth, result.outputHeight);
+      }
+      return result;
+    },
+    getCoverComposition: () => JSON.parse(call("miacode_cover_state", "string", [], [])),
     setSettings: (settings) => {
       const result = JSON.parse(
         call(

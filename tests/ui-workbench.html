@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="../ui/components/theme.css">
+<link rel="stylesheet" href="../ui/components/fonts.css">
+<link rel="stylesheet" href="../page.css">
+<title>MiaCode 工作台对照</title>
+<div id="workbench" class="workbench"></div>
+<script type="module">
+  import { ViewState } from "../services/view-state.mjs";
+  import { Workbench } from "../ui/workbench/workbench.mjs";
+  const theme = new URLSearchParams(location.search).get("theme") || "dark";
+  const state = new ViewState({ getItem: () => null, setItem: () => {} });
+  state.preferences.themeModeToken = theme.endsWith("light") ? "light" : "dark";
+  state.preferences.darkThemeToken = theme;
+  state.preferences.lightThemeToken = theme;
+  state.openEditorTabs = ["metadata", "difficulty:5", "difficulty:6"];
+  state.activeEditorKey = "difficulty:5";
+  const workbench = new Workbench(document.getElementById("workbench"), state);
+  workbench.setDocument({ hasDocument: true, filePath: "Song/maidata.txt", title: "MiaCode Example", activeDifficultyId: 5,
+    metadataTitle: "MiaCode Example", metadataArtist: "Team MiaCode", metadataDesigner: "MiaCode", metadataFirst: "0",
+    currentDifficultyLevel: "13+", currentDifficultyDesigner: "MiaCode", currentDifficultyOffset: "0",
+    chartText: "(120){4}\n1,2,3,4,5,6,7,8,\n1b,2x,3h[4:1],4-8[4:1],\nA1,B2,C,D3,E4,E",
+    charts: [{ id: 5, level: "13+", designer: "MiaCode" }, { id: 6, level: "14", designer: "MiaCode" }] });
+  state.editorCursorLine = 3; state.editorCursorColumn = 4;
+  workbench.cursorLabel.textContent = "行 3，列 4";
+  workbench.status("Song/maidata.txt");
+  document.getElementById("workbench").workbench = workbench;
+</script>
+</html>

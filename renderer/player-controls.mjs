@@ -1,14 +1,17 @@
-// Component UI: no uploads, dev panel, or website-specific resource handling.
+import { THEME_TOKENS, previewTheme } from "./protocol.mjs";
+
+// Shared player controls.
 export function attachPlayerControls(controller, engine) {
   const $ = (id) => document.getElementById(id);
   const themeButton = $("theme-toggle");
   function setTheme(theme) {
     document.documentElement.dataset.theme = theme;
-    themeButton.textContent = theme === "dark" ? "浅色" : "深色";
-    themeButton.setAttribute("aria-label", `切换到${theme === "dark" ? "浅色" : "深色"}主题`);
+    const labels = { dark: "浅色", light: "经典深色", legacy: "经典浅色", legacy_light: "深色" };
+    themeButton.textContent = labels[theme];
+    themeButton.setAttribute("aria-label", `切换到${labels[theme]}主题`);
   }
-  setTheme(new URLSearchParams(location.search).get("theme") === "light" ? "light" : "dark");
-  themeButton.addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
+  setTheme(previewTheme(new URLSearchParams(location.search).get("theme") || "dark"));
+  themeButton.addEventListener("click", () => setTheme(THEME_TOKENS[(THEME_TOKENS.indexOf(document.documentElement.dataset.theme) + 1) % THEME_TOKENS.length]));
   $("fullscreen").addEventListener("click", async () => {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
@@ -104,5 +107,5 @@ export function attachPlayerControls(controller, engine) {
   $("play").addEventListener("click", () => run(engine.state().playing ? "pause" : "play"));
   $("restart").addEventListener("click", () => run("restart"));
   $("seek").addEventListener("input", () => run("seek", { second: Number($("seek").value) }));
-  return { settings: updateSettingsControls, chart: updateChart, transport: updateTransport };
+  return { settings: updateSettingsControls, chart: updateChart, transport: updateTransport, theme: setTheme };
 }

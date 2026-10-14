@@ -1,10 +1,10 @@
 # MiaView_Web
 
-MiaView_Web 是一个可部署为独立网站、也可嵌入其他网站的 maimai 谱面实时预览库，支持 Simai 格式。它基于 [MiaCode](https://github.com/Team-MiaCode/MiaCode) 的原生解析器和预览场景，通过 WebAssembly、Qt Quick 和 WebGL 2 绘制画面，通过 WebAudio 播放音乐与判定音效。
+MiaView_Web 提供 maimai 谱面编辑工作台与实时预览 SDK，支持 Simai 格式。它基于 [MiaCode](https://github.com/Team-MiaCode/MiaCode) 的原生解析器和预览场景，通过 WebAssembly、Qt Quick 和 WebGL 2 绘制画面，通过 WebAudio 播放音乐与判定音效。工作台采用 HTML/CSS 与原生 ES modules，入口为 `index.html`。
 
 本项目通过 `vendor/MiaCode` 子模块跟进 MiaCode `dev`，并固定确切提交。解析、分析和预览场景复用上游代码；浏览器宿主、音视频接入、JavaScript SDK 和网页界面由本仓维护。更新上游需要显式更新子模块并重建播放器。
 
-[在线预览](https://team-miacode.github.io/MiaView_Web/)可以直接打开使用：选择自己的本地谱面、音乐和 PV，文件只在浏览器中读取，不会上传到 GitHub。项目提供谱面预览，不包含完整编辑器和视频导出功能。
+[在线预览](https://team-miacode.github.io/MiaView_Web/)支持选择本地谱面、音乐和 PV；文件在浏览器中读取。编辑器的阶段要求与验收记录见[迁移计划](docs/WEB_EDITOR_MIGRATION_PLAN_ZH.md)和[UI 验收计划](docs/WEB_EDITOR_UI_ACCEPTANCE_ZH.md)。`editor/` 包含独立编辑器模板的入口、界面、SDK、运行时适配器、构建脚本与源版本配置。
 
 ## 功能一览
 
@@ -12,7 +12,7 @@ MiaView_Web 是一个可部署为独立网站、也可嵌入其他网站的 maim
 - 使用音乐、背景图片或 PV 视频搭配谱面播放。
 - 播放、暂停、跳转、重播和切换难度。
 - 调整音符流速、内外圈亮度，切换 SD / DX 皮肤与预览模式。
-- 支持深色与浅色主题，设置面板适配桌面和窄屏。
+- 支持深色、浅色、经典深色与经典浅色主题，设置面板适配桌面和窄屏。
 - 支持 16:9 和 1:1 画面，最大预览帧率可设为不小于 30 的整数或不限，默认 60 FPS。
 - 提供 ES module SDK、TypeScript 类型声明和加载 / 播放诊断接口。
 
@@ -72,7 +72,9 @@ npm run check
 npm run dev
 ```
 
-无需执行 `npm install`。打开 <http://localhost:3030>，选择包含 `maidata.txt` 的谱面文件夹，等待加载完成后点击播放。文件夹可以同时包含音乐、背景图片和 PV；示例按扩展名选择首个同类素材，有多个同类文件时建议通过 SDK 明确指定。
+编辑器主入口为根目录的 `index.html`，通过 HTTP/HTTPS 加载。开发服务启动后，打开 <http://127.0.0.1:3030/index.html>。双击 HTML 时，页面显示本地服务启动命令和编辑器链接。
+
+无需执行 `npm install`。“打开”与 `Ctrl+O` 选择整个谱面文件夹，网页保留该目录的文件清单。`maidata.txt` 与同目录的 `track.mp3/wav/flac/ogg/m4a`、`bg.jpg/png/jpeg/webp`、`bg.mp4` 或 `pv.mp4/webm` 按 v2 的资源命名关系载入，分别用于谱面、音乐、背景与 PV。集合目录包含多个谱面时，工作台显示谱面文件夹选择窗口。
 
 示例页可切换分辨率和最大帧率。修改这些选项后会重新创建播放器、加载当前谱面并回到起点，默认暂停。
 
@@ -213,8 +215,19 @@ await preview.load({ maidata: maidataFile, audio: musicFile });
 | `load(input)` | 加载谱面和媒体，回到起点并暂停 |
 | `play()` / `pause()` | 播放 / 暂停 |
 | `seek(second)` / `restart()` | 跳转 / 从头重播 |
-| `selectDifficulty(id)` | 切换已有难度，编号为 1–7 |
+| `selectDifficulty(id)` | 切换已有难度，编号为 1–7；可预览的正文返回 ChartInfo，编辑中的解析异常正文返回 DocumentSnapshot |
 | `setSettings(settings)` | 修改流速、亮度、皮肤和预览模式 |
+| `setPlayback(settings)` | 修改 `rate`、`rangePlaybackEnabled`、`exportStartSeconds`、`exportEndSeconds` |
+| `setMediaSettings({ hidePv })` | 切换 PV 与谱面背景 |
+| `setCanvasSize({ width, height })` | 设置当前画布尺寸，整数边长范围为 1–4096 |
+| `setCoverComposition(composition)` | 使用原生封面场景设置图层、选中状态、曲目内容和输出宽高 |
+| `getCoverComposition()` | 获取封面图层、选中图层和输出宽高 |
+| `getTimeline(options)` | 按视口、色板和缩放获取原生时间轴场景、音符图像与音轨波形 |
+| `navigateTimeline({ x, y })` | 将时间轴坐标映射为播放时间与谱面原文位置 |
+| `getTimelineFollow(second)` | 获取原生代码跟随范围与光标位置 |
+| `getDocument()` | 获取原生工作区的正文、元数据、revision、dirty 与保存点状态 |
+| `documentCommand(id, args)` | 提交工作区字段、正文与难度事务 |
+| `getDocumentSaveText(section)` | 获取原生分段保存文本；0 为全文档，−1 为元数据，1–7 为难度正文 |
 | `getState()` | 获取播放位置、难度和设置 |
 | `getDiagnostics()` / `resetDiagnostics()` | 获取 / 重置诊断历史 |
 | `setDiagnostics(enabled)` | 开关加载日志与播放性能采样 |

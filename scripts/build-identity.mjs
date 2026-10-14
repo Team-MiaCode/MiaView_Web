@@ -4,16 +4,18 @@ import { join } from "node:path";
 
 function hashNativeInputs(hash, native) {
   for (const name of ["browser-host.cpp", "CMakeLists.txt", "browser-assets.qrc.in",
-    "firework-layer.cpp", "firework-layer.h"])
-    hash.update(name).update(readFileSync(join(native, name)));
+    "firework-layer.cpp", "firework-layer.h", "cover-scene.cpp", "cover-scene.h", "timeline-bridge.cpp", "timeline-bridge.h", "document-bridge.cpp", "document-bridge.h"])
+    hash.update(name).update(readFileSync(join(native, name), "utf8").replace(/\r\n/g, "\n"));
   return hash;
 }
 
 export function rendererVersion(sourceRevision, toolchain, native, renderer) {
   const hash = createHash("sha256").update(sourceRevision).update(JSON.stringify(toolchain));
   hashNativeInputs(hash, native);
-  for (const name of readdirSync(renderer).filter(name => /\.(wasm|js|mjs|css|html)$/.test(name)).sort())
-    hash.update(name).update(readFileSync(join(renderer, name)));
+  for (const name of readdirSync(renderer).filter(name => /\.(wasm|js|mjs|css|html)$/.test(name)).sort()) {
+    const content = name.endsWith(".wasm") ? readFileSync(join(renderer, name)) : readFileSync(join(renderer, name), "utf8").replace(/\r\n/g, "\n");
+    hash.update(name).update(content);
+  }
   return `miaview-web-2-${hash.digest("hex").slice(0, 12)}`;
 }
 

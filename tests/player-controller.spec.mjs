@@ -9,12 +9,18 @@ function fixture() {
     boot: Promise.resolve(),
     events(listener) { this.emit = listener; },
     chart: () => chart,
+    getDocument: () => ({ charts: chart?.charts || [] }),
     state: () => ({ currentTime: position, duration: 10, settings }),
     clear() { calls.push("clear"); chart = null; },
     async load(resources, difficulty) {
       calls.push(["load", resources, difficulty]);
       chart = { title: "Test", charts: [{ id: 5 }, { id: 6 }], difficultyId: difficulty ?? 6 };
       this.emit("paused", { elapsedMs: 0 });
+    },
+    async documentCommand(request) {
+      calls.push(["document", request]);
+      chart = { ...chart, difficultyId: request.args.difficulty };
+      return { accepted: true };
     },
     setSettings(value) { settings = value; return settings; },
     seek(value) { position = Math.min(value, 10); },
@@ -35,9 +41,9 @@ test("controller shares settings and seek events across UI and host commands", a
   assert.deepEqual(events.find((e) => e.type === "settingsChanged").payload, { tapFlowSpeed: 8, noteSkin: "DX" });
   assert.deepEqual(events.find((e) => e.type === "seeked").payload, { currentTime: 10 });
   await controller.execute("selectDifficulty", { difficulty: 5 });
-  const loads = calls.filter(Array.isArray);
-  assert.equal(loads[0][1], loads[1][1]);
-  assert.equal(loads[1][2], 5);
+  assert.equal(calls.filter(call => Array.isArray(call) && call[0] === "load").length, 1);
+  assert.deepEqual(calls.find(call => Array.isArray(call) && call[0] === "document"),
+    ["document", { id: "document.selectDifficulty", args: { difficulty: 5 } }]);
 });
 
 test("invalid commands preserve the loaded chart and do not poison the queue", async () => {

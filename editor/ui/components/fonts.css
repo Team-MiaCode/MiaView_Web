@@ -1,0 +1,5 @@
+@font-face { font-family: "Maple Mono Normal NL CN"; src: url("fonts/MapleMonoNormalNL-CN-lower.woff2") format("woff2"); font-style: normal; font-weight: 400; font-display: swap; unicode-range: U+0-6FFF; }
+@font-face { font-family: "Maple Mono Normal NL CN"; src: url("fonts/MapleMonoNormalNL-CN-upper.woff2") format("woff2"); font-style: normal; font-weight: 400; font-display: swap; unicode-range: U+7000-10FFFF; }
+@font-face { font-family: "Resource Han Rounded CN Heavy"; src: url("fonts/ResourceHanRoundedCN-Heavy.woff2") format("woff2"); font-style: normal; font-weight: 900; font-display: swap; }
+@font-face { font-family: "Resource Han Rounded CN Bold"; src: url("fonts/ResourceHanRoundedCN-Bold.woff2") format("woff2"); font-style: normal; font-weight: 700; font-display: swap; }
+:root { --code-font-family: "Maple Mono Normal NL CN"; --code-font-line-ratio: 1.32; }

@@ -11,6 +11,11 @@
 #include <QElapsedTimer>
 #include <emscripten/emscripten.h>
 #include "firework-layer.h"
+#include "cover-scene.h"
+#include "timeline-bridge.h"
+#include "document-bridge.h"
+#include <QQmlExtensionPlugin>
+#include <QPointer>
 #include "preview/quick_scene/PreviewQuickSceneRoot.h"
 #include "preview/quick_scene/PreviewQuickHudLayer.h"
 #include "preview/runtime/PreviewSceneAssetLoader.h"
@@ -24,11 +29,16 @@
 #include "core/video/AssetPaths.h"
 
 using namespace miacode::preview::scene;
+Q_IMPORT_QML_PLUGIN(MiaCode_PreviewPlugin)
+EM_JS(void, publishCoverChange, (const char* data), {
+    Module.onCoverChanged?.(UTF8ToString(data));
+});
 namespace {
 PreviewFrameState state;
 PreviewQuickSceneRoot* scene = nullptr;
 PreviewQuickHudLayer* hud = nullptr;
 QQuickWindow* previewWindow = nullptr;
+QPointer<WebCoverScene> coverScene;
 QSize renderSize(1920, 1080);
 QByteArray response;
 PreviewSkinAssets dxSkin, sdSkin;
@@ -42,12 +52,12 @@ QElapsedTimer hudUpdateClock;
 constexpr qint64 kHudUpdateIntervalMs = 100;
 // Only the active chart/difficulty is retained. Markers and stats already live
 // in state; do not accumulate a second set of timelines for visited charts.
-QString loadedSource;
-SimaiDocument loadedDocument;
-bool documentReady = false;
+WebDocument editorDocument;
 bool chartLoaded = false;
 int loadedDifficulty = 0;
+quint64 renderedRevision = 0;
 QByteArray cachedLoadResponse;
+WebTimeline timeline;
 void applyRenderMode(RenderMode mode) {
     state.muriRenderOptions.renderMode = mode;
     // Hide diagnostic pad/hand overlays, not the analysis used by Slide
@@ -130,6 +140,21 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_set_resolution(double width, double hei
     refresh();
     return miacode_resolution();
 }
+EMSCRIPTEN_KEEPALIVE const char* miacode_set_canvas_size(double width, double height) {
+    if (!qIsFinite(width) || !qIsFinite(height) || width <= 0 || height <= 0
+        || width > 4096 || height > 4096 || width != int(width) || height != int(height))
+        return json({{"error", "画布尺寸无效"}});
+    renderSize = QSize(int(width), int(height));
+    const bool square = width == height;
+    state.render.showTimestamp = true;
+    state.render.showChartInfoHud = !square;
+    state.render.showObjectStatsHud = !square;
+    previewWindow->resize(renderSize);
+    scene->setSize(renderSize);
+    hud->setSize(renderSize);
+    refresh();
+    return miacode_resolution();
+}
 EMSCRIPTEN_KEEPALIVE double miacode_frame_count() {
     return presentedFrames;
 }
@@ -170,22 +195,36 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_set_settings(double outer, double inner
     refresh();
     return json(settings());
 }
-EMSCRIPTEN_KEEPALIVE const char* miacode_load(const char* text, int difficultyId) {
+const char* renderDocument(int difficultyId, bool resetTime) {
     using namespace miacode::timeline::offset;
-    const QString source = QString::fromUtf8(text);
-    if (!documentReady || loadedSource != source) {
-        loadedSource = source;
-        loadedDocument = SimaiDocument::fromText(source);
-        documentReady = true;
-        chartLoaded = false;
-        cachedLoadResponse.clear();
-    }
-    const SimaiDocument& doc = loadedDocument;
+    const SimaiDocument& doc = editorDocument.workspace.document();
     const auto ids = doc.difficultyIds();
-    if (ids.isEmpty()) return json({{"error", "没有可预览的 inote 谱面"}});
+    const auto clearScene = [] {
+        state.noteMarkers.clear();
+        state.progressStatsCache.reset();
+        cachedAnalysis = MuriAnalysisReport();
+        analysisReady = false;
+        applyRenderMode(state.muriRenderOptions.renderMode);
+        ++state.sceneContentRevision;
+        refresh();
+    };
+    if (ids.isEmpty()) {
+        clearScene();
+        timeline.load(QString(), 0, miacode::simai::SimaiTimingMetadata());
+        chartLoaded = false;
+        return json({{"error", "没有可预览的 inote 谱面"}});
+    }
+    if (coverScene) {
+        coverScene->setVisible(false);
+        previewWindow->resize(renderSize);
+        scene->setVisible(true);
+        hud->setVisible(true);
+    }
     if (!ids.contains(difficultyId)) difficultyId = ids.last();
-    if (chartLoaded && loadedDifficulty == difficultyId) {
-        state.playheadSeconds = 0;
+    editorDocument.workspace.selectDifficulty(difficultyId);
+    const auto revision = editorDocument.workspace.snapshot().revision;
+    if (chartLoaded && loadedDifficulty == difficultyId && renderedRevision == revision) {
+        if (resetTime) state.playheadSeconds = 0;
         refresh();
         return cachedLoadResponse.constData();
     }
@@ -193,15 +232,20 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_load(const char* text, int difficultyId
     chartLoaded = false;
     cachedLoadResponse.clear();
     const auto* difficulty = doc.difficulty(difficultyId);
+    bool firstOk = false;
+    const double first = parsedFirstSeconds(doc.first, &firstOk);
+    timeline.load(difficulty->chart, firstOk && qIsFinite(first) ? first : 0, miacode::simai::buildTimingMetadata(doc));
+    if (!firstOk || !qIsFinite(first)) {
+        clearScene();
+        return json({{"error", "first 必须是有限的秒数"}});
+    }
     const auto parsed = SimaiParser::parseForTimeline(difficulty->chart, miacode::simai::buildTimingMetadata(doc));
     if (!parsed.ok) {
+        clearScene();
         QJsonArray errors;
         for (const auto& error : parsed.errors) errors.append(QString("第 %1 行：%2").arg(error.line).arg(error.message));
         return json({{"error", errors.isEmpty() ? QString("谱面解析失败") : errors.first().toString()}, {"errors", errors}});
     }
-    bool firstOk = false;
-    const double first = parsedFirstSeconds(doc.first, &firstOk);
-    if (!firstOk || !qIsFinite(first)) return json({{"error", "first 必须是有限的秒数"}});
     state.noteMarkers = shiftedNoteMarkers(parsed.noteMarkers, first, NonFiniteHandling::Propagate);
     cachedAnalysis = MuriAnalysisReport();
     analysisReady = false;
@@ -213,7 +257,7 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_load(const char* text, int difficultyId
     state.chartArtist = doc.artist;
     state.chartDesigner = difficulty->designer.isEmpty() ? doc.designer : difficulty->designer;
     state.chartDifficultyLabel = SimaiDocument::difficultyShortName(difficultyId) + " " + difficulty->level;
-    state.playheadSeconds = 0;
+    if (resetTime) state.playheadSeconds = 0;
     ++state.sceneContentRevision;
     QVector<miacode::preview_sfx_timeline::Event> events;
     QVector<miacode::preview_sfx_timeline::TouchholdSpan> spans;
@@ -250,8 +294,76 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_load(const char* text, int difficultyId
         {"sfx", playbacks}, {"touchholdSegments", sustains}});
     cachedLoadResponse = response;
     loadedDifficulty = difficultyId;
+    renderedRevision = revision;
     chartLoaded = true;
     return cachedLoadResponse.constData();
+}
+EMSCRIPTEN_KEEPALIVE const char* miacode_load(const char* text, int difficultyId, const char* filePath) {
+    editorDocument.workspace.openSource(QString::fromUtf8(text), QString::fromUtf8(filePath), difficultyId);
+    return renderDocument(editorDocument.workspace.snapshot().activeDifficultyId, true);
+}
+EMSCRIPTEN_KEEPALIVE const char* miacode_document() {
+    return json(editorDocument.snapshot());
+}
+EMSCRIPTEN_KEEPALIVE const char* miacode_document_command(const char* source) {
+    const auto request = QJsonDocument::fromJson(QByteArray(source));
+    if (!request.isObject()) return json({{"error", "Document command must be an object"}});
+    auto result = editorDocument.command(request.object());
+    if (result.contains("error")) return json(result);
+    const bool resetTime = request.object().value("id").toString() == QLatin1String("document.selectDifficulty");
+    const auto preview = QJsonDocument::fromJson(QByteArray(renderDocument(editorDocument.workspace.snapshot().activeDifficultyId, resetTime)));
+    result.insert("preview", preview.object());
+    return json(result);
+}
+EMSCRIPTEN_KEEPALIVE const char* miacode_document_save_text(int section) {
+    return json({{"sourceText", editorDocument.workspace.textForSectionSave(section)},
+        {"revision", double(editorDocument.workspace.snapshot().revision)}});
+}
+EMSCRIPTEN_KEEPALIVE const char* miacode_cover(const char* source) {
+    QJsonParseError error;
+    const auto value = QJsonDocument::fromJson(QByteArray(source), &error);
+    if (error.error != QJsonParseError::NoError || !value.isObject())
+        return json({{"error", "Cover composition must be a JSON object"}});
+    const auto composition = value.object();
+    const auto outputSize = coverScene ? coverScene->outputSize() : renderSize;
+    const double width = composition.contains("outputWidth") ? composition.value("outputWidth").toDouble(-1) : outputSize.width();
+    const double height = composition.contains("outputHeight") ? composition.value("outputHeight").toDouble(-1) : outputSize.height();
+    if (!qIsFinite(width) || !qIsFinite(height) || width <= 0 || height <= 0
+        || width > 4096 || height > 4096 || width != int(width) || height != int(height))
+        return json({{"error", "封面分辨率无效"}});
+    if (!coverScene) {
+        coverScene = new WebCoverScene(previewWindow->contentItem());
+        QObject::connect(coverScene, &WebCoverScene::compositionChanged, coverScene, [](const QJsonObject& changed) {
+            const auto bytes = QJsonDocument(changed).toJson(QJsonDocument::Compact);
+            publishCoverChange(bytes.constData());
+        });
+    }
+    const auto result = coverScene->configure(composition);
+    if (result.contains("error")) return json(result);
+    previewWindow->resize(QSize(int(width), int(height)));
+    coverScene->setOutputSize(QSize(int(width), int(height)));
+    coverScene->setVisible(true);
+    scene->setVisible(false);
+    hud->setVisible(false);
+    return json(coverScene->snapshot());
+}
+EMSCRIPTEN_KEEPALIVE const char* miacode_cover_state() {
+    return json(coverScene ? coverScene->snapshot() : QJsonObject());
+}
+EMSCRIPTEN_KEEPALIVE const char* miacode_timeline(const char* source) {
+    const auto options = QJsonDocument::fromJson(QByteArray(source));
+    if (!options.isObject()) return json({{"error", "时间轴参数须为对象"}});
+    return json(timeline.build(options.object()));
+}
+EMSCRIPTEN_KEEPALIVE const char* miacode_timeline_navigate(double x, double y) {
+    auto result = timeline.navigate(x, y);
+    return json(result);
+}
+EMSCRIPTEN_KEEPALIVE const char* miacode_timeline_follow(double second) {
+    return json(timeline.follow(second));
+}
+EMSCRIPTEN_KEEPALIVE void miacode_waveform(const float* samples, int count, double duration) {
+    timeline.setWaveform(samples, count, duration);
 }
 EMSCRIPTEN_KEEPALIVE void miacode_seek(double second) {
     if (!qIsFinite(second)) return;
@@ -262,6 +374,23 @@ EMSCRIPTEN_KEEPALIVE void miacode_tick(double second) {
     if (!qIsFinite(second)) return;
     state.playheadSeconds = qMax(0.0, second);
     refresh(false);
+}
+EMSCRIPTEN_KEEPALIVE const char* miacode_statistics() {
+    QJsonArray entries;
+    if (chartLoaded && state.progressStatsCache) {
+        const auto counts = state.progressStatsCache->snapshotAt(state.playheadSeconds);
+        const auto append = [&entries](const char* kind, int played, int total) {
+            entries.append(QJsonObject{{"kind", QLatin1String(kind)}, {"played", played}, {"total", total},
+                {"value", QString::number(played) + "/" + QString::number(total)}});
+        };
+        append("tap", counts.tapPlayed, counts.tapTotal);
+        append("hold", counts.holdPlayed, counts.holdTotal);
+        append("slide", counts.slidePlayed, counts.slideTotal);
+        append("touch", counts.touchPlayed, counts.touchTotal);
+        append("break", counts.breakPlayed, counts.breakTotal);
+        append("total", counts.totalPlayed, counts.totalCount);
+    }
+    return json({{"statistics", entries}, {"statisticsAvailable", chartLoaded}});
 }
 EMSCRIPTEN_KEEPALIVE int miacode_background(const unsigned char* data, int size) {
     if (!data || size <= 0) {

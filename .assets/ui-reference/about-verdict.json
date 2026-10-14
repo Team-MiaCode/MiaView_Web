@@ -1,0 +1,8 @@
+{
+  "score": 94,
+  "verdict": "pass",
+  "category_match": true,
+  "differences": ["浏览器与 Qt 的标题字重、版本字形和文字抗锯齿存在差异。"],
+  "suggestions": ["构建信息沿用版本生成文件与运行时提供的 aboutInfo 字段。"],
+  "reasoning": "原始应用图标、48 像素品牌区、版本、平台和构建配置的位置与内容层级对应原生表单；四主题保留相应色彩。评分范围为关于页面的内容表单。"
+}

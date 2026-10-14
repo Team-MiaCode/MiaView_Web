@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#121314">
+    <title>MiaCode Web · 谱面编辑器</title>
+    <link rel="icon" href="ui/components/icons/chart.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="ui/components/theme.css">
+    <link rel="stylesheet" href="page.css">
+  </head>
+  <body>
+    <main id="workbench" class="workbench" aria-label="MiaCode 谱面编辑器"></main>
+    <template id="local-server-help">
+      <h1>MiaCode Web</h1>
+      <p>编辑器通过 HTTP 服务加载。请在项目目录运行：</p>
+      <pre><code>npm run dev</code></pre>
+      <a href="http://127.0.0.1:3030/index.html">打开本地编辑器</a>
+    </template>
+    <script>
+      if (location.protocol === "file:") {
+        const container = document.getElementById("workbench");
+        container.className = "local-server-help";
+        container.append(document.getElementById("local-server-help").content.cloneNode(true));
+      } else {
+        import("./app.mjs");
+      }
+    </script>
+  </body>
+</html>

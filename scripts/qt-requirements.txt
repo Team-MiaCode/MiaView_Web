@@ -1,2 +1,4 @@
 requests==2.34.2
 py7zr==1.0.0
+fonttools==4.65.0
+brotli==1.2.0

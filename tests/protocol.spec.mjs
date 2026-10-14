@@ -10,10 +10,16 @@ import {
   difficultyId,
   httpUrl,
   validIdentity,
+  previewTheme,
 } from "../sdk/protocol.mjs";
 import { previewResolution } from "../sdk/resolution.mjs";
 const sessionId = "00000000-0000-4000-8000-000000000001";
 const requestId = "00000000-0000-4000-8000-000000000002";
+test("Original theme tokens use the same validation for creation and runtime commands", () => {
+  assert.equal(previewTheme(undefined), "dark");
+  for (const theme of ["dark", "light", "legacy", "legacy_light"]) assert.equal(previewTheme(theme), theme);
+  for (const theme of ["system", "Dark", "", 1]) assert.throws(() => previewTheme(theme), /Unknown MiaCode theme/);
+});
 test("SDK request boundary checks parent window, exact origin, session, protocol and request id", () => {
   const parent = {},
     origin = "https://host.example";

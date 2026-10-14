@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -51,6 +53,11 @@ jobs:
       - run: npm install --no-save --package-lock=false playwright@1.62.1
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser && npm run test:ui && npm run test:pages
+      - name: Validate workbench and isolated editor template
+        env:
+          MIACODE_TEST_ENGINES: chromium
+          MIACODE_DENSITY_ENGINES: chromium
+        run: npm run test:workbench && npm run test:density && npm run test:gallery && npm run test:folder && npm run test:cover && npm run test:transport && npm run test:timeline && npm run test:document && npm run test:analysis-ui && npm run test:editor-tabs && npm run test:workbench-chrome && npm run test:source-editor-ui && npm run test:ime && npm run test:stage1 && npm run sync:products -- --runtime && npm run test:editor-template
       - run: npm run build:pages
       - uses: actions/upload-artifact@v4
         with:
@@ -77,6 +84,11 @@ jobs:
         with:
           name: ui-screenshots
           path: artifacts/ui
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: workbench-screenshots
+          path: artifacts/workbench-ui
 
   deploy-pages:
     needs: build-preview

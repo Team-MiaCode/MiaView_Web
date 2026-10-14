@@ -11,6 +11,7 @@ import {
   normalizeChart,
   normalizeSettings,
   difficultyId,
+  previewTheme,
 } from "./protocol.mjs";
 export { previewResolution, DEFAULT_RESOLUTION } from "./resolution.mjs";
 export { previewMaxFps, DEFAULT_MAX_FPS } from "./frame-rate.mjs";
@@ -32,9 +33,13 @@ class MiaCodePreview {
       throw new Error("MiaView Web requires HTTPS or localhost");
     const resolution = previewResolution(options.resolution);
     const maxFps = previewMaxFps(options.maxFps);
-    const theme = options.theme ?? "dark";
-    if (theme !== "dark" && theme !== "light")
-      throw new Error("theme must be dark or light");
+    const theme = previewTheme(options.theme);
+    const layout = options.layout ?? "intrinsic";
+    if (layout !== "intrinsic" && layout !== "fit") throw new Error("layout must be intrinsic or fit");
+    this.layout = layout;
+    this.resolution = resolution;
+    this.controls = options.controls ?? true;
+    if (typeof this.controls !== "boolean") throw new Error("controls must be a boolean");
     this.pvTimeoutMs = previewPvTimeout(options.pvTimeoutMs);
     if (
       options.diagnostics !== undefined &&
@@ -55,6 +60,7 @@ class MiaCodePreview {
     this.url.searchParams.set("height", String(resolution.height));
     this.url.searchParams.set("maxFps", String(maxFps));
     this.url.searchParams.set("theme", theme);
+    this.url.searchParams.set("controls", this.controls ? "1" : "0");
     this.url.searchParams.set("pvTimeoutMs", String(this.pvTimeoutMs));
     this.url.searchParams.set(
       "diagnostics",
@@ -74,11 +80,12 @@ class MiaCodePreview {
       position: "relative",
       width: "100%",
       paddingTop: `${(resolution.height / resolution.width) * 100}%`,
-      paddingBottom: `${TRANSPORT_HEIGHT}px`,
+      paddingBottom: this.controls ? `${TRANSPORT_HEIGHT}px` : "0",
       overflow: "hidden",
       background: "#000",
       boxSizing: "content-box",
     });
+    if (layout === "fit") Object.assign(this.wrapper.style, { paddingTop: "0", paddingBottom: "0", height: "100%", boxSizing: "border-box" });
     this.iframe = document.createElement("iframe");
     Object.assign(this.iframe.style, {
       position: "absolute",
@@ -239,7 +246,7 @@ class MiaCodePreview {
       return this.command(
         "load",
         normalizeChart(chart, this.wrapper.ownerDocument.baseURI),
-      );
+      ).then(value => { this.setIntrinsicSurface(this.resolution, false); return value; });
     } catch (error) {
       return Promise.reject(error);
     }
@@ -267,12 +274,55 @@ class MiaCodePreview {
       return Promise.reject(error);
     }
   }
+  setPlayback(settings) {
+    return this.command("setPlayback", settings);
+  }
+  setMediaSettings(settings) {
+    return this.command("setMediaSettings", settings);
+  }
+  setCanvasSize(size) {
+    if (!size || !Number.isInteger(size.width) || !Number.isInteger(size.height) || size.width <= 0 || size.height <= 0 || size.width > 4096 || size.height > 4096)
+      return Promise.reject(new Error("Canvas dimensions must be positive integers up to 4096"));
+    return this.command("setCanvasSize", size).then(value => {
+      this.resolution = { width: value.width, height: value.height };
+      this.setIntrinsicSurface(this.resolution, false);
+      return this.resolution;
+    });
+  }
+  getTimeline(options) { return this.command("getTimeline", options); }
+  navigateTimeline(point) { return this.command("navigateTimeline", point); }
+  getTimelineFollow(second) {
+    if (!Number.isFinite(second)) return Promise.reject(new Error("Timeline time must be finite"));
+    return this.command("getTimelineFollow", { second });
+  }
+  getDocument() { return this.command("getDocument"); }
+  documentCommand(id, args = {}) { return this.command("documentCommand", { id, args }); }
+  getDocumentSaveText(section = 0) { return this.command("getDocumentSaveText", { section }); }
+  setTheme(theme) {
+    try { return this.command("setTheme", { theme: previewTheme(theme) }); }
+    catch (error) { return Promise.reject(error); }
+  }
+  setCoverComposition(composition) {
+    return this.command("setCoverComposition", composition).then(value => {
+      this.setIntrinsicSurface({ width: value.outputWidth, height: value.outputHeight }, true);
+      return value;
+    });
+  }
+  setIntrinsicSurface(resolution, cover) {
+    if (this.layout === "intrinsic") Object.assign(this.wrapper.style, {
+      paddingTop: `${resolution.height / resolution.width * 100}%`,
+      paddingBottom: cover || !this.controls ? "0" : `${TRANSPORT_HEIGHT}px`,
+    });
+  }
+  getCoverComposition() {
+    return this.command("getCoverComposition");
+  }
   selectDifficulty(difficulty) {
     try {
       if (difficulty == null) throw new Error("Difficulty is required");
       return this.command("selectDifficulty", {
         difficulty: difficultyId(difficulty),
-      });
+      }).then(value => { this.setIntrinsicSurface(this.resolution, false); return value; });
     } catch (error) {
       return Promise.reject(error);
     }

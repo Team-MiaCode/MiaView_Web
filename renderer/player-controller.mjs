@@ -1,4 +1,4 @@
-import { normalizeChart, normalizeSettings, difficultyId, commands } from "./protocol.mjs";
+import { normalizeChart, normalizeSettings, difficultyId, commands, previewTheme } from "./protocol.mjs";
 
 // The single command boundary used by both component controls and the SDK.
 export function createPlayerController(engine) {
@@ -45,6 +45,34 @@ export function createPlayerController(engine) {
       return loadedInfo();
     }
     if (type === "getState") return engine.state();
+    if (type === "setPlayback") {
+      const result = engine.setPlayback(payload);
+      emit("playbackChanged", result);
+      return result;
+    }
+    if (type === "setMediaSettings") return engine.setMediaSettings(payload);
+    if (type === "setCanvasSize") {
+      const result = engine.setCanvasSize(payload);
+      if (result.error) throw new Error(result.error);
+      return result;
+    }
+    if (type === "getTimeline") {
+      const result = engine.getTimeline(payload);
+      if (result.error) throw new Error(result.error);
+      return result;
+    }
+    if (type === "navigateTimeline") return engine.navigateTimeline(payload);
+    if (type === "getTimelineFollow") return engine.getTimelineFollow(payload.second);
+    if (type === "getDocument") return engine.getDocument();
+    if (type === "getDocumentSaveText") return engine.getDocumentSaveText(payload.section);
+    if (type === "documentCommand") return engine.documentCommand(payload);
+    if (type === "setCoverComposition") {
+      const result = engine.setCoverComposition(payload);
+      if (result.error) throw new Error(result.error);
+      return result;
+    }
+    if (type === "getCoverComposition") return engine.getCoverComposition();
+    if (type === "setTheme") return engine.setTheme(previewTheme(payload.theme));
     if (type === "getDiagnostics") return engine.diagnostics();
     if (type === "resetDiagnostics") return engine.resetDiagnostics();
     if (type === "setDiagnostics") {
@@ -67,6 +95,14 @@ export function createPlayerController(engine) {
       resources = null;
       return null;
     }
+    if (type === "selectDifficulty") {
+      const difficulty = difficultyId(payload.difficulty);
+      if (difficulty === null) throw new Error("Difficulty is required");
+      if (!engine.getDocument().charts.some(chart => chart.id === difficulty))
+        throw new Error("Difficulty is not present in this chart");
+      await engine.documentCommand({ id: "document.selectDifficulty", args: { difficulty } });
+      return engine.chart() ? loadedInfo() : engine.getDocument();
+    }
     requireChart();
     if (type === "play") await engine.play();
     else if (type === "pause") engine.pause();
@@ -78,13 +114,6 @@ export function createPlayerController(engine) {
         throw new Error("Seek time must be finite and non-negative");
       engine.seek(payload.second);
       emit("seeked", { currentTime: engine.state().currentTime });
-    } else if (type === "selectDifficulty") {
-      const difficulty = difficultyId(payload.difficulty);
-      if (difficulty === null) throw new Error("Difficulty is required");
-      if (!engine.chart().charts.some((chart) => chart.id === difficulty))
-        throw new Error("Difficulty is not present in this chart");
-      await engine.load(resources, difficulty);
-      return loadedInfo();
     }
     return engine.state();
   }

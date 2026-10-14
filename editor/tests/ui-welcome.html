@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="../ui/components/theme.css">
+<link rel="stylesheet" href="../page.css">
+<title>MiaCode 欢迎页对照</title>
+<div id="page" style="width:800px;height:420px"></div>
+<script type="module">
+  import { createPage } from "../ui/workbench/pages.mjs";
+  document.documentElement.dataset.theme = new URLSearchParams(location.search).get("theme") || "dark";
+  document.getElementById("page").append(createPage("welcome", {viewState:{preferences:{}},documentSession:{},command:()=>{}}));
+</script>
+</html>

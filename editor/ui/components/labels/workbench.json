@@ -1,0 +1,17 @@
+{
+  "sourceCommit": "8770413f965084f2e0567ae44c235b8a34377861",
+  "catalogues": {
+    "zh": {
+      "qml.open_waveform_and_beat_line_brightness_settings": "打开波形和小节线亮度设置",
+      "qml.timeline_brightness": "时间轴亮度"
+    },
+    "en": {
+      "qml.open_waveform_and_beat_line_brightness_settings": "Open waveform and beat-line brightness settings",
+      "qml.timeline_brightness": "Timeline brightness"
+    },
+    "ja": {
+      "qml.open_waveform_and_beat_line_brightness_settings": "波形と拍線の明るさ設定を開く",
+      "qml.timeline_brightness": "タイムラインの明るさ"
+    }
+  }
+}

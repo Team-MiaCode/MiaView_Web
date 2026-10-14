@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process";
 import { brotliCompressSync, gzipSync, constants } from "node:zlib";
 import { rendererVersion, nativeInputsFingerprint } from "../scripts/build-identity.mjs";
 import { writeRendererInventory } from "../scripts/update-artifacts.mjs";
+import { sourcePin } from "../scripts/source-pin.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
@@ -20,7 +21,7 @@ export function writeArtifacts(builtIdentity) {
       return result.stdout.trim();
     };
     const revision = git("-C", "vendor/MiaCode", "rev-parse", "HEAD");
-    const recorded = git("ls-files", "--stage", "vendor/MiaCode").split(" ")[1];
+    const recorded = sourcePin(root).upstreamGitCommit;
     const dirty = git("-C", "vendor/MiaCode", "status", "--porcelain");
     if (revision !== identity.upstreamGitCommit || recorded !== revision || dirty || identity.upstreamDirty ||
       identity.nativeInputsFingerprint !== nativeInputsFingerprint(identity.sourceRevision, toolchain, here))

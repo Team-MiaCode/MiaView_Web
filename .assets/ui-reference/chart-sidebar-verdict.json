@@ -1,0 +1,13 @@
+{
+  "score": 93,
+  "verdict": "pass",
+  "category_match": true,
+  "differences": [
+    "固定源码版本之间的难度色块尺寸、圆角和选择背景色存在差异。",
+    "浏览器与 Qt 的文字抗锯齿和基线存在差异。"
+  ],
+  "suggestions": [
+    "字段、命令与页面状态沿用 v2 的同名定义。"
+  ],
+  "reasoning": "四主题、240×480 侧栏对照原始 ChartFieldSidebar 与 DifficultyList。标题、谱面信息、延迟校准、难度分组、增删图标、选择状态与两条书签对应原生布局。评分：布局 35、字体 18、色彩 14、控件 18、图标 8。"
+}

@@ -1,0 +1,57 @@
+{
+  "name": "miacode-web-editor",
+  "version": "0.2.0-dev",
+  "private": true,
+  "type": "module",
+  "description": "MiaCode Web Editor: browser workbench and embeddable preview",
+  "main": "./sdk/index.mjs",
+  "types": "./sdk/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./sdk/index.d.mts",
+      "import": "./sdk/index.mjs"
+    }
+  },
+  "files": [
+    "sdk",
+    "renderer",
+    "backend",
+    "README.md"
+  ],
+  "scripts": {
+    "build:pages": "node scripts/build-pages.mjs",
+    "dev": "node scripts/serve.mjs",
+    "test": "node --test tests/*.spec.mjs",
+    "check": "node scripts/verify.mjs",
+    "check:repo": "node scripts/check-repository.mjs",
+    "check:source": "node scripts/verify.mjs --source",
+    "test:browser": "node tests/browser-smoke.mjs",
+    "test:firework": "node tests/firework-smoke.mjs",
+    "test:ui": "node tests/ui-smoke.mjs",
+    "test:pages": "node tests/pages-smoke.mjs",
+    "build:native": "node native/build.mjs",
+    "sync:artifacts": "node native/artifacts.mjs",
+    "sync:ui": "node scripts/sync-ui.mjs",
+    "sync:fonts": "node scripts/sync-font.mjs",
+    "sync:labels": "python scripts/sync-labels.py",
+    "test:workbench": "node tests/workbench-smoke.mjs",
+    "test:density": "node tests/workbench-density-smoke.mjs",
+    "test:gallery": "node tests/ui-gallery-smoke.mjs",
+    "source:init": "node scripts/initialize-source.mjs",
+    "runtime:fetch": "node scripts/fetch-runtime.mjs",
+    "test:folder": "node tests/workbench-folder-smoke.mjs",
+    "test:cover": "node tests/cover-canvas-smoke.mjs",
+    "test:transport": "node tests/preview-transport-smoke.mjs",
+    "test:timeline": "node tests/timeline-smoke.mjs && node tests/timeline-visual-smoke.mjs && node tests/timeline-controls-smoke.mjs",
+    "test:document": "node tests/document-smoke.mjs",
+    "test:analysis-ui": "node tests/analysis-visual-smoke.mjs",
+    "test:editor-tabs": "node tests/editor-tabs-smoke.mjs",
+    "test:workbench-chrome": "node tests/workbench-chrome-smoke.mjs",
+    "test:source-editor-ui": "node tests/source-editor-visual-smoke.mjs",
+    "test:ime": "node tests/editor-ime-smoke.mjs",
+    "test:stage1": "node tests/stage1-acceptance.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

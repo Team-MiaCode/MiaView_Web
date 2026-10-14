@@ -467,6 +467,7 @@ export class PreviewAudio {
     this.offset = 0;
     this.duration = 0;
     this.playing = false;
+    this.rate = 1;
   }
   currentSecond() {
     return this.playing
@@ -474,7 +475,7 @@ export class PreviewAudio {
           this.offset,
           Math.min(
             this.duration,
-            this.offset + this.context.currentTime - this.startedAt,
+            this.offset + (this.context.currentTime - this.startedAt) * this.rate,
           ),
         )
       : this.offset;
@@ -499,6 +500,12 @@ export class PreviewAudio {
     this.offset = Math.max(0, Math.min(this.duration, second));
     if (resume) this.start();
   }
+  setRate(rate) {
+    const resume = this.playing;
+    this.pause();
+    this.rate = rate;
+    if (resume) this.start();
+  }
   start() {
     if (this.playing) return;
     if (this.offset >= this.duration) this.offset = 0;
@@ -513,10 +520,12 @@ export class PreviewAudio {
         this.track.duration,
         this.offset,
         0.3,
+        false,
+        this.rate,
       );
     this.schedule();
   }
-  voice(buffer, start, end, sourceOffset, gain, loop = false) {
+  voice(buffer, start, end, sourceOffset, gain, loop = false, sourceRate = 1) {
     if (
       !buffer ||
       end <= this.offset ||
@@ -524,12 +533,13 @@ export class PreviewAudio {
     )
       return;
     const actualStart = Math.max(start, this.offset, this.currentSecond());
-    const when = this.startedAt + actualStart - this.offset;
-    const offset = sourceOffset + actualStart - start;
+    const when = this.startedAt + (actualStart - this.offset) / this.rate;
+    const offset = sourceOffset + (actualStart - start) / this.rate * sourceRate;
     const source = this.context.createBufferSource();
     const volume = this.context.createGain();
     source.buffer = buffer;
     source.loop = loop;
+    source.playbackRate.value = sourceRate;
     volume.gain.value = gain;
     source.connect(volume).connect(this.context.destination);
     this.voices.add(source);
@@ -544,19 +554,19 @@ export class PreviewAudio {
     );
     if (Number.isFinite(end))
       source.stop(
-        Math.max(this.context.currentTime, this.startedAt + end - this.offset),
+        Math.max(this.context.currentTime, this.startedAt + (end - this.offset) / this.rate),
       );
   }
   schedule() {
     if (!this.playing) return;
-    const until = this.currentSecond() + 0.12;
+    const until = this.currentSecond() + 0.12 * this.rate;
     while (
       this.eventIndex < this.events.length &&
       this.events[this.eventIndex].second <= until
     ) {
       const event = this.events[this.eventIndex++];
       this.onSchedule?.(
-        Math.max(0, this.currentSecond() - event.second) * 1000,
+        Math.max(0, this.currentSecond() - event.second) / this.rate * 1000,
       );
       const end =
         event.nextSameKindSecond > event.second
@@ -576,7 +586,7 @@ export class PreviewAudio {
     ) {
       const span = this.segments[this.segmentIndex++];
       this.onSchedule?.(
-        Math.max(0, this.currentSecond() - span.startSecond) * 1000,
+        Math.max(0, this.currentSecond() - span.startSecond) / this.rate * 1000,
       );
       this.voice(
         this.buffers.get("touch_Hold_riser.wav") ??

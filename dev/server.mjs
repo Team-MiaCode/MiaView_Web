@@ -23,6 +23,8 @@ const mime = {
   ".flac": "audio/flac",
   ".m4a": "audio/mp4",
   ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".woff2": "font/woff2",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".webp": "image/webp",
@@ -61,7 +63,7 @@ export function staticServer(
         return;
       }
       if (pathname === "/") {
-        res.writeHead(302, { Location: "/examples/index.html" }).end();
+        res.writeHead(302, { Location: "/index.html" }).end();
         return;
       }
       const path = uploaded?.path ?? resolve(directory, `.${pathname}`);

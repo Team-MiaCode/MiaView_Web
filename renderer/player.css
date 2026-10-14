@@ -129,6 +129,11 @@ input[type="range"]:disabled { cursor: default; opacity: .45; }
 body.embedded #local-controls { display: none; }
 body.embedded .player-layout { height: 100vh; grid-template-rows: minmax(0, 1fr) var(--transport-height); }
 body.embedded #stage { height: 100%; aspect-ratio: auto; }
+body.cover-view .player-layout { grid-template-rows: minmax(0, 1fr); }
+body.cover-view #stage-video, body.cover-view #fps { display: none; }
+body.cover-view #stage { background: transparent; }
+body.external-controls .player-layout { grid-template-rows: minmax(0, 1fr); }
+body.external-controls #transport, body.external-controls #fps { display: none; }
 @media (max-width: 640px) {
   #local-controls { flex-wrap: wrap; padding: 12px; gap: 8px; }
   .brand { flex-basis: 100%; }

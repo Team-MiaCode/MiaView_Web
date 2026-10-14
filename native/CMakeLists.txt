@@ -46,14 +46,39 @@ target_sources(miacode_preview_quick PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/firework-layer.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/firework-layer.h")
 
+add_library(miaview_timeline STATIC
+    "${MIACODE_SOURCE_DIR}/src/timeline/TimelineNoteAssets.cpp"
+    "${MIACODE_SOURCE_DIR}/src/timeline/TimelineQuickModel.cpp"
+    "${MIACODE_SOURCE_DIR}/src/timeline/TimelineQuickModelIndexing.cpp"
+    "${MIACODE_SOURCE_DIR}/src/timeline/TimelineQuickModelParser.cpp"
+    "${MIACODE_SOURCE_DIR}/src/timeline/TimelineQuickModelSnapshot.cpp"
+    "${MIACODE_SOURCE_DIR}/src/timeline/TimelineSceneState.cpp"
+    "${MIACODE_SOURCE_DIR}/src/timeline/TimelineSceneStateBuilder.cpp"
+    "${MIACODE_SOURCE_DIR}/src/audio/WaveformCache.cpp")
+target_link_libraries(miaview_timeline PUBLIC miacode_analysis miacode_base Qt6::Gui)
+
 configure_file(browser-assets.qrc.in browser-assets.qrc @ONLY)
-qt_add_executable(miacode-preview browser-host.cpp
+qt_add_executable(miacode-preview browser-host.cpp cover-scene.cpp cover-scene.h timeline-bridge.cpp timeline-bridge.h document-bridge.cpp document-bridge.h
+    "${MIACODE_SOURCE_DIR}/src/app/services/ChartWorkspace.cpp"
+    "${MIACODE_SOURCE_DIR}/src/app/services/ChartWorkspace.h"
+    "${MIACODE_SOURCE_DIR}/src/export/cover_export/CoverLayoutModel.cpp"
+    "${MIACODE_SOURCE_DIR}/src/export/cover_export/CoverLayoutModel.h"
     "${CMAKE_CURRENT_BINARY_DIR}/browser-assets.qrc")
-target_link_libraries(miacode-preview PRIVATE miacode_preview_quick Qt6::Svg)
+target_link_libraries(miacode-preview PRIVATE miacode_preview_quick miacode_preview_quickplugin miaview_timeline Qt6::Svg)
+file(GLOB_RECURSE intro_assets CONFIGURE_DEPENDS
+    "${MIACODE_SOURCE_DIR}/src/intro/qml/*"
+    "${MIACODE_SOURCE_DIR}/src/intro/assets/*"
+    "${MIACODE_SOURCE_DIR}/src/intro/templates/*")
+qt_add_resources(miacode-preview "web_intro"
+    PREFIX "/intro" BASE "${MIACODE_SOURCE_DIR}/src/intro" FILES ${intro_assets})
+qt_add_resources(miacode-preview "web_cover_icon" PREFIX "/icons"
+    BASE "${MIACODE_SOURCE_DIR}/resources/icons" FILES "${MIACODE_SOURCE_DIR}/resources/icons/app-original.png")
+qt_import_qml_plugins(miacode-preview)
 
 if(EMSCRIPTEN)
     set_target_properties(miacode-preview PROPERTIES
         QT_WASM_EXTRA_EXPORTED_METHODS "ccall,UTF8ToString,HEAPU8"
+        QT_WASM_INITIAL_MEMORY "64MB"
         QT_WASM_MAXIMUM_MEMORY "2147483648")
     target_link_options(miacode-preview PRIVATE
         "-sEXPORTED_FUNCTIONS=_main,_malloc,_free"

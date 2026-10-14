@@ -13,7 +13,13 @@ const preview: MiaCodePreview = createPreview(document.createElement("div"), {
   resolution: { width: 720, height: 720 },
   maxFps: 120,
   theme: "light",
+  layout: "fit",
 });
+void preview.setTheme("legacy_light");
+// @ts-expect-error Only original theme tokens are accepted.
+void preview.setTheme("system");
+// @ts-expect-error Unknown layout modes are rejected.
+createPreview(document.createElement("div"), { layout: "fluid" });
 void preview.load(chart);
 void preview.seek(1);
 void preview.setSettings({ tapFlowSpeed: 8, noteSkin: "SD" });
@@ -46,3 +52,22 @@ createPreview(document.createElement("div"), { pvTimeoutMs: "unlimited" });
 // @ts-expect-error Only unlimited is accepted as a timeout string.
 createPreview(document.createElement("div"), { pvTimeoutMs: "10000" });
 void preview.getState().then((state) => state.pvTimeoutMs);
+void preview.setCoverComposition({ outputWidth: 960, outputHeight: 720, activeLayerKey: "card" });
+void preview.getCoverComposition().then(state => state.layout.layers[0]?.text);
+preview.on("coverChanged", state => state.outputWidth);
+createPreview(document.createElement("div"), { controls: false });
+void preview.setPlayback({ rate: .5, rangePlaybackEnabled: true, exportStartSeconds: 2, exportEndSeconds: 5 });
+void preview.setMediaSettings({ hidePv: true });
+void preview.setCanvasSize({ width: 1200, height: 800 });
+void preview.getTimeline({ width: 600, height: 180, colors: {} }).then(state => state.noteSprites[0]?.imageKey);
+void preview.navigateTimeline({ x: 300, y: 50 }).then(target => target.position);
+void preview.getTimelineFollow(1).then(state => state.caret);
+void preview.getDocument().then(state => state.dirtyDifficultyIds);
+void preview.documentCommand("document.metadataTitle", { value: "MiaCode" }).then(result => result.document.revision);
+void preview.getDocumentSaveText(5).then(result => result.sourceText);
+preview.on("timeupdate", state => state.currentTime);
+preview.on("timeupdate", state => state.statistics.map(item => item.played));
+void preview.getState().then(state => state.statisticsAvailable && state.statistics.map(item => item.total));
+void preview.selectDifficulty(5).then(state => "hasDocument" in state ? state.chartText : state.noteCount);
+// @ts-expect-error Range enablement uses a boolean.
+void preview.setPlayback({ rangePlaybackEnabled: "true" });

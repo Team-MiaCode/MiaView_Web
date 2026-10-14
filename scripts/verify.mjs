@@ -5,6 +5,7 @@ import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { rendererVersion, nativeInputsFingerprint } from "./build-identity.mjs";
+import { sourcePin } from "./source-pin.mjs";
 const root = new URL("../", import.meta.url);
 assert.ok(existsSync(new URL("renderer/artifact-manifest.json", root)),
   "Renderer not built. Run npm run build:native or obtain the CI artifact for this commit.");
@@ -46,7 +47,7 @@ if (process.argv.includes("--source")) {
     assert.equal(result.status, 0, result.stderr);
     return result.stdout.trim();
   };
-  assert.equal(git("ls-files", "--stage", "vendor/MiaCode").split(" ")[1], identity.upstreamGitCommit);
+  assert.equal(sourcePin(fileURLToPath(root)).upstreamGitCommit, identity.upstreamGitCommit);
   assert.equal(git("-C", "vendor/MiaCode", "rev-parse", "HEAD"), identity.upstreamGitCommit);
   const tree = git("-C", "vendor/MiaCode", "rev-parse", "HEAD^{tree}");
   assert.equal(tree, identity.upstreamTree);

@@ -8,6 +8,18 @@ export const commands = new Set([
   "pause",
   "seek",
   "setSettings",
+  "setPlayback",
+  "setMediaSettings",
+  "setCanvasSize",
+  "getTimeline",
+  "navigateTimeline",
+  "getTimelineFollow",
+  "getDocument",
+  "documentCommand",
+  "getDocumentSaveText",
+  "setTheme",
+  "setCoverComposition",
+  "getCoverComposition",
   "getState",
   "getDiagnostics",
   "setDiagnostics",
@@ -16,6 +28,11 @@ export const commands = new Set([
   "restart",
   "destroy",
 ]);
+export const THEME_TOKENS = Object.freeze(["dark", "light", "legacy", "legacy_light"]);
+export function previewTheme(value = "dark") {
+  if (!THEME_TOKENS.includes(value)) throw new Error("Unknown MiaCode theme");
+  return value;
+}
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -79,6 +96,10 @@ export function trustedResponse(event, frame, origin, sessionId) {
       "error",
       "seeked",
       "settingsChanged",
+      "playbackChanged",
+      "timeupdate",
+      "coverChanged",
+      "documentChanged",
       "performance",
     ].includes(message.type) ||
     !message.payload ||
@@ -151,6 +172,10 @@ export function normalizeChart(chart, base) {
     maidata: normalizedSource(chart.maidata, base, true),
     difficulty: difficultyId(chart.difficulty),
   };
+  if (chart.filePath !== undefined) {
+    if (typeof chart.filePath !== "string") throw new Error("Chart filePath must be a string");
+    result.filePath = chart.filePath;
+  }
   for (const name of ["audio", "cover", "video"])
     if (chart[name] != null) result[name] = normalizedSource(chart[name], base);
   return result;

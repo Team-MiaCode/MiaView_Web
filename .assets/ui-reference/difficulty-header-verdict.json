@@ -1,0 +1,8 @@
+{
+  "score": 96,
+  "verdict": "pass",
+  "category_match": true,
+  "differences": ["Qt 与浏览器的文字基线及抗锯齿存在约 1 像素差异；经典主题的文字绘制与固定基准有细微差异。"],
+  "suggestions": ["等级、延迟和谱师字段继续消费文档会话中的同名字段。"],
+  "reasoning": "四主题对照原始 EditorPane 的 DifficultyHeaderField 与 difficultyHeader 源码区域。480 像素宽度采用单行，240 像素宽度采用两行，内容高度分别为 40 与 78 像素；字段宽度 48、64、100，间距 8。加权评分：布局 35、字体 18、色彩 14、控件 19、图标项 10。评分范围为难度信息栏。"
+}

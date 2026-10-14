@@ -1,3 +1,5 @@
+import { inspectChartFolder } from "../services/chart-folder.mjs";
+
 // Dev prepares HTTP resources; the component receives the same URLs as a website.
 export async function uploadChartFolder(selectedFiles, status) {
   const files = [...selectedFiles];
@@ -6,15 +8,9 @@ export async function uploadChartFolder(selectedFiles, status) {
     return null;
   }
   status(`已选择 ${files.length} 个文件，正在检查谱面…`);
-  const find = (pattern) => files.find((file) => pattern.test(file.name));
-  const maidata = find(/^maidata\.txt$/i);
-  if (!maidata) throw new Error("请选择包含 maidata.txt 的谱面文件夹");
-  const selected = {
-    maidata,
-    audio: find(/\.(mp3|wav|ogg|flac|m4a)$/i),
-    cover: find(/\.(png|jpe?g|webp)$/i),
-    video: find(/\.(mp4|webm)$/i),
-  };
+  const { preferred } = inspectChartFolder(files);
+  if (!preferred) throw new Error("请选择单个谱面文件夹");
+  const selected = preferred.chart;
   status("正在上传到 Dev 后台，生成 HTTP URL…（上传完成后开始下载测试）");
   const resources = Object.entries(selected).filter(([, file]) => file);
   const created = await fetch("/__dev-charts", {

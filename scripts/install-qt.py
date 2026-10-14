@@ -20,6 +20,8 @@ parser.add_argument("--target", choices=["wasm", "host", "all"], default="all")
 parser.add_argument("--host", choices=["windows", "linux"],
                     default="windows" if platform.system() == "Windows" else "linux")
 parser.add_argument("--metadata-only", action="store_true")
+parser.add_argument("--mirror", default="https://download.qt.io",
+                    help="Qt archive mirror root; checksums are read from the official repository")
 args = parser.parse_args()
 current_host = "windows" if platform.system() == "Windows" else "linux"
 if args.target in ["host", "all"] and args.host != current_host and not args.metadata_only:
@@ -33,8 +35,9 @@ def get(url):
     return response.content
 
 def install(base, architecture, destination):
-    metadata = get(base + "Updates.xml")
-    expected = get(base + "Updates.xml.sha256").decode().split()[0]
+    official = base.replace(args.mirror.rstrip("/"), "https://download.qt.io", 1)
+    metadata = get(official + "Updates.xml")
+    expected = get(official + "Updates.xml.sha256").decode().split()[0]
     if hashlib.sha256(metadata).hexdigest() != expected:
         raise RuntimeError("Qt metadata checksum mismatch")
     names = {f"qt.qt6.{compact}.{architecture}",
@@ -59,7 +62,7 @@ def install(base, architecture, destination):
         if args.metadata_only:
             continue
         path = cache / archive
-        checksum = get(url + ".sha1").decode().split()[0]
+        checksum = get(url.replace(args.mirror.rstrip("/"), "https://download.qt.io", 1) + ".sha1").decode().split()[0]
         if not path.exists() or hashlib.sha1(path.read_bytes()).hexdigest() != checksum:
             with requests.get(url, stream=True, timeout=90) as response:
                 response.raise_for_status()
@@ -77,7 +80,7 @@ def install(base, architecture, destination):
                 raise RuntimeError("Qt archive contains a path outside its installation")
             source.extractall(archive_destination)
 
-prefix = "https://download.qt.io/online/qtsdkrepository/"
+prefix = args.mirror.rstrip("/") + "/online/qtsdkrepository/"
 if args.target in ["wasm", "all"]:
     arch = toolchain["wasmArch"]
     install(f"{prefix}all_os/wasm/qt6_{compact}/qt6_{compact}_{arch}/", arch,

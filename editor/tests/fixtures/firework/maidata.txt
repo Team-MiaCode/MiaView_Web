@@ -1,0 +1,6 @@
+&title=烟花预热与复用验证
+&artist=Test
+&des=Test
+&first=0
+&lv_5=1
+&inote_5=(120){1},Cf,B1f,Chf[4:1],E

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { writeArtifacts } from "./artifacts.mjs";
 import { syncTheme } from "../scripts/sync-theme.mjs";
 import { nativeInputsFingerprint } from "../scripts/build-identity.mjs";
+import { sourcePin } from "../scripts/source-pin.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
@@ -14,12 +15,9 @@ const development = process.argv.includes("--development");
 const source = resolve(process.env.MIACODE_SOURCE_DIR ?? join(root, "vendor/MiaCode"));
 const qtRoot = resolve(process.env.MIACODE_QT_ROOT ?? join(root, ".deps/qt", toolchain.qtVersion));
 const installedHost = join(qtRoot, process.platform === "win32" ? "msvc2022_64" : "gcc_64");
-const qtHost = resolve(process.env.MIACODE_QT_HOST_PATH ?? (existsSync(join(installedHost, "lib/cmake/Qt6/Qt6Config.cmake"))
-  ? installedHost : process.platform === "win32"
-  ? join(root, "../MiaCode/.qt", toolchain.qtVersion, "msvc2022_64")
-  : join(qtRoot, "gcc_64")));
+const qtHost = resolve(process.env.MIACODE_QT_HOST_PATH ?? installedHost);
 const emsdk = resolve(process.env.MIACODE_EMSDK_ROOT ?? join(root, ".deps/emsdk"));
-const build = resolve(process.env.MIACODE_BUILD_DIR ?? join(here, "build-release"));
+const build = resolve(process.env.MIACODE_BUILD_DIR ?? join(root, "build-devtools"));
 const jobs = Number(process.env.MIACODE_BUILD_JOBS ?? 4);
 if (!Number.isInteger(jobs) || jobs < 1 || jobs > 4)
   throw new Error("MIACODE_BUILD_JOBS must be an integer from 1 to 4");
@@ -61,7 +59,7 @@ const upstreamDirty = changes.length > 0 || untracked.length > 0;
 if (upstreamDirty && !development)
   throw new Error("Upstream source is dirty; commit it and update the submodule, or use --development");
 if (!development) {
-  const recorded = capture("git", ["ls-files", "--stage", "vendor/MiaCode"], root).split(" ")[1];
+  const recorded = sourcePin(root).upstreamGitCommit;
   if (recorded !== upstreamGitCommit)
     throw new Error("MiaCode checkout differs from the recorded submodule commit");
 }

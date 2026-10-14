@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="../ui/components/theme.css">
+<link rel="stylesheet" href="../page.css">
+<title>MiaCode UI gallery</title>
+<style>
+  .gallery { width:800px;height:420px;position:relative;display:flow-root; }
+  .gallery > .label, .gallery > .heading, .gallery > .caption { position:absolute;margin:0;line-height:normal; }
+  .gallery > .heading { left:24px;top:22px;font-size:15px;font-weight:600; }
+  .gallery > .label { top:70px;color:var(--text-primary);font-size:13px; }
+  .gallery input[type=text], .gallery .select-control { position:absolute;top:94px;width:352px;height:30px; }
+  .gallery .buttons button { position:absolute;top:156px; }
+  .gallery .field.inline { position:absolute;top:218px;width:352px;margin:0;min-height:24px; }
+  .gallery .chrome { position:absolute;top:280px;width:30px;height:30px; }
+</style>
+<div class="gallery">
+  <div class="heading">MiaCode · 公共控件</div>
+  <div class="label" style="left:24px">谱面标题</div>
+  <div class="label" style="left:424px">难度</div>
+  <input id="textField" type="text" value="MiaCode Example" style="left:24px">
+  <span class="select-control" style="left:424px"><select id="combo"><option>MASTER</option><option>EXPERT</option></select></span>
+  <section class="settings-section buttons">
+    <button id="regularButton" style="left:24px">打开谱面</button>
+    <button id="primaryButton" class="primary" style="left:136px">导出视频</button>
+    <button id="disabledButton" disabled style="left:248px">取消任务</button>
+  </section>
+  <label id="checkedBox" class="field inline" style="left:24px"><input type="checkbox" checked><span>自动保存</span></label>
+  <label id="uncheckedBox" class="field inline" style="left:424px"><input type="checkbox"><span>自由画布</span></label>
+  <div id="iconButtons"></div>
+  <div style="position:absolute;left:24px;top:342px;width:752px;height:1px;background:var(--border-normal)"></div>
+  <div class="caption" style="left:24px;top:364px">Simai · 语法与无理分析 · 13px</div>
+</div>
+<script type="module">
+  import { button } from "../ui/components/dom.mjs";
+  const parent = document.getElementById("iconButtons");
+  for (const [id, label, symbol, left] of [["playButton", "播放", "play", 24], ["settingsButton", "设置", "settings", 74]]) {
+    const node = button(label, () => {}, {symbol, className:"chrome", iconOnly:true, id});
+    node.style.left = `${left}px`;
+    parent.append(node);
+  }
+  document.documentElement.dataset.theme = new URLSearchParams(location.search).get("theme") || "dark";
+</script>
+</html>

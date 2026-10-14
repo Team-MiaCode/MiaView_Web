@@ -1,4 +1,5 @@
 node_modules/
+/build-devtools/
 native/build-release/
 native/build-dev-refactor-release/
 *.tgz
@@ -7,6 +8,8 @@ native/build-dev-refactor-release/
 charts/
 .deps/
 artifacts/
+__pycache__/
+*.pyc
 aqtinstall.log
 scripts/apply-upstream-preview.py
 # Built by CI (or build:native locally); never commit runtime artifacts.

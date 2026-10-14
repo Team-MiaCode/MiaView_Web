@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MiaView Web · 开发页面</title>
+    <link rel="stylesheet" href="../dev/page.css" />
+  </head>
+  <body>
+    <form id="controls" onsubmit="return false">
+      <label>分辨率
+        <select id="resolution">
+          <option value="1920x1080">1920×1080</option>
+          <option value="1080x1080">1080×1080</option>
+        </select>
+      </label>
+      <label>最大帧率
+        <select id="max-fps">
+          <option value="30">30 FPS</option>
+          <option value="60" selected>60 FPS</option>
+          <option value="90">90 FPS</option>
+          <option value="120">120 FPS</option>
+          <option value="144">144 FPS</option>
+          <option value="165">165 FPS</option>
+          <option value="240">240 FPS</option>
+          <option value="unlimited">不限</option>
+        </select>
+      </label>
+      <label class="renderer-option">播放器 URL
+        <input id="renderer-url" type="text" placeholder="默认使用本项目组件" />
+      </label>
+      <label>SDK 超时（毫秒）
+        <input id="sdk-timeout" type="number" min="1" value="120000" />
+      </label>
+      <label>PV 超时（秒）
+        <input id="pv-timeout" type="text" inputmode="decimal" list="pv-timeout-options" value="30" aria-label="PV 超时（秒，至少 10 秒，unlimited 表示不限）" />
+        <datalist id="pv-timeout-options">
+          <option value="10"></option><option value="30"></option>
+          <option value="60"></option><option value="120"></option>
+          <option value="unlimited">不限</option>
+        </datalist>
+      </label>
+      <label class="checkbox-option"><input id="diagnostics-enabled" type="checkbox" checked />后台日志</label>
+      <label class="file-button">上传谱面文件夹
+        <input id="files" type="file" multiple webkitdirectory aria-label="上传谱面文件夹" />
+      </label>
+    </form>
+    <p class="hint">配置修改后自动重建组件。文件夹上传完成后，自动通过 HTTP URL 加载。</p>
+    <div id="workspace">
+      <main>
+        <div id="preview"></div>
+        <p id="status" role="status">正在创建播放器…</p>
+      </main>
+      <aside id="performance-panel" aria-label="后台日志">
+        <h2>后台日志</h2>
+        <p id="performance-log-status" role="status">显示播放器后台返回的日志</p>
+        <pre id="performance-output" aria-label="后台终端日志">等待后台日志…</pre>
+      </aside>
+    </div>
+    <script type="module" src="./demo.mjs"></script>
+  </body>
+</html>

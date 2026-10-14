@@ -1,0 +1,8 @@
+{
+  "score": 94,
+  "verdict": "pass",
+  "category_match": true,
+  "differences": ["浏览器目录输入框和相邻按钮的横向分配与 Qt 存在约 4 像素差异。", "浏览器与 Qt 的按钮字形绘制存在差异。"],
+  "suggestions": ["队列运行状态接入 batchJobs、batchRunning 与 batchSummary 字段。"],
+  "reasoning": "目录、浏览、添加、队列空间、清空与压缩入口对应原始批量处理表单；空队列的压缩按钮保留禁用色彩与状态。评分范围为批量队列的空队列状态。"
+}
