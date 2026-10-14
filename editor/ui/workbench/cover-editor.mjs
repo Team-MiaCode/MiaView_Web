@@ -19,8 +19,8 @@ export function createCoverEditor({ viewState, documentSession: doc, command, na
     dispatch("cover.canvasChanged", value);
     if (!refresh) return;
     const controls = createCoverEditor({ viewState, documentSession: doc, command, nativeCover: false });
-    root.querySelector(".cover-topbar").replaceWith(controls.querySelector(".cover-topbar"));
-    root.querySelector(".cover-layers-pane").replaceWith(controls.querySelector(".cover-layers-pane"));
+    root.querySelector(".cover-layer-list").replaceWith(controls.querySelector(".cover-layer-list"));
+    root.querySelector(".cover-layer-actions").replaceWith(controls.querySelector(".cover-layer-actions"));
     root.querySelector(".cover-inspector").replaceWith(controls.querySelector(".cover-inspector"));
   };
   if (nativeCover) command = (id, args = {}) => {
