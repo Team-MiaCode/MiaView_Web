@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { staticServer } from "../scripts/serve.mjs";
+import { launchPreviewBrowser, previewGraphics } from "./preview-browser.mjs";
 
 const runtime = process.env.MIACODE_PLAYWRIGHT_MODULE;
 const playwright = await import(runtime ? pathToFileURL(runtime).href : "playwright");
@@ -14,12 +15,12 @@ const server = staticServer(process.cwd(), { performanceTerminal: false });
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 try {
   for (const name of engines) {
-    const type = name === "chrome" || name === "msedge" ? playwright.chromium : playwright[name];
-    const browser = await type.launch({ headless: true, ...(["chrome", "msedge"].includes(name) ? { channel: name } : {}) });
+    const browser = await launchPreviewBrowser(playwright, name);
     try {
       for (const density of densities) {
         const context = await browser.newContext({ deviceScaleFactor: density, viewport: { width: 1366, height: 768 } });
         const page = await context.newPage();
+        await previewGraphics(page, name);
         const errors = [];
         page.on("pageerror", error => errors.push(error.message));
         await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);

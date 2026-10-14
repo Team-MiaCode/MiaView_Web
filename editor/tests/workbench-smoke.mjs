@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { staticServer } from "../scripts/serve.mjs";
+import { launchPreviewBrowser, previewGraphics } from "./preview-browser.mjs";
 
 const runtime = process.env.MIACODE_PLAYWRIGHT_MODULE;
 const playwright = await import(runtime ? pathToFileURL(runtime).href : "playwright");
@@ -27,17 +28,18 @@ async function assertControlBounds(page, label) {
 }
 try {
   for (const name of engines) {
-    const browser = await playwright[name].launch({ headless: true });
+    const browser = await launchPreviewBrowser(playwright, name);
     try {
       const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });
       const page = await context.newPage();
+      const graphics = await previewGraphics(page, name);
       const errors = [];
       page.on("pageerror", error => errors.push(error.message));
       await page.goto(base + "/index.html");
       await page.locator(".welcome-title").waitFor();
       await page.evaluate(() => document.getElementById("workbench").editor.ready);
       const webAudio = await page.evaluate(() => typeof (globalThis.AudioContext ?? globalThis.webkitAudioContext) === "function");
-      capabilities.push({ engine: name, version: browser.version(), webAudio, platform: process.platform, architecture: process.arch });
+      capabilities.push({ engine: name, version: browser.version(), webAudio, graphics, platform: process.platform, architecture: process.arch });
       for (const [width, height] of sizes) {
         await page.setViewportSize({ width, height });
         for (const key of pages) {
@@ -158,7 +160,9 @@ try {
       await page.evaluate(() => document.getElementById("workbench").editor.viewState.openEditor("difficulty:5"));
       await page.evaluate(() => {
         const editor = document.getElementById("workbench").editor;
-        editor.workbench.setDocument({ ...editor.workbench.documentSession, currentDifficultyId: 5, currentDifficultyLevel: "13+", currentDifficultyOffset: "0.125", currentDifficultyDesigner: "MiaCode", bookmarks: [{line: 2, title: "主歌"}, {line: 8, title: "副歌"}] });
+        editor.workbench.setDocument({ ...editor.workbench.documentSession, currentDifficultyId: 5, currentDifficultyLevel: "13+", currentDifficultyOffset: "0.125", currentDifficultyDesigner: "MiaCode",
+          charts: editor.workbench.documentSession.charts.map(chart => chart.id === 5
+            ? { ...chart, bookmarks: [{line: 2, title: "主歌"}, {line: 8, title: "副歌"}] } : chart) });
         editor.viewState.openEditor("difficulty:5");
       });
       const section = page.locator(".difficulty-section-toggle");
@@ -206,6 +210,7 @@ try {
       await page.setViewportSize({ width: 1366, height: 768 });
       await page.evaluate(() => document.getElementById("workbench").editor.viewState.openEditor("difficulty:5"));
       await page.locator(".source-input").fill("(120){4}\n1,2,3,4,\n|| 中文注释\n5h[4:1],6-2[4:1],E");
+      await page.waitForFunction(() => document.querySelectorAll(".source-code-line").length === 4);
       await page.evaluate(() => document.fonts.ready);
       const fontLoaded = await page.evaluate(() => {
         const faces = [...document.fonts].filter(face => face.family.replaceAll('"', "") === "Maple Mono Normal NL CN");
@@ -280,6 +285,7 @@ try {
         await page.waitForFunction(() => document.querySelectorAll(".source-code-line").length === 3);
         const wrapping = await page.evaluate(() => {
           const editor = document.getElementById("workbench").editor.workbench.sourceEditor;
+          editor.draw();
           editor.input.scrollTop = editor.input.scrollHeight;
           editor.scroll();
           return { inputHeight: editor.input.scrollHeight, paintHeight: editor.paint.scrollHeight,
