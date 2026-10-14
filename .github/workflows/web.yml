@@ -55,13 +55,8 @@ jobs:
           .deps/emsdk/emsdk activate "$version"
       - run: npm run build:native && npm run check:source
       - run: npm install --no-save --package-lock=false playwright@1.62.1
-      - run: npx playwright install --with-deps chromium firefox webkit chrome msedge
+      - run: npx playwright install --with-deps chromium
       - run: npm run test:browser && npm run test:ui && npm run test:pages
-      - name: Validate workbench and isolated editor template
-        env:
-          MIACODE_TEST_ENGINES: chromium,firefox,webkit
-          MIACODE_DENSITY_ENGINES: chrome,msedge,firefox,webkit
-        run: xvfb-run --auto-servernum bash -e -c 'npm run test:source-wrap && npm run test:workbench && npm run test:density && npm run test:gallery && npm run test:folder && npm run test:cover && npm run test:transport && npm run test:timeline && npm run test:document && npm run test:analysis-ui && npm run test:editor-tabs && npm run test:workbench-chrome && npm run test:source-editor-ui && npm run test:ime && npm run test:stage1 && npm run sync:products -- --runtime && npm run test:editor-template'
       - run: npm run build:pages
       - name: Validate feature Pages prefix
         env:
@@ -83,6 +78,35 @@ jobs:
           path: artifacts/pages
           if-no-files-found: error
           retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: preview-screenshots
+          path: artifacts/ui
+
+  ui-acceptance:
+    needs: build-preview
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: miaview-preview
+          path: .
+      - run: npm run check:source
+      - run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dri mesa-utils xvfb
+      - run: npm install --no-save --package-lock=false playwright@1.62.1
+      - run: npx playwright install --with-deps chromium firefox webkit chrome msedge
+      - name: Validate workbench and isolated editor template
+        env:
+          MIACODE_TEST_ENGINES: chromium,firefox,webkit
+          MIACODE_DENSITY_ENGINES: chrome,msedge,firefox,webkit
+        run: xvfb-run --auto-servernum bash -e -c 'npm run test:source-wrap && npm run test:workbench && npm run test:density && npm run test:gallery && npm run test:folder && npm run test:cover && npm run test:transport && npm run test:timeline && npm run test:document && npm run test:analysis-ui && npm run test:editor-tabs && npm run test:workbench-chrome && npm run test:source-editor-ui && npm run test:ime && npm run test:stage1 && npm run sync:products -- --runtime && npm run test:editor-template'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
