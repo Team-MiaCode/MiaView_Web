@@ -95,3 +95,11 @@ jobs:
       - uses: actions/configure-pages@v5
       - uses: actions/deploy-pages@v4
         id: deployment
+
+      - name: Deploy to EdgeOne Pages
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: TencentEdgeOne/edgeone-pages-action@v1
+        with:
+          token: ${{ secrets.EDGEONE_API_TOKEN }}
+          project-name: "miaview"
+          build-path: "./artifacts/pages"
