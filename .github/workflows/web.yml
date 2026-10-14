@@ -96,8 +96,13 @@ jobs:
       - uses: actions/deploy-pages@v4
         id: deployment
 
+      - name: Download Pages artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: miaview-pages
+          path: artifacts/pages
+
       - name: Deploy to EdgeOne Pages
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: TencentEdgeOne/edgeone-pages-action@v1
         with:
           token: ${{ secrets.EDGEONE_API_TOKEN }}
