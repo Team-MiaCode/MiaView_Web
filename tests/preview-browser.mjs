@@ -8,7 +8,8 @@ export async function launchPreviewBrowser(playwright, name) {
     ...(channel ? { channel } : {}),
     ...(name === "firefox" ? {
       // CI runners use Mesa software rendering for Qt's WebGL2 surface.
-      firefoxUserPrefs: { "webgl.force-enabled": true },
+      firefoxUserPrefs: { "webgl.force-enabled": true,
+        ...(process.platform === "linux" ? { "dom.ipc.avoid-gtk": false, "gfx.x11-egl.force-enabled": false } : {}) },
       ...(process.platform === "linux" ? {
         env: { ...process.env, LIBGL_ALWAYS_SOFTWARE: "1" },
       } : {}),
