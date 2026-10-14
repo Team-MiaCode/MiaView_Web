@@ -1,10 +1,14 @@
 # MiaView_Web
 
+**[点击进入网页测试](https://team-miacode.github.io/MiaView_Web/)**
+
+打开网页后，可选择本地谱面、音乐、背景图片和 PV 视频进行测试，文件在浏览器中读取。在线入口对应 GitHub Pages 发布版本。
+
 MiaView_Web 提供 maimai 谱面编辑工作台与实时预览 SDK，支持 Simai 格式。它基于 [MiaCode](https://github.com/Team-MiaCode/MiaCode) 的原生解析器和预览场景，通过 WebAssembly、Qt Quick 和 WebGL 2 绘制画面，通过 WebAudio 播放音乐与判定音效。工作台采用 HTML/CSS 与原生 ES modules，入口为 `index.html`。
 
 本项目通过 `vendor/MiaCode` 子模块跟进 MiaCode `dev`，并固定确切提交。解析、分析和预览场景复用上游代码；浏览器宿主、音视频接入、JavaScript SDK 和网页界面由本仓维护。更新上游需要显式更新子模块并重建播放器。
 
-[在线预览](https://team-miacode.github.io/MiaView_Web/)支持选择本地谱面、音乐和 PV；文件在浏览器中读取。编辑器的阶段要求与验收记录见[迁移计划](docs/WEB_EDITOR_MIGRATION_PLAN_ZH.md)和[UI 验收计划](docs/WEB_EDITOR_UI_ACCEPTANCE_ZH.md)。`editor/` 包含独立编辑器模板的入口、界面、SDK、运行时适配器、构建脚本与源版本配置。
+编辑器的阶段要求与验收记录见[迁移计划](docs/WEB_EDITOR_MIGRATION_PLAN_ZH.md)和[UI 验收计划](docs/WEB_EDITOR_UI_ACCEPTANCE_ZH.md)。`editor/` 包含独立编辑器模板的入口、界面、SDK、运行时适配器、构建脚本与源版本配置。
 
 ## 功能一览
 
