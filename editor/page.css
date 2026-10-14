@@ -227,7 +227,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .timeline-zoom-popup .menu-check { width: 14px; }
 .timeline-brightness-content { display: grid; gap: 8px; }
 .timeline-brightness-row { display: grid; gap: 4px; }
-.timeline-brightness-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: calc(var(--ui-font-size) - 2px); line-height: normal; }
+.timeline-brightness-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: calc(var(--ui-font-size) - 2px); line-height: calc(var(--ui-font-size) + 1px); }
 .timeline-brightness-label strong { font-weight: 600; color: var(--text-primary); }
 .timeline-brightness-label output { color: var(--text-secondary); }
 .timeline-brightness-row input[type="range"] { width: 100%; }

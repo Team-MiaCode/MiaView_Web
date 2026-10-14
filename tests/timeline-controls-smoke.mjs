@@ -83,6 +83,11 @@ try {
     const brightnessBounds = await popup.boundingBox();
     assert.equal(brightnessBounds.width, 214);
     assert.ok(Math.abs(brightnessBounds.height - 118) <= 1);
+    for (const font of ["Arial", "serif"]) {
+      await popup.evaluate((node, font) => { node.style.fontFamily = font; }, font);
+      assert.equal((await popup.boundingBox()).height, brightnessBounds.height, `${theme}/${font} brightness popup height`);
+    }
+    await popup.evaluate(node => { node.style.fontFamily = ""; });
     records.push({ theme, brightness: brightnessBounds, zoomPopup: zoomBounds, zoom: await page.locator(".timeline-zoom").boundingBox() });
     await page.keyboard.press("Escape");
   }
