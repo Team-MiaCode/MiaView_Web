@@ -110,7 +110,9 @@ try {
       } finally {input.dispose();}
     },job.jobId);
     assert.equal(intro.frames,intro.declaredFrames);assert.ok(intro.bright>1000,`Intro pixels: ${intro.bright}`);
-    const expected=pv?452:355;assert.equal(intro.frames,expected);
+    const expected=pv?452:355;
+    console.log(JSON.stringify({intro:pv?"pv":"classic",expected,frames:intro.frames,declaredFrames:intro.declaredFrames,sourceDuration:(await page.evaluate(()=>preview.getState())).duration}));
+    assert.equal(intro.frames,expected);
     writeFileSync(join(output,`intro-${pv?"pv":"classic"}.png`),Buffer.from(intro.screenshot.split(",")[1],"base64"));
     writeFileSync(join(output,`intro-${pv?"pv":"classic"}${capabilities.extension}`),Buffer.from(intro.encoded.split(",")[1],"base64"));
     delete intro.screenshot;delete intro.encoded;intros.push({pv,...intro});

@@ -105,6 +105,17 @@ jobs:
       - run: npm run check:source
       - run: npm install --no-save --package-lock=false playwright@1.62.1
       - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Configure clocked audio output
+        run: |
+          sudo apt-get install -y pulseaudio pulseaudio-utils
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=miaview_test rate=48000
+          pactl set-default-sink miaview_test
+          pactl info
+      - name: Validate browser audio clock
+        env:
+          MIACODE_BROWSER: ${{ matrix.browser }}
+        run: xvfb-run --auto-servernum node tests/audio-clock-smoke.mjs
       - name: Validate editor functions and creator workflow
         env:
           MIACODE_BROWSER: ${{ matrix.browser }}
