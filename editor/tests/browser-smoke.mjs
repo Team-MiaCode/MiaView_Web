@@ -389,10 +389,13 @@ try {
           rejected.push(true);
         }
       }
+      const after = await first.getState();
+      // The PV renderer can finish a previously queued frame while commands are rejected.
+      delete before.videoPresentation.frames; delete after.videoPresentation.frames;
       return {
         rejected,
         unchanged:
-          JSON.stringify(before) === JSON.stringify(await first.getState()),
+          JSON.stringify(before) === JSON.stringify(after),
       };
     }),
     { rejected: [true, true, true, true, true], unchanged: true },
