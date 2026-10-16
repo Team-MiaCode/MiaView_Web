@@ -19,7 +19,7 @@ jobs:
           node-version: 24
       - run: npm run check:repo && npm test
       - run: npm install --no-save --package-lock=false typescript@5.9.3
-      - run: npx tsc --noEmit --strict --module NodeNext --moduleResolution NodeNext --target ES2022 --lib ES2022,DOM tests/types.ts
+      - run: npx tsc -p tests/tsconfig.json
 
   build-preview:
     needs: source-checks
