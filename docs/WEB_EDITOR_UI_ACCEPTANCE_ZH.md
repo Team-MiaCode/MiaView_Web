@@ -17,7 +17,7 @@
 | 元数据页面 | `.assets/ui-reference/metadata{,-narrow}-{theme}.png`、`metadata-verdict.json`；浏览器画廊同名截图 | 四主题 800 与 360 像素宽度的页面边界、封面与表单对照；视觉评分 94 |
 | 谱面侧栏 | `.assets/ui-reference/chart-sidebar-{theme}.png`、`chart-sidebar-verdict.json`；浏览器同名截图 | 分组、两种难度、书签与选择状态对照；视觉评分 93；键盘折叠与焦点保留纳入布局脚本 |
 | 偏好五页 | `.assets/ui-reference/preferences-{page}-{theme}.png`、对应 `preferences-*-verdict.json`；浏览器与原生内容区截图 | 界面 92、背景 95、编辑器 93、性能 95、快捷键 92；25 项快捷键依据固定源码定义，列表提供自身滚动区域 |
-| 视频导出 | `.assets/ui-reference/export-{output,intro,batch}-{theme}.png`、`export-verdict.json`；浏览器画廊同名截图 | 输出、片头、批量三页与四主题对照，91 分；输出参数、区间、播放指针、片头字段、字体与批量列表对应原始 QML；区间键盘、拖动和最短区间纳入布局脚本 |
+| 视频导出 | `.assets/ui-reference/export-{output,intro}-{theme}.png`、`export-verdict.json`；浏览器画廊同名截图 | 输出、片头两页与四主题对照；输出参数、区间、播放指针、片头字段与字体对应原始 QML；区间键盘、拖动和最短区间纳入布局脚本 |
 | 浏览器布局与输入 | `tests/workbench-smoke.mjs`；`artifacts/workbench-ui/results.json`、`capabilities.json` | Chromium、Firefox、WebKit 各 207 个页面布局用例；包含偏好、预览与导出子标签、封面检查器及菜单的控制项边界；五组有效 CSS 尺寸覆盖换行、滚动和输入层对齐；菜单与查找栏键盘操作通过 |
 | 补全弹窗 | `ui/workbench/completion-popup.mjs`；`tests/workbench-smoke.mjs` | 三引擎、二十三窗口尺寸的候选列表边界、键盘选择、编辑器焦点与关闭操作通过；编辑器视口高度逐项验证 |
 | 像素密度与有效 CSS 缩放尺寸 | `tests/workbench-density-smoke.mjs`；`artifacts/workbench-ui/density-results.json` | Chrome 155.0.8059.40、Edge 155.0.4283.45、Firefox 153.0、WebKit 26.5；DPR 1、1.25、1.5、2、3 与六组有效 CSS 尺寸，共 120 组输入、换行、行号和滚动对齐通过 |
@@ -43,7 +43,7 @@
 
 辅助页面参考由 `tests/native-page-reference.py` 消费固定的共享 QML 模块和翻译包，记录关于页面、难度信息栏、谱师名义管理与书签列表。难度信息栏使用原始 `EditorPane.qml` 的两个源码区域，其余页面使用原始组件。关于页面的应用图标通过同一原始 PNG 解析 qrc 路径，资源哈希记录于 `reference.json`。谱师弹窗的尺寸、控制项边界、Esc 关闭与入口焦点恢复，以及矮窗口的底部抽屉与分析标签纳入布局脚本。像素密度脚本改变实际 DPR；缩放列使用对应的有效 CSS 视口尺寸。
 
-视频导出参考由 `tests/native-export-reference.py` 生成。输出和批量页使用提交 `8770413f965084f2e0567ae44c235b8a34377861`；片头页使用固定上游提交 `ff9f65856b8591589aba0582ac867220202a44c6`，对应 `introPvPreview` 及片头 PV/音乐选段字段。该组件基准采用自身版本的 QML、公共控件、主题与中文翻译，隔离于共享参考模块；`reference.json` 为各页登记组件提交与源码、主题、翻译、会话头文件和字体资源哈希。字体使用上游 Resource Han Rounded CN Heavy/Bold 的完整字形，WOFF2 转换验证字符映射、轮廓与度量，资源清单记录字节数及哈希。
+视频导出参考由 `tests/native-export-reference.py` 生成。输出页使用提交 `8770413f965084f2e0567ae44c235b8a34377861`；片头页使用固定上游提交 `ff9f65856b8591589aba0582ac867220202a44c6`，对应 `introPvPreview` 及片头 PV/音乐选段字段。该组件基准采用自身版本的 QML、公共控件、主题与中文翻译，隔离于共享参考模块；`reference.json` 为各页登记组件提交与源码、主题、翻译、会话头文件和字体资源哈希。字体使用上游 Resource Han Rounded CN Heavy/Bold 的完整字形，WOFF2 转换验证字符映射、轮廓与度量，资源清单记录字节数及哈希。
 
 本地入口使用 HTTP/HTTPS。`file://` 入口显示服务启动命令与打开链接；静态网站脚本验证该提示与 `/MiaView_Web/` 子路径下的编辑器、谱面、音乐和 PV 加载。
 
@@ -85,7 +85,7 @@ UI 准确度采用 100 分加权评分：布局 35 分、字体 20 分、色彩 
 | 偏好与快捷键 | `src/app/ui/preferences/PreferencesDialog.qml` | 布局、四种主题、字体、编辑选项、快捷键页；设置滚动；快捷键录入；配置恢复 |
 | BPM 与延迟 | `src/app/ui/latency/LatencyPage.qml` | `latency` 标签；BPM、`clockCount`、`offsetSeconds`；检测、试听、波形和字段回写 |
 | 编写辅助 | 编辑器菜单与补全组件 | Touch 编写；变换命令与撤销结果 |
-| 视频导出 | `src/app/ui/export/ExportVideoPage.qml`、`ExportRangeSelector.qml`；`src/app/ui/sidebar/ExportSidebarPage.qml` | 难度；输出参数；区间；片头；批量列表；任务进度；取消；完成结果 |
+| 视频导出 | `src/app/ui/export/ExportVideoPage.qml`、`ExportRangeSelector.qml`；`src/app/ui/sidebar/ExportSidebarPage.qml` | 难度；输出参数；区间；片头；任务进度；取消；完成结果 |
 | 封面编辑与导出 | `src/app/ui/export/CoverExportPage.qml`、`CoverLayerList.qml`、`CoverExportWindow.qml` | 图层增删与顺序；图像、文字、谱面卡片；属性；预设；布局导入/保存；输出 |
 | 公共弹窗与任务提示 | `src/app/ui/components/AppDialog.qml`、`ChoiceDialog.qml`、`AboutDialog.qml`、`JobProgressOverlay.qml`、`Tooltip.qml` | 标题与按钮；内容滚动；确认；焦点；进度与消息；边缘定位 |
 

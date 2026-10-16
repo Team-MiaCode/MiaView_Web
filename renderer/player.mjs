@@ -13,3 +13,5 @@ const engine = createPlayerEngine({
 const controller = createPlayerController(engine);
 controls = attachPlayerControls(controller, engine);
 attachSdkBridge(engine, controller);
+
+window.addEventListener("pagehide", () => engine.clear(), { once: true });

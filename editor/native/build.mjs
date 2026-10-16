@@ -93,14 +93,19 @@ const publicRoot = join(root, "renderer");
 mkdirSync(join(publicRoot, "sfx"), { recursive: true });
 for (const name of ["answer.wav", "break_slide.wav", "break_tap.wav", "break.wav",
   "slide_break_slide.wav", "slide_break_start.wav", "slide.wav", "tap_ex.wav",
-  "tap_perfect.wav", "touch_hanabi.wav", "touch_Hold_riser.wav", "touch.wav"])
+  "tap_perfect.wav", "touch_hanabi.wav", "touch_Hold_riser.wav", "touch.wav", "clock.wav"])
   copyFileSync(join(source, "assets/SFX", name), join(publicRoot, "sfx", name));
+copyFileSync(join(source, "src/intro/audio/track_start.wav"), join(publicRoot, "sfx/track_start.wav"));
 syncTheme(source, upstreamGitCommit);
 copyFileSync(join(build, "miacode-preview.wasm"), join(publicRoot, "miacode-preview.wasm"));
 // Keep generated text reproducible across host line-ending conventions.
 for (const name of ["miacode-preview.js", "qtloader.js", "LICENSE", "LICENSE_SCOPE.md", "THIRD_PARTY_NOTICES.md"]) {
   const input = join(name.endsWith(".js") ? build : source, name);
-  const text = readFileSync(input, "utf8").replace(/\r\n/g, "\n").replace(/^[ \t]+$/gm, "");
+  let text = readFileSync(input, "utf8").replace(/\r\n/g, "\n").replace(/^[ \t]+$/gm, "");
+  if (name === "THIRD_PARTY_NOTICES.md") {
+    const license = readFileSync(join(here, "webp-LICENSE.txt"), "utf8").replace(/\r\n/g, "\n").trim();
+    text += `\n\n## WebP decoder\n\nThe WebAssembly renderer includes the Qt Image Formats WebP plugin and its bundled libwebp codec.\nSource: https://github.com/qt/qtimageformats/tree/v${toolchain.qtVersion}/src/3rdparty/libwebp\n\n${license}\n`;
+  }
   writeFileSync(join(publicRoot, name), text);
 }
 const identity = {

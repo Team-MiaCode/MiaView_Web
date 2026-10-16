@@ -9,6 +9,7 @@ export function writeRendererInventory(directory = join(root, "renderer")) {
     /\.(wasm|js|mjs|css|html|json|br|gz)$/.test(name) && name !== "artifact-manifest.json");
   paths.push(...readdirSync(join(directory, "sfx")).map(name => `sfx/${name}`));
   paths.push("LICENSE", "LICENSE_SCOPE.md", "THIRD_PARTY_NOTICES.md");
+  paths.push("vendor/mediabunny/index.mjs", "vendor/mediabunny/LICENSE", "vendor/mediabunny/NOTICE.md");
   const files = paths.sort().map(path => {
     const bytes = readFileSync(join(directory, path));
     return { path, byteSize: bytes.byteLength,

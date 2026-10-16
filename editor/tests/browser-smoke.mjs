@@ -742,6 +742,10 @@ try {
   const devRequests = [];
   page.on("request", (request) => devRequests.push({ url: request.url(), method: request.method() }));
   await page.goto(base + "/");
+  assert.equal(new URL(page.url()).pathname, "/index.html");
+  await page.locator(".welcome-title").waitFor();
+  await page.evaluate(() => document.getElementById("workbench").editor.ready);
+  await page.goto(base + "/examples/index.html");
   assert.equal(new URL(page.url()).pathname, "/examples/index.html");
   await page.waitForFunction(() => document.getElementById("performance-output").textContent.includes("Qt 引擎初始化"), null, { timeout: 30000 });
   assert.equal(await page.locator("#network-form, #destroy, #remount, #diagnostics-export, #diagnostics-reset").count(), 0);

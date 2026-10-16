@@ -49,6 +49,16 @@ try {
   await page.goto(base + "index.html");
   await page.locator(".welcome-title").waitFor();
   await page.evaluate(() => document.getElementById("workbench").editor.ready);
+  await page.evaluate(() => document.getElementById("workbench").editor.command("file.demo"));
+  const opening = page.waitForEvent("popup");
+  await page.evaluate(() => document.getElementById("workbench").editor.command("preview.detach"));
+  const detached = await opening;
+  detached.on("pageerror", error => errors.push(error.message));
+  assert.equal(new URL(detached.url()).pathname, `${prefix}preview-window.html`);
+  const detachedRenderer = new URL(await detached.locator("iframe").getAttribute("src"));
+  assert.equal(detachedRenderer.pathname, `${prefix}renderer/index.html`);
+  await page.evaluate(() => document.getElementById("workbench").editor.command("preview.detach"));
+  assert.equal(detached.isClosed(), true);
   await page.goto(base + "examples/index.html");
   assert.equal(await page.locator("#local-pv").isDisabled(), true);
   const folder = join(output, "chart");
@@ -65,7 +75,7 @@ try {
   await page.waitForFunction(() => document.getElementById("status").textContent.includes("无法解码"));
   assert.equal(await page.locator("#local-pv").isEnabled(), true, "A failed PV must remain replaceable");
   await page.locator("#local-pv").setInputFiles(join(root, "tests/fixtures/bg-pattern.webm"));
-  await page.locator("#play:not([disabled])").waitFor();
+  await page.locator("#local-pv:not([disabled])").waitFor();
   assert.equal(await page.locator("#difficulty").inputValue(), "3");
   assert.ok((await page.locator("#media-status").textContent()).includes("bg-pattern.webm"));
   const wave = Buffer.alloc(44 + 24000 * 12 * 2);
@@ -77,7 +87,7 @@ try {
   const audio = join(output, "local-track.wav");
   writeFileSync(audio, wave);
   await page.locator("#local-audio").setInputFiles(audio);
-  await page.locator("#play:not([disabled])").waitFor();
+  await page.locator("#local-audio:not([disabled])").waitFor();
   assert.ok((await page.locator("#media-status").textContent()).includes("local-track.wav"));
   await page.locator("#play").click();
   await frame.locator("#play").filter({ hasText: "暂停" }).waitFor();
@@ -86,7 +96,7 @@ try {
   mkdirSync(join(root, "artifacts/ui"), { recursive: true });
   await page.screenshot({ path: join(root, "artifacts/ui/pages-local-files.png"), fullPage: true });
   await page.locator("#remove-pv").click();
-  await page.locator("#play:not([disabled])").waitFor();
+  await page.locator("#local-pv:not([disabled])").waitFor();
   assert.ok((await page.locator("#media-status").textContent()).includes("PV：未选择"));
   assert.equal(await page.locator("#remove-pv").isDisabled(), true);
   assert.ok(methods.every(method => ["GET", "HEAD"].includes(method)), "Local media must not be uploaded");

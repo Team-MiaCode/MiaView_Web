@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { formatPerformanceReport } from "../scripts/performance-log.mjs";
 import { staticServer } from "../scripts/serve.mjs";
+import { listenForBrowser } from "./helpers/browser-server.mjs";
 
 test("dev backend saves parseable JSONL and rejects cross-origin, malformed and oversized reports", async () => {
   const directory = await mkdtemp(join(tmpdir(), "miaview-log-test-"));
@@ -13,7 +14,7 @@ test("dev backend saves parseable JSONL and rejects cross-origin, malformed and 
     performanceLogDir: join(directory, ".logs"),
     performanceOutput: (text) => printed.push(text),
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenForBrowser(server);
   const origin = `http://127.0.0.1:${server.address().port}`;
   const body = {
     sessionId: "00000000-0000-4000-8000-000000000001",
@@ -22,7 +23,7 @@ test("dev backend saves parseable JSONL and rejects cross-origin, malformed and 
   const send = (value, requestOrigin = origin) =>
     fetch(origin + "/__performance", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Origin: requestOrigin },
+      headers: { "Content-Type": "application/json", Origin: requestOrigin, Connection: "close" },
       body: typeof value === "string" ? value : JSON.stringify(value),
     });
   try {
@@ -52,8 +53,8 @@ test("dev backend saves parseable JSONL and rejects cross-origin, malformed and 
     assert.equal(lines[0].sessionId, body.sessionId);
     assert.equal(lines[1].report.sequence, 2);
     assert.ok(lines[0].receivedAt);
-    assert.equal((await fetch(origin + "/.logs/" + files[0])).status, 404);
-    assert.equal((await fetch(origin + "/%2f.logs/" + files[0])).status, 404);
+    assert.equal((await fetch(origin + "/.logs/" + files[0],{headers:{Connection:"close"}})).status, 404);
+    assert.equal((await fetch(origin + "/%2f.logs/" + files[0],{headers:{Connection:"close"}})).status, 404);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     await rm(directory, { recursive: true, force: true });
@@ -70,17 +71,13 @@ test("backend defaults to terminal output with no file creation, and terminal ca
     performanceTerminal: false,
     performanceOutput: (text) => printed.push(text),
   });
-  await Promise.all(
-    [server, silent].map(
-      (host) => new Promise((resolve) => host.listen(0, "127.0.0.1", resolve)),
-    ),
-  );
+  await Promise.all([server, silent].map(listenForBrowser));
   try {
     for (const [index, host] of [server, silent].entries()) {
       const origin = `http://127.0.0.1:${host.address().port}`;
       const response = await fetch(origin + "/miacode/__performance", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Origin: origin },
+        headers: { "Content-Type": "application/json", Origin: origin, Connection: "close" },
         body: JSON.stringify({
           sessionId: "00000000-0000-4000-8000-000000000001",
           report: {

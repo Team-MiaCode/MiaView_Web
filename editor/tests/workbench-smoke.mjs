@@ -29,9 +29,10 @@ async function assertControlBounds(page, label) {
 try {
   for (const name of engines) {
     const browser = await launchPreviewBrowser(playwright, name);
+    let page, activeCase;
     try {
       const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });
-      const page = await context.newPage();
+      page = await context.newPage();
       const graphics = await previewGraphics(page, name);
       const errors = [];
       page.on("pageerror", error => errors.push(error.message));
@@ -43,6 +44,7 @@ try {
       for (const [width, height] of sizes) {
         await page.setViewportSize({ width, height });
         for (const key of pages) {
+          activeCase = { engine: name, width, height, page: key };
           await page.evaluate(key => document.getElementById("workbench").editor.viewState.openEditor(key), key);
           const geometry = await page.evaluate(() => {
             const root = document.getElementById("workbench");
@@ -87,16 +89,13 @@ try {
               await page.locator(`.settings-tabs button[data-page="${section}"]`).click();
               await assertControlBounds(page, `${name}/${width}/export/${section}`);
             }
-            await page.locator('.export-heading button').click();
-            await page.locator('.settings-tabs button[data-page="batch"]').click();
-            await assertControlBounds(page, `${name}/${width}/export/batch`);
-            await page.locator('.export-heading button').click();
           }
           if (key === "cover") {
             await page.locator('.settings-tabs button[data-page="layer"]').click();
             await assertControlBounds(page, `${name}/${width}/cover/layer`);
             await page.locator('.settings-tabs button[data-page="canvas"]').click();
             for (const menu of [".cover-topbar .cover-menu", ".cover-layers-pane .cover-menu"]) {
+              activeCase.menu = menu;
               await page.locator(`${menu} summary`).click();
               await assertControlBounds(page, `${name}/${width}/cover/menu`);
               await page.locator(`${menu} summary`).click();
@@ -121,6 +120,7 @@ try {
         }
       }
       await page.setViewportSize({ width: 1366, height: 768 });
+      activeCase = { engine: name, phase: "editorInput", width: 1366, height: 768 };
       if (webAudio) await page.evaluate(() => document.getElementById("workbench").editor.command("file.demo"));
       else await page.evaluate(() => {
         const editor = document.getElementById("workbench").editor;
@@ -210,6 +210,7 @@ try {
       await page.setViewportSize({ width: 1366, height: 768 });
       await page.evaluate(() => document.getElementById("workbench").editor.viewState.openEditor("difficulty:5"));
       await page.locator(".source-input").fill("(120){4}\n1,2,3,4,\n|| 中文注释\n5h[4:1],6-2[4:1],E");
+      await page.evaluate(() => document.getElementById("workbench").editor.workbench.sourceEditor.pending);
       await page.waitForFunction(() => document.querySelectorAll(".source-code-line").length === 4);
       await page.evaluate(() => document.fonts.ready);
       const fontLoaded = await page.evaluate(() => {
@@ -254,12 +255,21 @@ try {
         assert.ok(host.height >= 30, `${name}/${width}/editor viewport ${host.height}`);
         assert.ok(box.x >= host.x - 1 && box.x + box.width <= host.x + host.width + 1, `${name}/${width}/completion horizontal bounds`);
         assert.ok(box.y >= host.y - 1 && box.y + box.height <= host.y + host.height + 1, `${name}/${width}/completion vertical bounds ${JSON.stringify({ box, host })}`);
-        await page.keyboard.press("ArrowDown");
-        assert.equal(await page.locator('.completion-candidate[aria-selected="true"]').textContent(), "-8[4:1]");
-        assert.equal(await page.locator(".source-input:focus").count(), 1);
-        await page.keyboard.press("Escape");
-        assert.equal(await page.locator(".completion-popup").isVisible(), false);
       }
+      await page.locator(".source-input").fill("1h[");
+      await page.evaluate(async () => {
+        const editor = document.getElementById("workbench").editor;
+        await editor.workbench.sourceEditor.pending;
+        await editor.command("edit.triggerCompletion", { glyph: "[" });
+      });
+      const candidates = await page.locator(".completion-candidate").allTextContents();
+      assert.ok(candidates.length >= 2, `${name}: native completion candidates`);
+      await page.keyboard.press("ArrowDown");
+      await page.evaluate(() => document.getElementById("workbench").editor.workbench.sourceEditor.pending);
+      assert.equal(await page.locator('.completion-candidate[aria-selected="true"]').textContent(), candidates[1]);
+      assert.equal(await page.locator(".source-input:focus").count(), 1);
+      await page.keyboard.press("Escape");
+      assert.equal(await page.locator(".completion-popup").isVisible(), false);
       await page.setViewportSize({ width: 1366, height: 768 });
       const frame = await page.locator(".preview-container iframe").elementHandle();
       for (const theme of ["light", "legacy", "legacy_light", "dark"]) {
@@ -279,9 +289,11 @@ try {
       assert.equal(await page.locator("[role=menu]").count(), 0);
       assert.equal(await page.locator(".menu-button:focus").textContent(), "文件");
       for (const scale of [0.8, 1, 1.25, 1.5, 2]) {
+        activeCase = { engine: name, phase: "inputAlignment", scale };
         await page.setViewportSize({ width: Math.floor(1366 / scale), height: Math.floor(768 / scale) });
         await page.evaluate(() => document.getElementById("workbench").editor.viewState.setPreference("editorAutoWrap", true));
         await page.locator(".source-input").fill(`${"1h[4:1],2-8[4:1],".repeat(35)}\n${"|| 中文注释".repeat(35)}\nE`);
+        await page.evaluate(() => document.getElementById("workbench").editor.workbench.sourceEditor.pending);
         await page.waitForFunction(() => document.querySelectorAll(".source-code-line").length === 3);
         const wrapping = await page.evaluate(() => {
           const editor = document.getElementById("workbench").editor.workbench.sourceEditor;
@@ -306,6 +318,18 @@ try {
       assert.deepEqual(errors, [], `${name} JavaScript errors`);
       console.log(`${name}: ${sizes.length * pages.length} page layouts and input alignment passed`);
       await context.close();
+    } catch (error) {
+      const evidence = { ...activeCase, error: error.message };
+      if (page && !page.isClosed()) {
+        await page.screenshot({ path: resolve(output, `${name}-failure.png`) }).catch(() => {});
+        evidence.menus = await page.locator(".cover-menu summary").evaluateAll(nodes => nodes.map(node => ({
+          text: node.textContent, rect: node.getBoundingClientRect().toJSON(), visible: node.checkVisibility(),
+          font: getComputedStyle(node).font, parent: node.parentElement.outerHTML,
+        }))).catch(() => []);
+      }
+      writeFileSync(resolve(output, `${name}-failure.json`), JSON.stringify(evidence, null, 2) + "\n");
+      console.log(JSON.stringify(evidence));
+      throw error;
     } finally { await browser.close(); }
   }
 } finally {

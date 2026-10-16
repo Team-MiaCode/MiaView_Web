@@ -1,3 +1,6 @@
+import { PreviewFrameLimiter } from "../../renderer/frame-rate.mjs";
+import { frameRateForMode } from "../../renderer/performance-settings.mjs";
+
 const namespace = "http://www.w3.org/2000/svg";
 function svg(tag, attributes, text) {
   const node = document.createElementNS(namespace, tag);
@@ -11,9 +14,14 @@ export class TimelineView {
     this.command = command;
     this.root = svg("svg", { class: "timeline-view", role: "img", "aria-label": "时间轴", tabindex: 0 });
     this.state = null;
+    this.frameLimiter = new PreviewFrameLimiter(60);
+    this.abort = new AbortController();
+    this.root.ownerDocument.addEventListener("visibilitychange", () => this.animate(), { signal: this.abort.signal });
     this.clipId = `timeline-${crypto.randomUUID()}`;
     this.resize = new ResizeObserver(() => {
       const bounds = this.root.getBoundingClientRect();
+      this.visible = bounds.width > 0 && bounds.height > 0;
+      this.animate();
       if (bounds.width && bounds.height) command("timeline.viewport", { width: Math.round(bounds.width), height: Math.round(bounds.height) });
     });
     this.resize.observe(this.root);
@@ -23,7 +31,7 @@ export class TimelineView {
     });
     this.root.addEventListener("wheel", event => {
       event.preventDefault();
-      command(event.ctrlKey ? "timeline.zoom" : "timeline.scroll", { delta: event.deltaY || event.deltaX });
+      command("timeline.scroll", { delta: event.deltaY || event.deltaX });
     }, { passive: false });
   }
   setState(state) { this.state = state; this.draw(); }
@@ -119,5 +127,23 @@ export class TimelineView {
     const x = state.timelineLeft + state.leadingCenteringPadding + (second - state.displayStartSeconds) * state.pixelsPerSecond;
     this.playhead.setAttribute("x1", x); this.playhead.setAttribute("x2", x);
   }
-  destroy() { this.resize.disconnect(); }
+  setFrameRateMode(mode) { this.frameLimiter = new PreviewFrameLimiter(frameRateForMode(mode)); }
+  setPlayback(state) {
+    this.clock = { ...this.clock, ...state, observedAt: performance.now() };
+    if (!state.playing) this.updatePlayhead(state.currentTime);
+    this.animate();
+  }
+  animate() {
+    if (!this.clock?.playing || !this.visible || this.root.ownerDocument.hidden) {
+      cancelAnimationFrame(this.animation); this.animation = null; return;
+    }
+    if (this.animation != null) return;
+    const frame = now => {
+      if (this.frameLimiter.accept(now)) this.updatePlayhead(Math.min(this.clock.duration,
+        this.clock.currentTime + (now - this.clock.observedAt) / 1000 * this.clock.rate));
+      this.animation = requestAnimationFrame(frame);
+    };
+    this.animation = requestAnimationFrame(frame);
+  }
+  destroy() { cancelAnimationFrame(this.animation); this.abort.abort(); this.resize.disconnect(); }
 }

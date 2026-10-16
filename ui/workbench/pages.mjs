@@ -29,9 +29,9 @@ export function createPage(key, { viewState, documentSession, command, nativeCov
       h("hr"), h("h2", {}, "最近打开"),
       h("div", { className: "recent-documents" }, recent.length
         ? recent.slice(0, 8).map(item => h("div", { className: "recent-document" },
-          button(item.label, () => action("file.openRecent", { path: item.path }), { className: "recent-open" }),
+          button(item.label, () => action("file.openRecent", { id: item.id, path: item.path }), { className: "recent-open" }),
           h("span", { className: "recent-path" }, item.path),
-          button("删除", () => action("file.removeRecent", { path: item.path }), { symbol: "remove", className: "chrome recent-remove", iconOnly: true })))
+          button("删除", () => action("file.removeRecent", { id: item.id, path: item.path }), { symbol: "remove", className: "chrome recent-remove", iconOnly: true })))
         : h("p", { className: "recent-empty" }, "暂无最近文档"))));
     return page;
   }
@@ -41,29 +41,34 @@ export function createPage(key, { viewState, documentSession, command, nativeCov
     page.replaceChildren(createMetadata({ viewState, documentSession, command }));
   } else if (key === "preferences") {
     page.classList.add("preferences-page");
-    page.append(createPreferences({ viewState, documentSession, command }));
+    const preferences=createPreferences({ viewState, documentSession, command });
+    page.append(preferences);page.destroy=()=>preferences.destroy();
   } else if (key === "preview-settings") {
     page.classList.add("settings-page");
     page.append(createPreviewSettings({ viewState, documentSession, command }));
   } else if (key === "audio-settings") {
     page.classList.add("audio-settings-page");
-    page.append(createAudioSettings({ viewState, command }));
+    page.append(createAudioSettings({ viewState, documentSession, command }));
   } else if (key === "latency") {
     page.classList.add("native-form", "latency-page");
     page.replaceChildren(
       formRow("BPM", number("latency.bpm", (documentSession.bpm ?? 120).toFixed(3), action, { min: 1, step: .001, id: "latencyBpmField" }),
         button("自动检测", () => action("latency.detectBpm"), { id: "latencyDetectBpmButton", disabled: !documentSession.trackAvailable })),
+      h("output", { className: "caption", id: "latency-bpm-result" }, documentSession.bpmDetectResult || ""),
       formRow("计数拍", number("latency.clockCount", documentSession.clockCount ?? 4, action, { min: 1, step: 1, id: "latencyClockCountField" })),
       formRow("偏移", number("latency.offsetSeconds", (documentSession.offsetSeconds ?? 0).toFixed(3), action, { step: .001, id: "latencyOffsetField" }),
         button("自动检测", () => action("latency.detectOffset"), { id: "latencyDetectOffsetButton", disabled: !documentSession.trackAvailable })),
+      h("output", { className: "caption", id: "latency-offset-result" }, documentSession.offsetDetectResult || ""),
       section("试听", h("div", { className: "form-row audition-row" }, h("span", { className: "form-label" }, "细分"),
-        h("div", { className: "choice-row", role: "group", "aria-label": "细分" }, ...[4, 8].map(value => button(`1/${value}`, () => action("latency.subdivision", { value }), { "aria-pressed": String((documentSession.subdivision ?? 4) === value) }))),
+        h("div", { className: "choice-row", role: "group", "aria-label": "细分" }, ...[4, 8, 16].map(value => button(`1/${value}`, () => action("latency.subdivision", { value }), { "aria-pressed": String((documentSession.subdivision ?? 4) === value) }))),
         button(documentSession.auditionRunning ? "暂停" : "开始试听", () => action("latency.toggleAudition"), { id: "latencyAuditionButton", className: documentSession.auditionRunning ? "" : "primary" })),
-        range("音效音量", "latency.sfxVolumePercent", documentSession.sfxVolumePercent ?? 100, 0, 100, action, 1, "%")),
+        range("音效音量", "latency.sfxVolumePercent", documentSession.sfxVolumePercent ?? 60, 0, 100, action, 1, "%")),
       h("output", { id: "latency-result", role: "status" }));
   } else if (key === "export") {
     page.classList.add("video-export-page");
     page.replaceChildren(createVideoExport({ viewState, documentSession, command }));
+    page.updateProgress=session=>page.firstElementChild.updateProgress(session);
+    page.updateAudition=state=>page.firstElementChild.updateAudition(state);
   } else if (key === "cover") {
     page.classList.add("cover-page");
     const editor = createCoverEditor({ viewState, documentSession, command, nativeCover });

@@ -50,10 +50,21 @@ try {
   assert.equal(measured.events.at(-1).type, "compositionend");
   assert.ok(measured.events.some(event => event.type === "compositionupdate" && event.data === "主"));
   assert.ok(measured.events.some(event => event.type === "compositionupdate" && event.data === "主歌"));
+  await cdp.send("Input.imeSetComposition", { text: "，", selectionStart: 1, selectionEnd: 1 });
+  await cdp.send("Input.insertText", { text: "，" });
+  await page.waitForFunction(() => document.getElementById("workbench").editor.workbench.documentSession.chartText.endsWith("|| 段落：主歌,"));
+  await page.keyboard.press("Control+z");
+  await page.waitForFunction(() => document.getElementById("workbench").editor.workbench.documentSession.chartText.endsWith("|| 段落：主歌")).catch(async error => {
+    console.log(JSON.stringify(await page.evaluate(() => {
+      const source = document.getElementById("workbench").editor.workbench.sourceEditor;
+      return { value: source.input.value, state: source.history.state, undo: source.history.undoEntries, redo: source.history.redoEntries, events: compositionEvents };
+    }), null, 2));
+    throw error;
+  });
   await page.screenshot({ path: resolve(output, "narrow-composition.png") });
   assert.deepEqual(errors, []);
   writeFileSync(resolve(output, "results.json"), JSON.stringify({ browser: browser.version(), measured, errors }, null, 2) + "\n");
-  console.log("Chinese IME composition, native body update, caret/focus and reduced viewport input alignment passed");
+  console.log("Chinese IME composition, half-width punctuation, atomic undo, native body update and input alignment passed");
 } finally {
   await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
 }

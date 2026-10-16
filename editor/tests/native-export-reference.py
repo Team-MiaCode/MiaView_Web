@@ -16,7 +16,7 @@ parser.add_argument("--qt-host", type=Path, required=True)
 parser.add_argument("--ref", default="8770413f965084f2e0567ae44c235b8a34377861")
 parser.add_argument("--component-ref", help="Fixed component commit recorded alongside the shared UI baseline")
 parser.add_argument("--lrelease", type=Path, help="Translation compiler for a component-specific catalogue")
-parser.add_argument("--only", default="output,video,gameplay,skin,intro,batch")
+parser.add_argument("--only", default="output,video,gameplay,skin,intro")
 args = parser.parse_args()
 source = args.source.resolve()
 workspace = root / ".deps/ui-reference"
@@ -94,7 +94,7 @@ values = {
     "introSoundOptions": [{"fileName": "", "label": translated("qml.default")}],
     "fontLibraryOptions": [{"path": "", "family": "", "label": translated("card_font.default")}],
     "exportEndSeconds": 30, "contentDurationSeconds": 30, "minimumExportRangeSeconds": 5, "fullRangeExport": True,
-    "rangePreviewAvailable": True, "batchDifficultyChecks": [{"id": index + 1, "name": name, "checked": index == 4} for index, name in enumerate(["EASY", "BASIC", "ADVANCED", "EXPERT", "MASTER", "Re:MASTER", "UTAGE"])],
+    "rangePreviewAvailable": True,
 }
 header_path = "src/app/ui/export/ExportSession.h"
 header = source_bytes(header_path).decode("utf-8")
@@ -134,7 +134,7 @@ fixture = workspace / "export-reference.qml"
 for theme in records["themes"]:
     for tab in args.only.split(","):
         image = output / f"export-{tab}-{theme}.png"
-        fixture.write_text(common.replace("THEME", json.dumps(theme)).replace("MODE", json.dumps("batch" if tab == "batch" else "export")).replace("TAB", json.dumps(tab)).replace("OUTPUT", json.dumps(image.as_posix())), encoding="utf-8")
+        fixture.write_text(common.replace("THEME", json.dumps(theme)).replace("MODE", json.dumps("export")).replace("TAB", json.dumps(tab)).replace("OUTPUT", json.dumps(image.as_posix())), encoding="utf-8")
         result = subprocess.run([str(exe), "-translation", str(translation), "-I", str(workspace), str(fixture)], env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
         if result.returncode or not image.is_file():
             raise RuntimeError(result.stdout + result.stderr)

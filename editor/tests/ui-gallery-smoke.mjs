@@ -124,7 +124,7 @@ try {
     }
     await page.setViewportSize({ width: 800, height: 420 });
     await page.setViewportSize({ width: 800, height: 720 });
-    for (const tab of ["output", "intro", "batch"]) {
+    for (const tab of ["output", "intro"]) {
       await page.setViewportSize({ width: 800, height: 900 });
       await page.goto(`http://127.0.0.1:${server.address().port}/tests/ui-page.html?page=export-${tab}&theme=${theme}`);
       await captureRegion(page, "#page", resolve(output, `export-${tab}-${theme}.png`));

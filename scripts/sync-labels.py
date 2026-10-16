@@ -14,7 +14,7 @@ for language, filename in [("zh", "zh_CN"), ("en", "en_US"), ("ja", "ja_JP")]:
     for message in tree.findall(".//message"):
         identifier = message.get("id")
         translation = message.find("translation")
-        if identifier:
+        if identifier and identifier not in {"action.batch_export", "qml.batch"} and not identifier.startswith("dialog.batch_export."):
             value = "".join(translation.itertext()) if translation is not None else ""
             labels[identifier] = value or message.findtext("source", "")
     labels.update(workbench[language])

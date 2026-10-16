@@ -84,6 +84,38 @@ jobs:
           name: preview-screenshots
           path: artifacts/ui
 
+  functional-acceptance:
+    needs: build-preview
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: miaview-preview
+          path: .
+      - run: npm run check:source
+      - run: npm install --no-save --package-lock=false playwright@1.62.1
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Validate editor functions and creator workflow
+        env:
+          MIACODE_BROWSER: ${{ matrix.browser }}
+        run: xvfb-run --auto-servernum npm run test:stage2
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage2-${{ matrix.browser }}
+          path: artifacts/stage2
+          retention-days: 14
+
   ui-acceptance:
     needs: build-preview
     runs-on: ubuntu-24.04
@@ -194,7 +226,7 @@ jobs:
           path: artifacts/deploy
 
   deploy-pages:
-    needs: prepare-pages
+    needs: [prepare-pages, ui-acceptance, functional-acceptance]
     if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/web-editor-migration')
     runs-on: ubuntu-24.04
     permissions:

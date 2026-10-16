@@ -56,24 +56,55 @@ add_library(miaview_timeline STATIC
     "${MIACODE_SOURCE_DIR}/src/timeline/TimelineSceneStateBuilder.cpp"
     "${MIACODE_SOURCE_DIR}/src/audio/WaveformCache.cpp")
 target_link_libraries(miaview_timeline PUBLIC miacode_analysis miacode_base Qt6::Gui)
+add_library(miaview_editor STATIC
+    "${MIACODE_SOURCE_DIR}/src/editor/SimaiTextEditPolicy.cpp"
+    "${MIACODE_SOURCE_DIR}/src/editor/SimaiCompletionCatalog.cpp"
+    "${MIACODE_SOURCE_DIR}/src/editor/TouchPadAuthoringEdit.cpp"
+    "${MIACODE_SOURCE_DIR}/src/editor/BookmarkCommentSyntax.cpp"
+    "${MIACODE_SOURCE_DIR}/src/app/ui/editor/EditorController.cpp"
+    "${MIACODE_SOURCE_DIR}/src/app/ui/editor/EditorController.h")
+target_link_libraries(miaview_editor PUBLIC miacode_chart Qt6::Core)
 
 configure_file(browser-assets.qrc.in browser-assets.qrc @ONLY)
 qt_add_executable(miacode-preview browser-host.cpp cover-scene.cpp cover-scene.h timeline-bridge.cpp timeline-bridge.h document-bridge.cpp document-bridge.h
+    editor-bridge.cpp editor-bridge.h
+    touch-bridge.cpp touch-bridge.h
+    latency-bridge.cpp latency-bridge.h
+    preferences-bridge.cpp preferences-bridge.h
+    appearance-bridge.cpp appearance-bridge.h
+    export-bridge.cpp export-bridge.h
+    "${MIACODE_SOURCE_DIR}/src/export/video_export/VideoExportAudioRenderPlan.cpp"
+    "${MIACODE_SOURCE_DIR}/src/export/video_export/FontLibrary.cpp"
+    "${MIACODE_SOURCE_DIR}/src/app/ui/preferences/AppBackgroundSettings.cpp"
+    "${MIACODE_SOURCE_DIR}/src/app/runtime/latency/LatencyAnalysis.cpp"
+    "${MIACODE_SOURCE_DIR}/src/app/runtime/latency/LatencyTestChartBuilder.cpp"
+    "${MIACODE_SOURCE_DIR}/src/audio/PreviewAudioSettings.cpp"
+    "${MIACODE_SOURCE_DIR}/src/app/services/Id3TagReader.cpp"
+    "${MIACODE_SOURCE_DIR}/src/common/InputShortcutGesture.cpp"
     "${MIACODE_SOURCE_DIR}/src/app/services/ChartWorkspace.cpp"
     "${MIACODE_SOURCE_DIR}/src/app/services/ChartWorkspace.h"
+    "${MIACODE_SOURCE_DIR}/src/export/cover_export/CoverFramePlaybackController.cpp"
+    "${MIACODE_SOURCE_DIR}/src/export/cover_export/CoverFramePlaybackController.h"
     "${MIACODE_SOURCE_DIR}/src/export/cover_export/CoverLayoutModel.cpp"
+    "${MIACODE_SOURCE_DIR}/src/export/cover_export/CoverCompositionState.cpp"
+    "${MIACODE_SOURCE_DIR}/src/export/cover_export/CoverCompositeRenderer.cpp"
     "${MIACODE_SOURCE_DIR}/src/export/cover_export/CoverLayoutModel.h"
     "${CMAKE_CURRENT_BINARY_DIR}/browser-assets.qrc")
-target_link_libraries(miacode-preview PRIVATE miacode_preview_quick miacode_preview_quickplugin miaview_timeline Qt6::Svg)
+target_link_libraries(miacode-preview PRIVATE miacode_preview_quick miacode_preview_quickplugin miaview_timeline miaview_editor Qt6::Svg)
 file(GLOB_RECURSE intro_assets CONFIGURE_DEPENDS
     "${MIACODE_SOURCE_DIR}/src/intro/qml/*"
     "${MIACODE_SOURCE_DIR}/src/intro/assets/*"
     "${MIACODE_SOURCE_DIR}/src/intro/templates/*")
 qt_add_resources(miacode-preview "web_intro"
     PREFIX "/intro" BASE "${MIACODE_SOURCE_DIR}/src/intro" FILES ${intro_assets})
+qt_add_shaders(miacode-preview "web_intro_shaders"
+    PREFIX "/" BASE "${MIACODE_SOURCE_DIR}"
+    FILES "${MIACODE_SOURCE_DIR}/src/intro/shaders/bg_texture.frag")
 qt_add_resources(miacode-preview "web_cover_icon" PREFIX "/icons"
     BASE "${MIACODE_SOURCE_DIR}/resources/icons" FILES "${MIACODE_SOURCE_DIR}/resources/icons/app-original.png")
 qt_import_qml_plugins(miacode-preview)
+qt_import_plugins(miacode-preview INCLUDE_BY_TYPE imageformats
+    Qt6::QGifPlugin Qt6::QJpegPlugin Qt6::QICOPlugin Qt6::QSvgPlugin Qt6::QWebpPlugin)
 
 if(EMSCRIPTEN)
     set_target_properties(miacode-preview PROPERTIES

@@ -82,7 +82,9 @@ npm run dev
 
 编辑器主入口为根目录的 `index.html`，通过 HTTP/HTTPS 加载。开发服务启动后，打开 <http://127.0.0.1:3030/index.html>。双击 HTML 时，页面显示本地服务启动命令和编辑器链接。
 
-无需执行 `npm install`。“打开”与 `Ctrl+O` 选择整个谱面文件夹，网页保留该目录的文件清单。`maidata.txt` 与同目录的 `track.mp3/wav/flac/ogg/m4a`、`bg.jpg/png/jpeg/webp`、`bg.mp4` 或 `pv.mp4/webm` 按 v2 的资源命名关系载入，分别用于谱面、音乐、背景与 PV。集合目录包含多个谱面时，工作台显示谱面文件夹选择窗口。
+无需执行 `npm install`。“打开”与 `Ctrl+Shift+O` 选择整个谱面文件夹，网页保留该目录的文件清单。`maidata.txt` 与同目录的 `track.mp3/wav/flac/ogg/m4a`、`bg.jpg/png/jpeg/webp`、`bg.mp4` 或 `pv.mp4/webm` 按 v2 的资源命名关系载入，分别用于谱面、音乐、背景与 PV。集合目录包含多个谱面时，工作台显示谱面文件夹选择窗口。
+
+工作台支持导入封面、PV 和音乐，替换素材保留备份。保存全部写入谱面及资源；另存为复制完整目录。浏览器文件下载路径生成包含谱面和素材的 ZIP 工程，刷新恢复保留素材和待保存内容。
 
 示例页可切换分辨率和最大帧率。修改这些选项后会重新创建播放器、加载当前谱面并回到起点，默认暂停。
 
@@ -129,7 +131,7 @@ python3 -m http.server 8080 --bind 127.0.0.1 --directory artifacts/pages
 
 Windows 使用 `python` 代替 `python3`。打开 <http://localhost:8080>，不要直接双击 HTML 使用 `file://` 访问。
 
-页面加载谱面后，还可以单独选择其他目录的本地音乐或 PV，或移除 PV 恢复静态背景。替换素材会回到起点并暂停。PV 只提供视频背景，声音来自单独的音乐文件和判定音效。
+示例页加载谱面后，支持选择本地音乐和 PV，或移除 PV 恢复静态背景。素材替换沿用当前文档、难度、播放位置和播放状态。PV 提供视频背景，声音来自音乐文件和判定音效。
 
 ## 集成到你的网站
 
@@ -227,14 +229,30 @@ await preview.load({ maidata: maidataFile, audio: musicFile });
 | `setSettings(settings)` | 修改流速、亮度、皮肤和预览模式 |
 | `setPlayback(settings)` | 修改 `rate`、`rangePlaybackEnabled`、`exportStartSeconds`、`exportEndSeconds` |
 | `setMediaSettings({ hidePv })` | 切换 PV 与谱面背景 |
+| `setResources({ audio, cover, video })` | 替换指定素材，`null` 移除素材；保留文档、编辑内容和播放状态 |
+| `readAudioInfo(audio)` | 读取 ID3v2 标题、艺术家、专辑与 JPEG 内嵌封面 |
+| `importFont(font, name)` | 将 TTF/OTF 注册到预览实例，返回路径与字体族；`setSettings({ hudFontPaths })` 按区域应用 |
+| `getExportCapabilities(options)` | 查询当前浏览器的 MP4/WebM 编码器、容器与尺寸配置 |
+| `startExport(options)` / `cancelExport()` | 启动视频任务并返回任务编号；取消任务释放编码器并终止文件写入 |
+| `getExportStatus()` | 查询准备、编码、完成、取消或失败状态；通过 `exportProgress`、`exportCompleted`、`exportFailed` 接收任务事件 |
+| `setIntroAudition(options)` | 试听选定的片头 PV/音乐片段，支持循环、起点和样式更新；`enabled: false` 恢复谱面预览，状态通过 `introAuditionChanged` 返回 |
+| `normalizeBackground(settings)` | 获取上游背景默认值与归一化参数 |
+| `setLatency(settings)` / `detectLatency(kind, parameters)` | 节拍试听设置及原生 BPM、偏移检测 |
+| `normalizeShortcuts(sequences)` / `setInputShortcuts(sequences)` | 原生组合键解析与 iframe 键盘绑定；通过 `shortcutInput` 返回宿主命令 |
 | `setCanvasSize({ width, height })` | 设置当前画布尺寸，整数边长范围为 1–4096 |
 | `setCoverComposition(composition)` | 使用原生封面场景设置图层、选中状态、曲目内容和输出宽高 |
+| `coverCommand(id, args)` | 使用原生图层模型新增、复制、删除、排序、修改属性及重置封面布局 |
+| `importCoverImage(image)` | 解码图片并以内容哈希导入当前原生实例，返回路径、尺寸与 SHA256 |
+| `exportCover(options)` | 导出当前封面为 PNG 或 JPEG Blob，使用输出尺寸并保留 PNG 透明度 |
 | `getCoverComposition()` | 获取封面图层、选中图层和输出宽高 |
 | `getTimeline(options)` | 按视口、色板和缩放获取原生时间轴场景、音符图像与音轨波形 |
 | `navigateTimeline({ x, y })` | 将时间轴坐标映射为播放时间与谱面原文位置 |
 | `getTimelineFollow(second)` | 获取原生代码跟随范围与光标位置 |
 | `getDocument()` | 获取原生工作区的正文、元数据、revision、dirty 与保存点状态 |
 | `documentCommand(id, args)` | 提交工作区字段、正文与难度事务 |
+| `editorCommand(id, args)` | 获取编辑事务、补全、书签、变换及选区拍数结果 |
+| `audioCommand(id, args)` | 修改音频通道百分比、静音状态和尾部判定音，返回有效增益 |
+| `getAnalysis(language)` | 获取对应文档版本的语法诊断与无理条目 |
 | `getDocumentSaveText(section)` | 获取原生分段保存文本；0 为全文档，−1 为元数据，1–7 为难度正文 |
 | `getState()` | 获取播放位置、难度和设置 |
 | `getDiagnostics()` / `resetDiagnostics()` | 获取 / 重置诊断历史 |

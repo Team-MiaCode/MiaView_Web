@@ -6,6 +6,7 @@ import {
   trustedRequest,
   trustedResponse,
   normalizeChart,
+  normalizeResources,
   normalizeSettings,
   difficultyId,
   httpUrl,
@@ -15,6 +16,14 @@ import {
 import { previewResolution } from "../sdk/resolution.mjs";
 const sessionId = "00000000-0000-4000-8000-000000000001";
 const requestId = "00000000-0000-4000-8000-000000000002";
+
+test("Media replacement normalizes caller URLs and keeps removal explicit", () => {
+  const cover = new Blob(["image"]);
+  assert.deepEqual(normalizeResources({ audio: "./track.wav", cover, video: null }, "https://host.example/song/index.html"),
+    { audio: { url: "https://host.example/song/track.wav" }, cover, video: null });
+  for (const value of [{}, [], null, { maidata: "chart" }, { video: undefined }, { cover: "file:///bg.png" }, { audio: { url: "https://host.example/track.wav", sha256: "a".repeat(64) } }])
+    assert.throws(() => normalizeResources(value));
+});
 test("Original theme tokens use the same validation for creation and runtime commands", () => {
   assert.equal(previewTheme(undefined), "dark");
   for (const theme of ["dark", "light", "legacy", "legacy_light"]) assert.equal(previewTheme(theme), theme);
@@ -58,6 +67,9 @@ test("SDK responses reject unrelated frames and malformed replies", () => {
   };
   const event = { source: frame, origin, data };
   assert.equal(trustedResponse(event, frame, origin, sessionId), data);
+  const shortcut = {...data,type:"shortcutInput",payload:{id:"preview.speed_up",phase:"keydown"}};
+  assert.equal(trustedResponse({...event,data:shortcut},frame,origin,sessionId),shortcut);
+  assert.equal(trustedResponse({...event,source:{},data:shortcut},frame,origin,sessionId),null);
   for (const other of [
     { ...event, source: {} },
     { ...event, origin: origin + ".bad" },
@@ -142,9 +154,14 @@ test("settings remain bounded and judgment effects cannot be disabled", () => {
     { previewMode: "unknown" },
     { previewMode: 1 },
     { previewMode: null },
+    { centerDisplay: 8 }, { scaleMode: -1 }, { skinJudgeEffectIndex: 2 },
+    { showTimestamp: 1 }, { judgeEffectTap: "true" }, { layoutSquareScale: .1 },
   ])
     assert.throws(() => normalizeSettings(values));
   assert.equal(difficultyId(null), null);
+  const appearance = { layoutSquareScale: .75, scaleMode: 2, centerDisplay: 5, showTimestamp: false,
+    smoothBrightness: true, outlineIndex: 3, judgeEffectTap: true, skinJudgeEffectIndex: 1 };
+  assert.deepEqual(normalizeSettings(appearance), appearance);
   for (const previewMode of ["native", "maimuri_dx_style", "erase_by_area"])
     assert.deepEqual(normalizeSettings({ previewMode }), { previewMode });
   assert.equal(difficultyId(5), 5);

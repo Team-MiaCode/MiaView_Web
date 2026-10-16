@@ -1,0 +1,88 @@
+import { launchPreviewBrowser } from "./preview-browser.mjs";
+import assert from "node:assert/strict";
+import {mkdirSync,writeFileSync} from "node:fs";
+import {resolve,join} from "node:path";
+import {pathToFileURL} from "node:url";
+import {staticServer} from "../scripts/serve.mjs";
+import {waitForAsync} from "./helpers/wait-async.mjs";
+
+const browsers=await import(process.env.MIACODE_PLAYWRIGHT_MODULE?pathToFileURL(process.env.MIACODE_PLAYWRIGHT_MODULE).href:"playwright");
+const browserName=process.env.MIACODE_BROWSER||"chromium",software=process.env.MIACODE_SOFTWARE_VIDEO==="1";
+const variant=`${browserName}${software?"-software":""}`,output=resolve(`artifacts/intro-audition/${variant}`);mkdirSync(output,{recursive:true});
+const samples=24000*12,wave=Buffer.alloc(44+samples*2);
+wave.write("RIFF");wave.writeUInt32LE(wave.length-8,4);wave.write("WAVEfmt ",8);wave.writeUInt32LE(16,16);
+wave.writeUInt16LE(1,20);wave.writeUInt16LE(1,22);wave.writeUInt32LE(24000,24);wave.writeUInt32LE(48000,28);wave.writeUInt16LE(2,32);wave.writeUInt16LE(16,34);
+wave.write("data",36);wave.writeUInt32LE(wave.length-44,40);
+for(let index=0;index<samples;index++)wave.writeInt16LE(Math.round(Math.sin(index/24000*Math.PI*880)*4000),44+index*2);
+writeFileSync(join(output,"track.wav"),wave);
+const server=staticServer(process.cwd(),{performanceTerminal:false});await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
+const browser=await launchPreviewBrowser(browsers, browserName);
+try {
+  const page=await browser.newPage({viewport:{width:1366,height:900}});page.setDefaultTimeout(60000);
+  const errors=[];page.on("pageerror",error=>errors.push(error.message));
+  await page.addInitScript(()=>{
+    if(!globalThis.AudioContext)return;
+    const original=AudioContext.prototype.createBufferSource;
+    window.sourceProbe=[];
+    AudioContext.prototype.createBufferSource=function(){
+      const source=original.call(this),record={source,stopped:false,ended:false};
+      const connect=source.connect,start=source.start,stop=source.stop;
+      source.connect=function(target,...args){record.target=target;return connect.call(this,target,...args);};
+      source.start=function(...args){record.offset=args[1];record.duration=args[2];record.rate=source.playbackRate.value;window.sourceProbe.push(record);return start.apply(this,args);};
+      source.stop=function(...args){record.stopped=true;return stop.apply(this,args);};
+      source.addEventListener("ended",()=>record.ended=true);
+      return source;
+    };
+  });
+  await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);await page.locator(".welcome-title").waitFor();
+  const command=(id,args)=>page.evaluate(({id,args})=>document.getElementById("workbench").editor.command(id,args),{id,args});
+  const state=()=>page.evaluate(()=>document.getElementById("workbench").editor.preview.getState());
+  await page.evaluate(async ({variant,software})=>{
+    const editor=document.getElementById("workbench").editor;await editor.ready;
+    if(software)await editor.command("preferences.performance",{videoDecodePrefersSoftware:true});
+    await editor.load({maidata:"&title=Intro Audition\n&inote_5=(120){4}1,2,3,4,E",audio:`/artifacts/intro-audition/${variant}/track.wav`,cover:"/ui/components/icons/app.png",video:"/tests/fixtures/bg-pattern.webm",difficulty:5});
+    await editor.preview.setPlayback({rate:2});await editor.preview.seek(.3);
+  },{variant,software});
+  await command("preview.toggleFreeAspect");
+  await page.evaluate(()=>document.getElementById("workbench").editor.preview.setSettings({showTimestamp:false,showChartInfoHud:false,showObjectStatsHud:false}));
+  const original=await state();
+  await command("export.settings",{introEnabled:true,introPvPreview:true,introPvStartSeconds:.7,introAuditionLoop:false});
+  await command("page.export");await page.locator('.settings-tabs [data-page="intro"]').click();
+  await page.locator("[data-intro-audition]").click();
+  await waitForAsync(page,async()=>{const state=await document.getElementById("workbench").editor.preview.getState();return state.introAudition?.playing&&state.introAudition.elapsed>.4;});
+  const first=await state();assert.ok(Math.abs(first.currentTime-.3)<.001);assert.equal(first.playback.rate,2);assert.equal(first.introAudition.duration,7.75);
+  if(software){assert.equal(first.videoPresentation.decoder,"software");assert.ok(first.videoPresentation.timestamp>.7);}
+  assert.equal(await page.locator("[data-intro-audition]").getAttribute("aria-pressed"),"true");
+  const frame=page.frames().find(frame=>frame.url().includes("/renderer/index.html"));
+  const firstVoice=await frame.evaluate(()=>sourceProbe.map(item=>({offset:item.offset,rate:item.rate,gain:item.target?.gain?.value,stopped:item.stopped,ended:item.ended})));
+  assert.equal(firstVoice.length,1);assert.equal(firstVoice[0].offset,.7);assert.equal(firstVoice[0].rate,1);assert.ok(firstVoice[0].gain>0);
+  await page.locator(".preview-container").screenshot({path:join(output,"playing.png")});
+  await waitForAsync(page,async()=>{const state=await document.getElementById("workbench").editor.preview.getState();return state.introAudition?.active&&!state.introAudition.playing;},null,{timeout:20000,polling:500});
+  assert.equal((await state()).introAudition.elapsed,0);assert.equal(await page.locator("[data-intro-audition]").getAttribute("aria-pressed"),"false");
+  await page.locator("[data-intro-audition] + button").click();
+  await waitForAsync(page,async()=>(await document.getElementById("workbench").editor.preview.getState()).introAudition?.introAuditionLoop===true);
+  await page.locator("[data-intro-audition]").click();
+  await waitForAsync(page,async()=>(await document.getElementById("workbench").editor.preview.getState()).introAudition?.elapsed>7,null,{timeout:18000,polling:500});
+  await waitForAsync(page,async()=>{const intro=(await document.getElementById("workbench").editor.preview.getState()).introAudition;return intro?.playing&&intro.elapsed<1;},null,{timeout:5000,polling:250});
+  const looped=await frame.evaluate(()=>sourceProbe.length);assert.ok(looped>=3);
+  const start=page.locator('.intro-settings input[type="number"]');await start.fill("1.2");await start.press("Tab");
+  await waitForAsync(page,async()=>{const intro=(await document.getElementById("workbench").editor.preview.getState()).introAudition;return intro?.playing&&intro.introPvStartSeconds===1.2;});
+  assert.equal(await frame.evaluate(()=>sourceProbe.at(-1).offset),1.2);
+  await page.setViewportSize({width:1000,height:760});
+  await waitForAsync(page,async original=>{const state=await document.getElementById("workbench").editor.preview.getState();return state.introAudition?.playing&&state.resolution.width!==original.resolution.width;},original);
+  await command("page.metadata");
+  await waitForAsync(page,async()=>(await document.getElementById("workbench").editor.preview.getState()).introAudition===null);
+  const restored=await state();assert.ok(Math.abs(restored.currentTime-original.currentTime)<.001);assert.equal(restored.playback.rate,2);assert.equal(restored.settings.showTimestamp,false);assert.equal(restored.playing,false);
+  const voices=await frame.evaluate(()=>sourceProbe.map(item=>({offset:item.offset,stopped:item.stopped,ended:item.ended})));
+  assert.ok(voices.every(item=>item.stopped||item.ended));assert.deepEqual(errors,[]);
+  await page.evaluate(async()=>{
+    const preview=document.getElementById("workbench").editor.preview;
+    await preview.setIntroAudition({introPvStartSeconds:.5,playing:true});
+    await preview.documentCommand("document.metadataTitle",{value:"Edited during audition"});
+  });
+  const edited=await state();assert.equal(edited.introAudition,null);assert.ok(Math.abs(edited.currentTime-.3)<.001);
+  assert.equal(await page.evaluate(async()=>(await document.getElementById("workbench").editor.preview.getDocument()).title),"Edited during audition");
+  assert.deepEqual(errors,[]);
+  writeFileSync(join(output,"results.json"),JSON.stringify({original,first,firstVoice,looped,restored,voices,edited,errors},null,2));
+  console.log("Intro audition start, native still, fade gain, loop, segment edits, resize and state restoration passed");
+} finally {await browser.close();await new Promise(resolve=>server.close(resolve));}

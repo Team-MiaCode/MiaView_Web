@@ -79,12 +79,13 @@
     host.style.height = "900px";
     const tab = key.slice(7);
     host.append(createPage("export", { viewState: state, documentSession: { charts: [{id: 2, name: "BASIC"}, {id: 5, name: "MASTER"}], activeDifficultyId: 5, duration: 30,
-      exportValues: { selectedDifficultyId: 5, activeTab: tab === "batch" ? "batch" : "export", settingsTab: tab, introEnabled: true, exportEndSeconds: 30 } }, command: () => {} }));
+      exportValues: { selectedDifficultyId: 5, settingsTab: tab, introEnabled: true, exportEndSeconds: 30 } }, command: () => {} }));
   } else if (key.startsWith("cover-")) {
     host.style.width = "1200px";
     host.style.height = "720px";
     const tab = key.slice(6);
     host.append(createPage("cover", { viewState: state, nativeCover: query.has("native"), documentSession: { metadataTitle: "MiaCode Example", metadataArtist: "Team MiaCode", metadataDesigner: "MiaCode", currentDifficultyLevel: "13+", bpm: 120,
+      sourceText: "&title=MiaCode Example\n&inote_2=(120){4}1,2,E\n&inote_5=(120){4}1,2,3,4,E",
       charts: [{id: 2, name: "BASIC"}, {id: 5, name: "MASTER"}], activeDifficultyId: 5, duration: 30,
       coverValues: { activeLayerKey: tab === "canvas" ? "card" : tab, inspectorTab: tab === "canvas" ? "canvas" : "layer" },
       coverLayers: [

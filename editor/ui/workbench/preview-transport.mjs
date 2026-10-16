@@ -41,6 +41,11 @@ export class PreviewTransport {
     for (const node of this.root.querySelectorAll("button,input")) node.disabled = !this.loaded;
     this.range.hidden = !this.loaded || !doc.exportValues?.introEnabled && !doc.exportValues?.exportEndSeconds;
   }
+  setDetached(detached) {
+    this.detach.setAttribute("aria-pressed", String(detached));
+    const text = detached ? "嵌回预览" : translate("preview.window.detach", this.viewState.preferences.languageToken || "zh");
+    this.detach.setAttribute("aria-label", text); this.detach.title = text;
+  }
   paintTime(second, duration) {
     const format = value => `${value < 0 ? "-" : ""}${String(Math.floor(Math.abs(value) / 60)).padStart(2, "0")}:${String(Math.floor(Math.abs(value) % 60)).padStart(2, "0")}`;
     this.positionText.textContent = format(second);

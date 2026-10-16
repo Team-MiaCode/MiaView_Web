@@ -1,3 +1,4 @@
+import { waitForAsync } from "./helpers/wait-async.mjs";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -82,7 +83,7 @@ try {
   await page.evaluate(() => document.getElementById("workbench").editor.command("document.selectDifficulty", { difficulty: 6 }));
   assert.equal(await page.getByRole("textbox", { name: "Simai 谱面正文", exact: true }).inputValue(), "(120){4}bad");
   await page.getByRole("textbox", { name: "Simai 谱面正文", exact: true }).fill("(120){4}5,6,7,E");
-  await page.waitForFunction(async () => (await document.getElementById("workbench").editor.preview.getState()).loaded);
+  await waitForAsync(page, async () => (await document.getElementById("workbench").editor.preview.getState()).loaded);
   const final = await getDocument();
   assert.equal(final.chartText, "(120){4}5,6,7,E");
   assert.match(final.sourceText, /&custom_field=保留字段/);

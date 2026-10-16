@@ -20,6 +20,8 @@ parser.add_argument("--target", choices=["wasm", "host", "all"], default="all")
 parser.add_argument("--host", choices=["windows", "linux"],
                     default="windows" if platform.system() == "Windows" else "linux")
 parser.add_argument("--metadata-only", action="store_true")
+parser.add_argument("--modules", nargs="+", choices=["qtbase", "qtdeclarative", "qtsvg", "qtshadertools", "qtimageformats"],
+                    help="Install selected modules; defaults include the WASM image codecs")
 parser.add_argument("--mirror", default="https://download.qt.io",
                     help="Qt archive mirror root; checksums are read from the official repository")
 args = parser.parse_args()
@@ -35,27 +37,31 @@ def get(url):
     return response.content
 
 def install(base, architecture, destination):
+    modules = args.modules or (["qtbase", "qtdeclarative", "qtsvg", "qtshadertools"]
+                               + (["qtimageformats"] if architecture == toolchain["wasmArch"] else []))
+    prefixes = tuple(module + "-" for module in modules) + (("icu-",) if architecture == "linux_gcc_64" and "qtbase" in modules else ())
     official = base.replace(args.mirror.rstrip("/"), "https://download.qt.io", 1)
     metadata = get(official + "Updates.xml")
     expected = get(official + "Updates.xml.sha256").decode().split()[0]
     if hashlib.sha256(metadata).hexdigest() != expected:
         raise RuntimeError("Qt metadata checksum mismatch")
     names = {f"qt.qt6.{compact}.{architecture}",
-             f"qt.qt6.{compact}.addons.qtshadertools.{architecture}"}
+             f"qt.qt6.{compact}.addons.qtshadertools.{architecture}",
+             f"qt.qt6.{compact}.addons.qtimageformats.{architecture}"}
     selected = []
     for package in ET.fromstring(metadata).findall("PackageUpdate"):
         if package.findtext("Name") not in names:
             continue
         for archive in package.findtext("DownloadableArchives", "").split(","):
             archive = archive.strip()
-            if not archive.startswith(("qtbase-", "qtdeclarative-", "qtsvg-", "qtshadertools-", "icu-")):
+            if not archive.startswith(prefixes):
                 continue
             selected.append((archive, base + package.findtext("Name") + "/" +
                              package.findtext("Version") + archive))
     if not all(any(name.startswith(module + "-") for name, _ in selected)
-               for module in ["qtbase", "qtdeclarative", "qtsvg", "qtshadertools"]):
+               for module in modules):
         raise RuntimeError(f"Qt {architecture} package layout changed; review the installer")
-    if architecture == "linux_gcc_64" and not any(name.startswith("icu-") for name, _ in selected):
+    if architecture == "linux_gcc_64" and "qtbase" in modules and not any(name.startswith("icu-") for name, _ in selected):
         raise RuntimeError("Qt Linux host tools require their matching ICU archive")
     for archive, url in selected:
         print(f"Qt {architecture}: {archive}", flush=True)

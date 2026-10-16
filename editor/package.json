@@ -41,6 +41,7 @@
     "runtime:fetch": "node scripts/fetch-runtime.mjs",
     "test:folder": "node tests/workbench-folder-smoke.mjs",
     "test:cover": "node tests/cover-canvas-smoke.mjs",
+    "test:cover-files": "node tests/cover-files-core-smoke.mjs",
     "test:transport": "node tests/preview-transport-smoke.mjs",
     "test:timeline": "node tests/timeline-smoke.mjs && node tests/timeline-visual-smoke.mjs && node tests/timeline-controls-smoke.mjs",
     "test:document": "node tests/document-smoke.mjs",
@@ -50,9 +51,39 @@
     "test:source-editor-ui": "node tests/source-editor-visual-smoke.mjs",
     "test:ime": "node tests/editor-ime-smoke.mjs",
     "test:stage1": "node tests/stage1-acceptance.mjs",
-    "test:source-wrap": "node tests/source-editor-wrap-smoke.mjs"
+    "test:document-fields": "node tests/document-fields-smoke.mjs",
+    "test:editor-core": "node tests/editor-core-smoke.mjs",
+    "test:source-wrap": "node tests/source-editor-wrap-smoke.mjs",
+    "test:project-files": "node tests/project-files-smoke.mjs",
+    "test:analysis-core": "node tests/analysis-core-smoke.mjs",
+    "test:preview-settings-core": "node tests/preview-settings-core-smoke.mjs",
+    "test:touch-authoring": "node tests/touch-authoring-smoke.mjs",
+    "test:audio-settings-core": "node tests/audio-settings-core-smoke.mjs",
+    "test:resources-core": "node tests/resources-core-smoke.mjs",
+    "test:project-media": "node tests/project-media-smoke.mjs",
+    "test:latency-core": "node tests/latency-core-smoke.mjs",
+    "test:audio-info": "node tests/audio-info-core-smoke.mjs",
+    "test:shortcuts-core": "node tests/shortcuts-core-smoke.mjs",
+    "test:preferences-core": "node tests/preferences-core-smoke.mjs",
+    "test:editor-preferences": "node tests/editor-preferences-smoke.mjs",
+    "sync:media": "node scripts/sync-media.mjs",
+    "test:video-export": "node tests/video-export-core-smoke.mjs",
+    "test:video-export-workbench": "node tests/video-export-workbench-smoke.mjs",
+    "test:intro-audition": "node tests/intro-audition-core-smoke.mjs",
+    "test:cover-chart-frame": "node tests/cover-chart-frame-smoke.mjs",
+    "test:cover-pv": "node tests/cover-pv-smoke.mjs",
+    "test:appearance": "node tests/appearance-core-smoke.mjs",
+    "test:preview-window": "node tests/preview-window-smoke.mjs",
+    "test:video-export-long": "node tests/video-export-long-smoke.mjs",
+    "test:performance-core": "node tests/performance-core-smoke.mjs",
+    "test:creation-workflow": "node tests/creation-workflow-smoke.mjs",
+    "test:video-geometry": "node tests/video-geometry-smoke.mjs",
+    "test:stage2": "node tests/stage2-acceptance.mjs"
   },
   "engines": {
     "node": ">=22"
+  },
+  "dependencies": {
+    "mediabunny": "1.61.4"
   }
 }

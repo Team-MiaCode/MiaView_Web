@@ -278,7 +278,7 @@ export class PreviewDiagnostics {
         wasmTick:
           "Synchronous miacode_tick; excludes deferred scene graph rendering.",
         videoPipeline:
-          "browser-compositor means the DOM video is composed below the transparent Qt canvas; no video pixels are copied into WASM.",
+          "browser-canvas and software-canvas present browser or prefer-software video frames below the transparent Qt canvas, at the configured PV frame rate.",
         presentedFps:
           "Qt frameSwapped delta / actual sample duration; may include paused redraws.",
         audioScheduleLate:

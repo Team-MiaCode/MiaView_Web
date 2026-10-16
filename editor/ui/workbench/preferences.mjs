@@ -29,6 +29,8 @@ export function createPreferences({ viewState, documentSession, command }) {
   const slider = (label, key, fallback, min, max, step = 1, suffix = "") => range(label, key, prefs[key] ?? fallback, min, max, (_, args) => set(key, args.value), step, suffix);
   let active = viewState.preferencesPage || "interface";
   function render() {
+    root.refreshBackground=null;
+    root.refreshPerformance=null;
     viewState.preferencesPage = active;
     for (const node of bar.children) {
       const selected = node.dataset.page === active;
@@ -55,24 +57,40 @@ export function createPreferences({ viewState, documentSession, command }) {
       visibility();
     } else if (active === "background") {
       const background = prefs.appBackground || {};
-      const update = (key, value) => set("appBackground", { ...viewState.preferences.appBackground, [key]: value });
+      const update = (key, value) => command("preferences.background",{[key]:value});
+      const imagePath=h("span",{className:"caption"});
+      const clear=button("清除",()=>command("background.clear"));
+      const refresh=()=>{
+        imagePath.textContent=prefs.appBackground?.imagePath || translate("qml.no_background_image_selected",prefs.languageToken || "zh");
+        clear.disabled=!prefs.appBackground?.imagePath;
+      };
+      refresh();root.refreshBackground=refresh;
       body.append(toggle("启用应用背景", background.enabled ?? false, value => update("enabled", value)),
-        h("div", { className: "background-actions action-row" }, h("span", { className: "caption" }, background.imagePath || translate("qml.no_background_image_selected", prefs.languageToken || "zh")),
-          button("选择图片", () => command("background.choose")), button("清除", () => command("background.clear"), { disabled: !background.imagePath })),
-        range("图片不透明度", "opacity", background.opacity ?? .5, .1, .8, (key, args) => update(key, args.value), .01, "%", value => String(Math.round(value * 100))),
-        range(translate("qml.background_mask_opacity", prefs.languageToken || "zh"), "panelAlpha", background.panelAlpha ?? 220, 0, 255, (_, args) => update("panelAlpha", args.value), 1, "%", value => String(Math.round(value / 255 * 100))),
+        h("div", { className: "background-actions action-row" },imagePath,button("选择图片", () => command("background.choose")),clear),
+        range("图片不透明度", "opacity", background.opacity ?? .2, .1, .8, (key, args) => update(key, args.value), .01, "%", value => String(Math.round(value * 100))),
+        range(translate("qml.background_mask_opacity", prefs.languageToken || "zh"), "panelAlpha", background.panelAlpha ?? 200, 0, 255, (_, args) => update("panelAlpha", args.value), 1, "%", value => String(Math.round(value / 255 * 100))),
         range("模糊半径", "blur", background.blur ?? 0, 0, 64, (key, args) => update(key, args.value)),
         formRow("缩放模式", select([["cover", "覆盖"], ["contain", "完整显示"], ["stretch", "拉伸"], ["center", "居中"], ["repeat", "平铺"]], background.sizeMode || "cover", value => update("sizeMode", value))),
         formRow("位置", select([["center", "居中"], ["left", "左侧"], ["right", "右侧"], ["top", "顶部"], ["bottom", "底部"], ["left_top", "左上"], ["right_top", "右上"], ["left_bottom", "左下"], ["right_bottom", "右下"]], background.position || "center", value => update("position", value))));
     } else if (active === "editor") {
       body.append(slider("字号", "editorFontSize", 14, 8, 28, 1, " pt"),
         pick("行距", "editorLineSpacing", [1, 1.5, 2, 3, 5].map(value => [value, `${value} 倍`]), 1),
-        pick("输入法与字符更正", "editorInputHandlingMode", [[0, "仅全角字符更正"], [1, "关闭输入法+全角字符更正"], [2, "保留输入字符"]], 1),
+        pick("输入法与字符更正", "editorInputHandlingMode", [[0, "仅全角字符更正"], [1, "拉丁键盘提示+全角字符更正"], [2, "保留输入字符"]], 1),
         ...[["自动换行", "editorAutoWrap", true], ["自动补全", "editorAutoCompletion", true], ["允许滚动到行顶部", "editorScrollPastEnd", true], ["显示选区拍数", "editorSelectionBeatDisplay", true], ["概览标尺", "editorOverviewRulerEnabled", true]].map(([label, key, fallback]) => toggle(label, prefs[key] ?? fallback, value => set(key, value))));
     } else if (active === "performance") {
       const rates = [[3, "显示器刷新率"], [0, "30 FPS"], [1, "60 FPS"], [2, "120 FPS"]];
-      body.append(pick("视频解码", "videoDecodePrefersSoftware", [[false, "硬件解码"], [true, "软件解码"]], false),
-        pick("画布帧率", "canvasFrameRateMode", rates, 1), pick("PV 帧率", "stageMediaFrameRateMode", rates, 1), pick("时间轴帧率", "timelineFrameRateMode", rates, 1));
+      const controls = new Map();
+      const performancePick = (label, key, options, fallback) => {
+        const node = select(options, prefs[key] ?? fallback, value => {
+          const setting = typeof fallback === "boolean" ? value === "true" : Number(value);
+          void Promise.resolve(command("preferences.performance", { [key]: setting })).catch(() => { node.querySelector("select").value = String(prefs[key] ?? fallback); });
+        });
+        controls.set(key, node.querySelector("select"));
+        return formRow(label, node);
+      };
+      body.append(performancePick("视频解码", "videoDecodePrefersSoftware", [[false, "硬件解码"], [true, "软件解码"]], false),
+        performancePick("画布帧率", "canvasFrameRateMode", rates, 1), performancePick("PV 帧率", "stageMediaFrameRateMode", rates, 1), performancePick("时间轴帧率", "timelineFrameRateMode", rates, 1));
+      root.refreshPerformance = () => { for (const [key, node] of controls) node.value = String(prefs[key] ?? (key === "videoDecodePrefersSoftware" ? false : 1)); };
     } else {
       const shortcuts = documentSession.shortcutRows || shortcutDefinitions;
       body.append(h("p", { className: "caption" }, translate("qml.click_a_row_to_record_a_new_shortcut", prefs.languageToken || "zh")),
@@ -92,5 +110,7 @@ export function createPreferences({ viewState, documentSession, command }) {
   });
   root.append(bar, h("hr", { className: "settings-rule" }), body);
   render();
+  const changed=()=>{root.refreshBackground?.();root.refreshPerformance?.();};viewState.addEventListener("change",changed);
+  root.destroy=()=>viewState.removeEventListener("change",changed);
   return root;
 }

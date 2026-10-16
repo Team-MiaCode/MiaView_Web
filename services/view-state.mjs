@@ -3,6 +3,7 @@ export const DEFAULT_PREFERENCES = Object.freeze({
   themeModeToken: "dark", darkThemeToken: "dark", lightThemeToken: "light", sidebarWidth: 240, previewWidthRatio: 0.42,
   bottomPanelHeightRatio: 0.29, previewOnLeft: false, fontSize: 13,
   editorFontSize: 14, editorAutoWrap: false, previewCanvasFreeAspect: false,
+  videoDecodePrefersSoftware: false, canvasFrameRateMode: 1, stageMediaFrameRateMode: 1, timelineFrameRateMode: 1,
 });
 
 export class ViewState extends EventTarget {
@@ -52,7 +53,10 @@ export class ViewState extends EventTarget {
     this.changed();
   }
   setPreference(key, value) {
-    this.preferences[key] = value;
+    this.setPreferences({ [key]: value });
+  }
+  setPreferences(values) {
+    Object.assign(this.preferences, values);
     this.storage?.setItem(preferenceKey, JSON.stringify(this.preferences));
     this.changed();
   }

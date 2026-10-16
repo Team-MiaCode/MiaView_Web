@@ -468,6 +468,18 @@ export class PreviewAudio {
     this.duration = 0;
     this.playing = false;
     this.rate = 1;
+    this.mixBuses = new Map();
+  }
+  setMix(gains) {
+    for (const [kind, gain] of Object.entries(gains)) {
+      let bus = this.mixBuses.get(kind);
+      if (!bus) {
+        bus = this.context.createGain();
+        bus.connect(this.context.destination);
+        this.mixBuses.set(kind, bus);
+      }
+      bus.gain.value = gain;
+    }
   }
   currentSecond() {
     return this.playing
@@ -506,6 +518,15 @@ export class PreviewAudio {
     this.rate = rate;
     if (resume) this.start();
   }
+  replaceTimeline(events, segments) {
+    for (const source of this.voices) if (source.kind !== "track") {
+      source.stop(); source.disconnect(); this.voices.delete(source);
+    }
+    this.events = events; this.segments = segments;
+    this.eventIndex = lowerBound(events, this.currentSecond());
+    this.segmentIndex = lowerBound(segments, this.currentSecond(), "endSecond");
+    this.schedule();
+  }
   start() {
     if (this.playing) return;
     if (this.offset >= this.duration) this.offset = 0;
@@ -519,13 +540,14 @@ export class PreviewAudio {
         this.offset,
         this.track.duration,
         this.offset,
-        0.3,
+        1,
         false,
         this.rate,
+        "track",
       );
     this.schedule();
   }
-  voice(buffer, start, end, sourceOffset, gain, loop = false, sourceRate = 1) {
+  voice(buffer, start, end, sourceOffset, gain, loop = false, sourceRate = 1, kind = "judge") {
     if (
       !buffer ||
       end <= this.offset ||
@@ -538,10 +560,11 @@ export class PreviewAudio {
     const source = this.context.createBufferSource();
     const volume = this.context.createGain();
     source.buffer = buffer;
+    source.kind = kind;
     source.loop = loop;
     source.playbackRate.value = sourceRate;
     volume.gain.value = gain;
-    source.connect(volume).connect(this.context.destination);
+    source.connect(volume).connect(this.mixBuses.get(kind) ?? this.context.destination);
     this.voices.add(source);
     source.onended = () => {
       this.voices.delete(source);
@@ -578,6 +601,9 @@ export class PreviewAudio {
         end,
         0,
         event.gain,
+        false,
+        1,
+        event.kind,
       );
     }
     while (
@@ -594,8 +620,10 @@ export class PreviewAudio {
         span.startSecond,
         span.endSecond,
         span.sourceOffsetSecond,
-        0.09,
+        1,
         true,
+        1,
+        "touchhold",
       );
     }
   }

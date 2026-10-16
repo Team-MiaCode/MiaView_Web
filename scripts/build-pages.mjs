@@ -14,7 +14,7 @@ if (existsSync(output)) throw new Error(`Use an empty Pages output directory: ${
 mkdirSync(output, { recursive: true });
 for (const name of ["sdk", "renderer", "ui", "services"])
   cpSync(resolve(root, name), resolve(output, name), { recursive: true });
-for (const name of ["index.html", "app.mjs", "page.css"])
+for (const name of ["index.html", "app.mjs", "page.css", "preview-window.html"])
   copyFileSync(resolve(root, name), resolve(output, name));
 mkdirSync(resolve(output, "examples"));
 copyFileSync(resolve(root, "examples/pages.html"), resolve(output, "examples/index.html"));

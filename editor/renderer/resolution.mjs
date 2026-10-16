@@ -1,6 +1,12 @@
 export const DEFAULT_RESOLUTION = Object.freeze({ width: 1920, height: 1080 });
 // Bound render-target and video-buffer allocations; this is not a device guarantee.
 export const MAX_RENDER_DIMENSION = 4096;
+export function canvasResolution(value) {
+  const width=value?.width,height=value?.height;
+  if(!Number.isInteger(width) || !Number.isInteger(height) || width<=0 || height<=0 || width>MAX_RENDER_DIMENSION || height>MAX_RENDER_DIMENSION)
+    throw new Error("Canvas dimensions must be positive integers up to 4096");
+  return {width,height};
+}
 
 export function previewResolution(value = DEFAULT_RESOLUTION) {
   const width = value?.width;

@@ -4,44 +4,73 @@ import { settingsTabs } from "../components/settings-tabs.mjs";
 import { translate } from "../components/translate.mjs";
 import { DIFFICULTY_NAMES } from "./chart-sidebar.mjs";
 import { CoverCanvas, COVER_RESOLUTIONS as sizes } from "./cover-canvas.mjs";
+import { coverResolution } from "../../services/cover-files.mjs";
 
+const LAYER_COMMANDS = new Set(["cover.selectLayerKey", "cover.layer", "cover.setLayerVisible", "cover.setLayerLocked",
+  "cover.addTextLayer", "cover.addImageLayer", "cover.addChartFrameLayer", "cover.duplicateActiveLayer",
+  "cover.removeActiveLayer", "cover.raiseActiveLayer", "cover.lowerActiveLayer", "cover.moveLayer", "cover.resetLayout", "cover.toggleActiveLayerPlayback", "cover.beginActiveLayerKeySeek", "cover.endActiveLayerKeySeek"]);
 
 export function createCoverEditor({ viewState, documentSession: doc, command, nativeCover = false }) {
   const dispatch = command;
-  let renderer;
+  let renderer, destroyed = false;
   const t = key => translate(key, viewState.preferences.languageToken || "zh");
   const values = doc.coverValues ||= {};
   const layers = doc.coverLayers || [];
   const root = h("div", { className: "cover-editor" });
   const acceptComposition = (value, refresh = true) => {
+    if (destroyed) return;
     doc.coverLayers = value.layout.layers;
+    doc.chartFramePlaying = value.chartFramePlaying;
+    doc.chartFrameDuration = value.chartFrameDuration;
+    renderer?.updateLayerPreviews(value.layout.layers);
     values.activeLayerKey = value.activeLayerKey;
     dispatch("cover.canvasChanged", value);
     if (!refresh) return;
+    const restoreLayerFocus = root.contains(document.activeElement) && document.activeElement.closest(".cover-layer-row");
     const controls = createCoverEditor({ viewState, documentSession: doc, command, nativeCover: false });
     root.querySelector(".cover-layer-list").replaceWith(controls.querySelector(".cover-layer-list"));
     root.querySelector(".cover-layer-actions").replaceWith(controls.querySelector(".cover-layer-actions"));
     root.querySelector(".cover-inspector").replaceWith(controls.querySelector(".cover-inspector"));
+    if (restoreLayerFocus) [...root.querySelectorAll(".cover-layer-row")].find(node => node.dataset.key === values.activeLayerKey)?.focus();
   };
   if (nativeCover) command = (id, args = {}) => {
     if (!renderer) return dispatch(id, args);
-    if (id === "cover.selectLayerKey") {
-      values.activeLayerKey = args.key;
-      return renderer.preview.setCoverComposition({ activeLayerKey: args.key }).then(value => acceptComposition(value));
-    }
-    if (id === "cover.layer" || ["cover.setLayerVisible", "cover.setLayerLocked"].includes(id)) {
-      const layer = doc.coverLayers?.find(layer => layer.key === args.key);
-      if (layer) {
-        const { key, ...fields } = args;
-        Object.assign(layer, fields);
+    let result;
+    if (["cover.addImageLayer", "cover.browseActiveLayerImage", "cover.browseBackgroundImage", "cover.importActiveLayerFont", "cover.importCardDisplayFont", "cover.importCardBodyFont"].includes(id)) {
+      result = Promise.resolve(dispatch(id === "cover.addImageLayer" ? "cover.browseActiveLayerImage" : id, args)).then(async file => {
+        if (!file || destroyed) return;
+        const asset = await renderer.importFile(file);
+        if (id === "cover.addImageLayer") return acceptComposition(await renderer.command(id, { imagePath: asset.path }));
+        if (id === "cover.browseActiveLayerImage" || id === "cover.importActiveLayerFont")
+          return acceptComposition(await renderer.command("cover.layer", { key: values.activeLayerKey, [asset.kind === "font" ? "fontPath" : "imagePath"]: asset.path }));
+        if (id === "cover.browseBackgroundImage") Object.assign(values, { backgroundPath: asset.path, backgroundMode: 1 });
+        else values[id === "cover.importCardDisplayFont" ? "cardFontDisplayPath" : "cardFontBodyPath"] = asset.path;
+        acceptComposition(await renderer.update());
+      });
+    } else if (id === "cover.importLayout" || id === "cover.managePresets") {
+      result = Promise.resolve(dispatch(id, args)).then(async composition => {
+        if (composition && !destroyed) acceptComposition(await renderer.importLayout(composition));
+      });
+    } else if (id === "cover.browseOutputFile") {
+      result = Promise.resolve(dispatch(id, args)).then(async name => {
+        if (!name || destroyed) return;
+        values.outputFile = name; acceptComposition(await renderer.update());
+      });
+    } else if (LAYER_COMMANDS.has(id)) {
+      if (id === "cover.addTextLayer") args = { text: t("cover.text_layer_default"), ...args };
+      const refresh = id !== "cover.layer" || "visible" in args || "locked" in args;
+      result = renderer.command(id, args).then(value => acceptComposition(value, refresh));
+    } else if (id === "cover.selectDifficulty") {
+      values.selectedDifficultyId = args.difficultyId;
+      for (const node of root.querySelectorAll(".export-difficulties button")) {
+        node.setAttribute("aria-pressed", String(Number(node.dataset.difficultyId) === args.difficultyId));
       }
-      const refresh = "visible" in args || "locked" in args;
-      return renderer.update().then(value => acceptComposition(value, refresh));
-    }
-    if (id === "cover.settings") return renderer.update().then(value => acceptComposition(value, false));
-    return dispatch(id, args);
+      result = renderer.update().then(value => acceptComposition(value, false));
+    } else if (id === "cover.settings") result = renderer.update().then(value => acceptComposition(value, false));
+    else return dispatch(id, args);
+    return result.catch(error => { if (!destroyed) dispatch("cover.error", { message: error.message }); });
   };
-  const activeLayer = () => layers.find(layer => layer.key === values.activeLayerKey);
+  const activeLayer = () => doc.coverLayers?.find(layer => layer.key === values.activeLayerKey);
   const name = layer => t({ card: "cover.difficulty_card", chartFrame: "cover.chart_frame", image: "cover.image_layer", text: "cover.text_layer_default" }[layer.kind]) || layer.label;
   const put = (key, value) => { values[key] = value; command("cover.settings", { [key]: value }); };
   const setLayer = (key, value) => command("cover.layer", { key: values.activeLayerKey, [key]: value });
@@ -49,9 +78,11 @@ export function createCoverEditor({ viewState, documentSession: doc, command, na
   const choice = (key, label, options, fallback, action) => formRow(t(label), select(options, values[key] ?? fallback, value => put(key, typeof fallback === "number" ? Number(value) : value)), action);
   const slider = (key, label, fallback, min = 0, max = 100, factor = 1) => range(t(label), key, (values[key] ?? fallback) * factor, min, max, (_, args) => put(key, args.value / factor), 1, "%");
   const switchControl = (key, label, fallback) => toggle(t(label), values[key] ?? fallback, value => put(key, value));
-  const fontOptions = [["", t("card_font.default")], ...(doc.userFonts || []).map(font => [font.path, font.family])];
+  const fonts = new Map([...(doc.userFonts || []), ...(doc.coverFiles || []).filter(asset => asset.kind === "font")].map(font => [font.path, font]));
+  const fontOptions = [["", t("card_font.default")], ...[...fonts.values()].map(font => [font.path, font.family])];
   const canvasForm = () => [
-    choice("resolutionIndex", "cover.size", sizes.map(([width, height], index) => [index, `${width}×${height} (${width === height ? "1:1" : width * 3 === height * 4 ? "4:3" : "16:9"})`]), 3),
+    choice("resolutionIndex", "cover.size", [...sizes.map(([width, height], index) => [index, `${width}×${height} (${width === height ? "1:1" : width * 3 === height * 4 ? "4:3" : "16:9"})`]),
+      ...(values.resolutionIndex === -1 ? [[-1, `${values.outputWidth}×${values.outputHeight}`]] : [])], 3),
     formRow(t("cover.output"), input("outputFile", "card.jpg"), button(t("cover.browse"), () => command("cover.browseOutputFile"), { symbol: "folder-open", iconOnly: true, className: "chrome" })),
     section(t("cover.background"),
       choice("backgroundMode", "cover.background", [[0, t("cover.jacket")], [1, t("cover.custom_image")], [2, t("cover.transparent")]], 0, button(t("cover.choose_background_image"), () => command("cover.browseBackgroundImage"), { symbol: "folder-open", iconOnly: true, className: "chrome" })),
@@ -78,11 +109,14 @@ export function createCoverEditor({ viewState, documentSession: doc, command, na
       body.push(section(t("cover.text_options"), layerText("text", "cover.text_content", ""), colorRow,
         h("div", { className: "action-row" }, toggle(t("cover.bold"), layer.textBold ?? false, value => setLayer("textBold", value)), button(t("card_font.import"), () => command("cover.importActiveLayerFont")))));
     }
-    if (layer.kind === "chartFrame") body.push(section(t("cover.chart_frame"),
-      layerSlider("frameSeconds", "cover.frame_time", 0, 0, doc.duration ?? 0, 1, "s"),
-      button(t("cover.play_pause_space"), () => command("cover.toggleActiveLayerPlayback"), { symbol: doc.chartFramePlaying ? "pause" : "play", iconOnly: true, className: "chrome" }),
+    if (layer.kind === "chartFrame") {
+      const frameTime = layerSlider("frameSeconds", "cover.frame_time", 0, 0, doc.chartFrameDuration || doc.duration || 0, 1, "s");
+      frameTime.querySelector("input").dataset.coverFrameTime = "";
+      body.push(section(t("cover.chart_frame"), frameTime,
+      button(t("cover.play_pause_space"), () => command("cover.toggleActiveLayerPlayback"), { symbol: doc.chartFramePlaying ? "pause" : "play", iconOnly: true, className: "chrome", "data-cover-playback": "" }),
       formRow(t("cover.inner"), select([["transparent", t("cover.transparent")], ["image", t("cover.inner_bg")], ...(doc.metadataHasVideo ? [["pv", t("cover.inner_pv_fill")], ["pvFit", t("cover.inner_pv_fit")]] : [])], layer.frameBgMode ?? "image", value => setLayer("frameBgMode", value))),
       layerSlider("frameBgBrightness", "cover.brightness", .8), layerSlider("frameBgTransparency", "cover.transparency", .5)));
+    }
     if (layer.kind === "card") body.push(section(t("cover.difficulty_card_options"),
       choice("cardMode", "cover.chart_type", [["auto", t("qml.automatic")], ["DX", "DX"], ["Standard", "SD"]], "auto"),
       choice("longTextMode", "cover.long_text_label", [["shrink", t("cover.shrink_to_fit")], ["ellipsis", t("cover.keep_size_ellipsis")]], "shrink"),
@@ -92,7 +126,7 @@ export function createCoverEditor({ viewState, documentSession: doc, command, na
     return body;
   };
   const canvas = h(nativeCover ? "div" : "canvas", { id: "cover-canvas", "aria-label": t("cover.canvas") });
-  const [width, height] = sizes[values.resolutionIndex ?? 3];
+  const [width, height] = coverResolution(values);
   canvas.width = width; canvas.height = height;
   if (!nativeCover) canvas.style.aspectRatio = `${width}/${height}`;
   const canvasPane = h("div", { className: "cover-canvas-pane" }, canvas);
@@ -101,6 +135,12 @@ export function createCoverEditor({ viewState, documentSession: doc, command, na
     canvas.style.transform = `scale(${values.canvasZoom})`;
   }
   root.addEventListener("keydown", event => {
+    if (!event.ctrlKey && !event.metaKey && !event.altKey && activeLayer()?.kind === "chartFrame" && !event.target.closest("input,textarea,select,button,[contenteditable]")) {
+      if (event.code === "Space") { if (!event.repeat) command("cover.toggleActiveLayerPlayback"); }
+      else if (["ArrowLeft", "ArrowRight"].includes(event.key)) { if (!event.repeat) command("cover.beginActiveLayerKeySeek", { direction: event.key === "ArrowLeft" ? -1 : 1 }); }
+      else return;
+      event.preventDefault(); return;
+    }
     if (!(event.ctrlKey || event.metaKey)) return;
     if (event.key === "0") setZoom(1);
     else if (["+", "="].includes(event.key)) setZoom((values.canvasZoom ?? 1) * 1.25);
@@ -108,6 +148,24 @@ export function createCoverEditor({ viewState, documentSession: doc, command, na
     else return;
     event.preventDefault();
   });
+  root.addEventListener("keyup", event => {
+    if (["ArrowLeft", "ArrowRight"].includes(event.key) && activeLayer()?.kind === "chartFrame") command("cover.endActiveLayerKeySeek");
+  });
+  const updatePlayback = state => {
+    const node = root.querySelector("[data-cover-playback]");
+    if (node && node.dataset.playing !== String(state.chartFramePlaying)) {
+      node.dataset.playing = String(state.chartFramePlaying);
+      const replacement = button(t("cover.play_pause_space"), () => command("cover.toggleActiveLayerPlayback"), { symbol: state.chartFramePlaying ? "pause" : "play", iconOnly: true, className: "chrome", "data-cover-playback": "" });
+      node.replaceChildren(...replacement.childNodes);
+    }
+    const input = root.querySelector("[data-cover-frame-time]");
+    if (input && document.activeElement !== input) {
+      input.value = state.frameSeconds;
+      input.style.setProperty("--range-value", `${state.frameSeconds / Number(input.max) * 100}%`);
+      const output = input.parentElement.querySelector("output");
+      if (output && !output.querySelector("input")) output.value = `${state.frameSeconds.toFixed(2)}s`;
+    }
+  };
   const inspector = settingsTabs([{ key: "canvas", label: t("cover.canvas"), render: canvasForm }, { key: "layer", label: t("cover.layer"), render: layerForm }], values.inspectorTab, key => { values.inspectorTab = key; });
   inspector.classList.add("cover-inspector");
   const layerList = h("div", { id: "cover-layers", className: "cover-layer-list", role: "listbox", "aria-label": t("cover.layers") });
@@ -124,7 +182,7 @@ export function createCoverEditor({ viewState, documentSession: doc, command, na
     inspector.querySelector('[data-page="layer"]').click();
   }
   function layerDetail(layer) {
-    const value = layer.kind === "text" ? layer.text?.replace(/\s+/g, " ") : layer.kind === "image" ? layer.imagePath?.split(/[\\/]/).at(-1)
+    const value = layer.kind === "text" ? layer.text?.replace(/\s+/g, " ") : layer.kind === "image" ? doc.coverFiles?.find(asset => asset.path === layer.imagePath)?.file.name || layer.imagePath?.split(/[\\/]/).at(-1)
       : layer.kind === "chartFrame" ? `${(layer.frameSeconds ?? 0).toFixed(2)} s` : "";
     const state = layer.visible ? `${Math.round((layer.opacity ?? 1) * 100)}%` : t("cover.layer_hidden");
     return value ? `${value} · ${state}` : state;
@@ -164,7 +222,7 @@ export function createCoverEditor({ viewState, documentSession: doc, command, na
     ...[["cover.reset_to_default", "cover.resetLayout"], ["cover.save_layout_to_file", "cover.saveLayout"], ["cover.import_layout_file", "cover.importLayout"], ["cover.manage_presets", "cover.managePresets"]].map(([key, id]) => button(t(key), () => { layoutMenu.open = false; command(id); }))));
   root.append(h("div", { className: "cover-topbar" },
     h("div", { className: "export-difficulties" }, ...(doc.charts || []).map(chart => {
-      const node = button(chart.name || DIFFICULTY_NAMES[chart.id - 1], () => command("cover.selectDifficulty", { difficultyId: chart.id }), { "aria-pressed": String((values.selectedDifficultyId ?? doc.activeDifficultyId) === chart.id) });
+      const node = button(chart.name || DIFFICULTY_NAMES[chart.id - 1], () => command("cover.selectDifficulty", { difficultyId: chart.id }), { dataset: { difficultyId: chart.id }, "aria-pressed": String((values.selectedDifficultyId ?? doc.activeDifficultyId) === chart.id) });
       node.prepend(h("span", { className: "difficulty-swatch", style: `background: var(--difficulty-${chart.id})`, "aria-hidden": "true" }));
       return node;
     })),
@@ -172,10 +230,10 @@ export function createCoverEditor({ viewState, documentSession: doc, command, na
     h("div", { className: "cover-rule", "aria-hidden": "true" }),
     h("div", { className: "cover-panes" }, layerPane, canvasPane, inspector));
   if (nativeCover) {
-    renderer = new CoverCanvas(canvas, doc, value => acceptComposition(value), message => dispatch("cover.error", { message }), viewState.activeThemeToken);
+    renderer = new CoverCanvas(canvas, doc, value => acceptComposition(value), message => dispatch("cover.error", { message }), viewState.activeThemeToken, viewState.preferences, updatePlayback);
     renderer.ready.then(value => acceptComposition(value)).catch(() => {});
     root.coverRenderer = renderer;
-    root.destroy = () => renderer.destroy();
+    root.destroy = () => { destroyed = true; renderer.destroy(); };
   }
   setZoom(values.canvasZoom ?? 1);
   return root;

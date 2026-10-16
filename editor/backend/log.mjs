@@ -67,9 +67,9 @@ export function formatPerformanceReport(sessionId, report, receivedAt) {
     lines.push(
       `PV 加载超时 ${number(c.videoLoadTimeouts)} 次 | 已取消并跳过，不再重试`,
     );
-  if (!initializing && report.videoPipeline === "browser-compositor")
+  if (!initializing && ["browser-canvas", "software-canvas"].includes(report.videoPipeline))
     lines.push(
-      `视频路径 browser-compositor | 解码 ${number(report.videoDecodedFrames)} | 丢帧 ${number(report.videoDroppedFrames)} | 重同步 ${number(c.videoResyncs)}`,
+      `视频路径 ${report.videoPipeline} | 呈现 ${number(report.videoPresentedFrames)} | 解码 ${report.videoDecodedFrames == null ? "—" : number(report.videoDecodedFrames)} | 丢帧 ${report.videoDroppedFrames == null ? "—" : number(report.videoDroppedFrames)} | 重同步 ${number(c.videoResyncs)}`,
     );
   for (const [name, metric] of Object.entries(report.metrics)) {
     if (!metricLabels[name]) continue;

@@ -10,6 +10,9 @@ function enable(loaded) {
     $(id).disabled = !loaded;
   $("remove-pv").disabled = !loaded || !lastChart?.video;
 }
+function updateMediaStatus(chart) {
+  $("media-status").textContent = `音乐：${chart.audio?.name || "未选择"} · PV：${chart.video?.name || "未选择"}。文件只在浏览器中读取；PV 音轨不单独播放。`;
+}
 function mount() {
   preview?.destroy();
   enable(false);
@@ -40,7 +43,7 @@ async function load(chart) {
   );
   $("difficulty").value = info.difficultyId;
   enable(true);
-  $("media-status").textContent = `音乐：${chart.audio?.name || "未选择"} · PV：${chart.video?.name || "未选择"}。文件只在浏览器中读取；PV 音轨不单独播放。`;
+  updateMediaStatus(chart);
   status(`已加载：${info.title || "未命名谱面"}，点击播放开始预览`);
 }
 async function selectFiles(event) {
@@ -69,14 +72,18 @@ async function selectFiles(event) {
 $("files").addEventListener("change", selectFiles);
 async function replaceMedia(kind, file) {
   if (!lastChart) return;
+  const target = preview, owner = lastChart.maidata;
+  for (const id of ["local-pv", "local-audio", "remove-pv"]) $(id).disabled = true;
   try {
+    const state = await target.setResources({ [kind]: file ?? null });
+    if (target !== preview || owner !== lastChart.maidata) return;
     lastChart = { ...lastChart, [kind]: file, difficulty: Number($("difficulty").value) };
-    await load(lastChart);
+    updateMediaStatus(lastChart); enable(state.loaded);
+    status("素材更新完成");
   } catch (error) {
+    if (target !== preview || owner !== lastChart.maidata) return;
+    enable((await target.getState()).loaded);
     status(error.message);
-    // Let users replace an unsupported file or remove a failed PV and retry.
-    for (const id of ["local-pv", "local-audio"]) $(id).disabled = false;
-    $("remove-pv").disabled = !lastChart.video;
   }
 }
 for (const [id, kind] of [["local-pv", "video"], ["local-audio", "audio"]]) {

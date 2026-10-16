@@ -1,3 +1,4 @@
+import { waitForAsync } from "./helpers/wait-async.mjs";
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -55,7 +56,7 @@ try {
   }
   assert.equal(await checkFreeAspect(), true);
   await page.setViewportSize({ width: 1600, height: 900 });
-  await page.waitForFunction(async () => {
+  await waitForAsync(page, async () => {
     const api = document.getElementById("workbench").editor;
     const size = (await api.preview.getState()).resolution;
     const bounds = api.workbench.previewContainer.getBoundingClientRect();
@@ -68,7 +69,7 @@ try {
   assert.equal(await page.frameLocator(".preview-container iframe").locator("#transport").isVisible(), false);
   await controls.getByRole("button", { name: "播放速度", exact: true }).click();
   await page.getByRole("menuitemradio", { name: "0.5x", exact: true }).click();
-  await page.waitForFunction(async () => (await document.getElementById("workbench").editor.preview.getState()).playback.rate === .5);
+  await waitForAsync(page, async () => (await document.getElementById("workbench").editor.preview.getState()).playback.rate === .5);
   await controls.getByRole("button", { name: "播放", exact: true }).click();
   await page.waitForFunction(() => document.querySelector(".preview-time").textContent.startsWith("00:01"));
   await controls.getByRole("button", { name: "暂停", exact: true }).click();
@@ -77,11 +78,12 @@ try {
   assert.equal(state.playback.rate, .5);
   await page.evaluate(() => document.getElementById("workbench").editor.preview.setPlayback({ rangePlaybackEnabled: true, exportStartSeconds: 2, exportEndSeconds: 2.3, rate: 2 }));
   await controls.getByRole("button", { name: "播放", exact: true }).click();
-  await page.waitForFunction(async () => {
+  await waitForAsync(page, async () => {
     const state = await document.getElementById("workbench").editor.preview.getState();
     return !state.playing && state.currentTime === 2.3;
   });
   await controls.getByRole("button", { name: "停止", exact: true }).click();
+  await waitForAsync(page,async()=>(await document.getElementById("workbench").editor.preview.getState()).currentTime===0);
   assert.equal((await page.evaluate(() => document.getElementById("workbench").editor.preview.getState())).currentTime, 0);
   assert.deepEqual(errors, []);
   console.log("Original preview control geometry, free canvas fit, external transport, rate and bounded playback passed");

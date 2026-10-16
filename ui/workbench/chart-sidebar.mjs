@@ -11,7 +11,7 @@ export function createChartSidebar({ viewState: state, documentSession: doc, com
   const body = h("div", { className: "chart-sidebar-body" },
     button(t("dialog.unsaved_field_changes.field.metadata"), () => state.openEditor("metadata"), { symbol: "metadata", className: "nav-row", "aria-selected": String(state.activeEditorKey === "metadata") }),
     button(t("qml.latency_calibration"), () => state.openEditor("latency"), { symbol: "metronome", className: "nav-row", "aria-selected": String(state.activeEditorKey === "latency") }));
-  const fold = button(t("dialog.batch_export.difficulty"), () => { state.difficultySectionExpanded = !state.difficultySectionExpanded; state.changed(); }, {
+  const fold = button(t("workbench.difficulty"), () => { state.difficultySectionExpanded = !state.difficultySectionExpanded; state.changed(); }, {
     className: "difficulty-section-toggle", "aria-expanded": String(state.difficultySectionExpanded),
   });
   fold.prepend(h("span", { className: "difficulty-fold", "aria-hidden": "true" }, state.difficultySectionExpanded ? "▾" : "▸"));

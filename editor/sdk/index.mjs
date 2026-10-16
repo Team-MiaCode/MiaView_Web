@@ -1,7 +1,8 @@
-import { previewResolution } from "./resolution.mjs";
+import { previewResolution, canvasResolution } from "./resolution.mjs";
 import { TRANSPORT_HEIGHT } from "./layout.mjs";
 import { previewPvTimeout, scheduleTimeout } from "../renderer/pv-timeout.mjs";
 import { previewMaxFps } from "./frame-rate.mjs";
+import { performanceSettings } from "../renderer/performance-settings.mjs";
 import {
   SDK_PROTOCOL,
   HOST_SOURCE,
@@ -9,7 +10,9 @@ import {
   validIdentity,
   trustedResponse,
   normalizeChart,
+  normalizeResources,
   normalizeSettings,
+  normalizeSkinFiles,
   difficultyId,
   previewTheme,
 } from "./protocol.mjs";
@@ -67,6 +70,9 @@ class MiaCodePreview {
       options.diagnostics === false ? "0" : "1",
     );
     this.url.searchParams.set("hostOrigin", this.window.location.origin);
+    const audioContextOwner = options.audioContextOwner ?? "renderer";
+    if (!["renderer", "opener"].includes(audioContextOwner)) throw new Error("Invalid audio context owner");
+    this.url.searchParams.set("audioContextOwner", audioContextOwner);
     this.origin = this.url.origin;
     this.sessionId = this.window.crypto.randomUUID();
     this.pending = new Map();
@@ -159,6 +165,20 @@ class MiaCodePreview {
       }
     }
   }
+  watchCoverPlayback(playing) {
+    clearTimeout(this.coverPlaybackTimer);
+    if (!playing || this.destroyed) return;
+    // An offscreen renderer can suspend Qt timers. The visible host observes
+    // its native clock when the normal playback event stream falls silent.
+    this.coverPlaybackTimer = setTimeout(() => {
+      this.coverPlaybackTimer = null;
+      void this.command("getCoverComposition").then(state => {
+        if (!this.coverPlaybackTimer) this.watchCoverPlayback(state.chartFramePlaying);
+      }).catch(error => {
+        if (!this.destroyed) this.emit("error", { code: "SDK_COVER_PLAYBACK_FAILED", message: error.message });
+      });
+    }, 250);
+  }
   on(type, listener) {
     if (this.destroyed) throw new Error("Preview has been destroyed");
     if (typeof listener !== "function")
@@ -188,6 +208,7 @@ class MiaCodePreview {
       return;
     }
     if (message.type !== "response") {
+      if (message.type === "coverPlaybackChanged") this.watchCoverPlayback(message.payload.chartFramePlaying);
       this.emit(message.type, message.payload);
       return;
     }
@@ -206,7 +227,7 @@ class MiaCodePreview {
       return Promise.reject(new Error("Preview has been destroyed"));
     const requestId = this.window.crypto.randomUUID();
     return new Promise((resolve, reject) => {
-      const loading = type === "load" || type === "selectDifficulty";
+      const loading = type === "load" || type === "setCoverChart" || type === "selectDifficulty" || type === "setResources";
       const waitMs = loading ? (this.pvTimeoutMs === "unlimited" ? "unlimited" : Math.min(Number.MAX_SAFE_INTEGER, this.timeout + this.pvTimeoutMs)) : this.timeout;
       const timer = waitMs === "unlimited" ? () => {} : scheduleTimeout(() => {
         this.pending.delete(requestId);
@@ -251,6 +272,10 @@ class MiaCodePreview {
       return Promise.reject(error);
     }
   }
+  setResources(resources) {
+    try { return this.command("setResources", normalizeResources(resources, this.wrapper.ownerDocument.baseURI)); }
+    catch (error) { return Promise.reject(error); }
+  }
   play() {
     return this.command("play");
   }
@@ -281,8 +306,7 @@ class MiaCodePreview {
     return this.command("setMediaSettings", settings);
   }
   setCanvasSize(size) {
-    if (!size || !Number.isInteger(size.width) || !Number.isInteger(size.height) || size.width <= 0 || size.height <= 0 || size.width > 4096 || size.height > 4096)
-      return Promise.reject(new Error("Canvas dimensions must be positive integers up to 4096"));
+    try { size=canvasResolution(size); } catch(error) { return Promise.reject(error); }
     return this.command("setCanvasSize", size).then(value => {
       this.resolution = { width: value.width, height: value.height };
       this.setIntrinsicSurface(this.resolution, false);
@@ -296,10 +320,52 @@ class MiaCodePreview {
     return this.command("getTimelineFollow", { second });
   }
   getDocument() { return this.command("getDocument"); }
+  getAnalysis(language = "zh") { return this.command("getAnalysis", { language }); }
   documentCommand(id, args = {}) { return this.command("documentCommand", { id, args }); }
+  editorCommand(id, args = {}) { return this.command("editorCommand", { id, args }).then(result => {
+    if (result.error) throw new Error(result.error);
+    return result;
+  }); }
+  audioCommand(id, args = {}) { return this.command("audioCommand", { id, args }); }
+  setLatency(settings) { return this.command("setLatency", settings); }
+  detectLatency(kind, parameters = {}) { return this.command("detectLatency", { kind, ...parameters }); }
+  readAudioInfo(audio) {
+    try { return this.command("readAudioInfo", { audio: normalizeResources({ audio },this.wrapper.ownerDocument.baseURI).audio }); }
+    catch (error) { return Promise.reject(error); }
+  }
+  normalizeShortcuts(sequences) { return this.command("normalizeShortcuts", sequences); }
+  setInputShortcuts(sequences) { return this.command("setInputShortcuts", sequences); }
+  normalizeBackground(settings = {}) { return this.command("normalizeBackground", settings); }
+  getExportCapabilities(settings = {}) { return this.command("getExportCapabilities", settings); }
+  setIntroAudition(settings = {}) {
+    try { return this.command("setIntroAudition", {...settings,...(settings.introBackground?{introBackground:normalizeResources({cover:settings.introBackground},this.wrapper.ownerDocument.baseURI).cover}:{})}); }
+    catch(error){return Promise.reject(error);}
+  }
+  startExport(settings = {}) {
+    try { return this.command("startExport", { ...settings, ...(settings.introBackground ? {introBackground:normalizeResources({cover:settings.introBackground},this.wrapper.ownerDocument.baseURI).cover} : {}) }); }
+    catch(error) { return Promise.reject(error); }
+  }
+  cancelExport() { return this.command("cancelExport"); }
+  getExportStatus() { return this.command("getExportStatus"); }
+  importFont(font, name = font?.name || "font.ttf") {
+    try { return this.command("importFont", { font: normalizeResources({audio:font},this.wrapper.ownerDocument.baseURI).audio, name }); }
+    catch (error) { return Promise.reject(error); }
+  }
+  importSkin(files) {
+    try { return this.command("importSkin", { files: normalizeSkinFiles(files, this.wrapper.ownerDocument.baseURI) }); }
+    catch (error) { return Promise.reject(error); }
+  }
+  importJudgeLine(image) {
+    try { return this.command("importJudgeLine", { image: normalizeResources({ cover: image }, this.wrapper.ownerDocument.baseURI).cover }); }
+    catch (error) { return Promise.reject(error); }
+  }
   getDocumentSaveText(section = 0) { return this.command("getDocumentSaveText", { section }); }
   setTheme(theme) {
     try { return this.command("setTheme", { theme: previewTheme(theme) }); }
+    catch (error) { return Promise.reject(error); }
+  }
+  setCoverChart(chart, options = {}) {
+    try { return this.command("setCoverChart", { chart: normalizeChart(chart, this.wrapper.ownerDocument.baseURI), duration: options.duration }); }
     catch (error) { return Promise.reject(error); }
   }
   setCoverComposition(composition) {
@@ -308,6 +374,17 @@ class MiaCodePreview {
       return value;
     });
   }
+  coverCommand(id, args = {}) {
+    return this.command("coverCommand", { id, args }).then(value => {
+      this.setIntrinsicSurface({ width: value.outputWidth, height: value.outputHeight }, true);
+      return value;
+    });
+  }
+  importCoverImage(image) {
+    try { return this.command("importCoverImage", { image: normalizeResources({ cover: image }, this.wrapper.ownerDocument.baseURI).cover }); }
+    catch (error) { return Promise.reject(error); }
+  }
+  exportCover(options = {}) { return this.command("exportCover", options); }
   setIntrinsicSurface(resolution, cover) {
     if (this.layout === "intrinsic") Object.assign(this.wrapper.style, {
       paddingTop: `${resolution.height / resolution.width * 100}%`,
@@ -330,6 +407,10 @@ class MiaCodePreview {
   getState() {
     return this.command("getState");
   }
+  setPerformance(changes) {
+    try { return this.command("setPerformance", performanceSettings({}, changes)); }
+    catch (error) { return Promise.reject(error); }
+  }
   getDiagnostics() {
     return this.command("getDiagnostics");
   }
@@ -344,6 +425,7 @@ class MiaCodePreview {
   destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
+    clearTimeout(this.coverPlaybackTimer);
     const error = new Error("Preview has been destroyed");
     this.abort.abort();
     this.rejectStartup(error);

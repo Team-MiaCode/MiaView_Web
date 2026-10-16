@@ -1,9 +1,5 @@
 // Resource names follow MiaCode's ChartAssetPaths; each chart uses its own directory.
-const names = {
-  audio: ["track.mp3", "track.wav", "track.flac", "track.ogg", "track.m4a"],
-  cover: ["bg.jpg", "bg.png", "bg.jpeg", "bg.webp"],
-  video: ["bg.mp4", "pv.mp4", "bg.webm", "pv.webm"],
-};
+import { resourceNames as names } from "./chart-resources.mjs";
 
 export function inspectChartFolder(selectedFiles) {
   const files = [...selectedFiles];

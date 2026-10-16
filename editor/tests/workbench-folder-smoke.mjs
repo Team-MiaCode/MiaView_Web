@@ -1,3 +1,4 @@
+import { waitForAsync } from "./helpers/wait-async.mjs";
 import assert from "node:assert/strict";
 import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
@@ -39,10 +40,16 @@ const browser = await chromium.launch({ headless: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
   const errors = [];
+  const missing = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);
+  page.on("response", response => { if (response.status() >= 400) missing.push({ url: response.url(), status: response.status() }); });
+  await page.addInitScript(() => { delete window.showDirectoryPicker; });
+  const testedUrl = process.env.MIACODE_WORKBENCH_URL || `http://127.0.0.1:${server.address().port}/index.html`;
+  await page.goto(testedUrl);
   await page.locator(".welcome-title").waitFor();
   await page.evaluate(() => document.getElementById("workbench").editor.ready);
+  const rendererUrl = new URL(await page.locator(".preview-container iframe").getAttribute("src"));
+  assert.equal(rendererUrl.pathname, new URL("renderer/index.html", new URL(".", testedUrl)).pathname);
   async function choose(folder) {
     const selected = page.waitForEvent("filechooser");
     await page.locator(".toolbar").getByRole("button", { name: "打开谱面文件夹", exact: true }).click();
@@ -78,7 +85,7 @@ try {
   await page.evaluate(() => document.getElementById("workbench").editor.command("preview.toggleHidePv"));
   assert.equal(await frame.locator("#stage-video").isVisible(), true);
   await page.locator(".preview-transport").getByRole("button", { name: "播放", exact: true }).click();
-  await page.waitForFunction(async () => (await document.getElementById("workbench").editor.preview.getState()).currentTime > .1);
+  await waitForAsync(page, async () => (await document.getElementById("workbench").editor.preview.getState()).currentTime > .1);
   await page.evaluate(() => document.getElementById("workbench").editor.preview.pause());
   await page.evaluate(() => document.getElementById("workbench").editor.viewState.openEditor("metadata"));
   await page.locator(".metadata-cover-view img").waitFor();
@@ -102,7 +109,8 @@ try {
   await page.waitForFunction(() => document.getElementById("workbench").editor.workbench.documentSession.timelineSceneState?.waveformBars.length === 0);
   assert.equal(await page.locator('.timeline-view [data-waveform="true"]').count(), 0);
   assert.deepEqual(errors, []);
-  writeFileSync(join(output, "results.json"), JSON.stringify({ browser: browser.version(), imported, waveform, isolated, errors }, null, 2) + "\n");
+  assert.deepEqual(missing, []);
+  writeFileSync(join(output, "results.json"), JSON.stringify({ testedUrl, rendererUrl: rendererUrl.href, browser: browser.version(), imported, waveform, isolated, errors, missing }, null, 2) + "\n");
   console.log("Whole-folder selection, canonical bg/PV/track/source, native playback, waveform, metadata and sibling isolation passed");
 } finally {
   await browser.close();

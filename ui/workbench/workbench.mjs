@@ -10,15 +10,17 @@ import { createChartSidebar } from "./chart-sidebar.mjs";
 import { TimelineView } from "./timeline-view.mjs";
 import { TimelineControls } from "./timeline-controls.mjs";
 import { translate } from "../components/translate.mjs";
+import { PopupHost } from "../components/popup-host.mjs";
 import { uiFontFamily } from "../components/font-family.mjs";
 import { createPage, PAGE_NAMES } from "./pages.mjs";
+import { updateAudioSettings } from "./audio-settings.mjs";
 
 const menus = {
-  文件: [["新建谱面", "file.new", "Ctrl+N"], ["打开谱面文件夹", "file.open", "Ctrl+O"], ["打开示例", "file.demo"], null, ["保存", "file.save", "Ctrl+S"], ["保存全部", "file.saveAll", "Ctrl+Shift+S"], ["另存为", "file.saveAs"], ["恢复自动保存", "file.restore"]],
+  文件: [["新建谱面", "file.new", "Ctrl+Alt+N"], ["打开谱面文件夹", "file.open", "Ctrl+Shift+O"], ["打开示例", "file.demo"], null, ["保存", "file.save", "Ctrl+S"], ["保存全部", "file.saveAll", "Ctrl+Shift+S"], ["另存为", "file.saveAs"], ["恢复自动保存", "file.restore"], ["关闭谱面", "file.close"]],
   编辑: [["撤销", "edit.undo", "Ctrl+Z"], ["重做", "edit.redo", "Ctrl+Y"], null, ["剪切", "edit.cut", "Ctrl+X"], ["复制", "edit.copy", "Ctrl+C"], ["粘贴", "edit.paste", "Ctrl+V"], ["全选", "edit.selectAll", "Ctrl+A"], ["查找替换", "edit.find", "Ctrl+F"], ["添加书签", "edit.bookmark"]],
   调整: [["左右镜像", "transform.mirror_lr"], ["上下镜像", "transform.mirror_ud"], ["旋转 180°", "transform.rotate_180"], ["顺时针旋转 45°", "transform.rotate_cw_45"], ["逆时针旋转 45°", "transform.rotate_ccw_45"], null, ["细分拍 +1", "transform.subdivision_up"], ["细分拍 −1", "transform.subdivision_down"], ["切换 Break", "transform.toggle_break"], ["切换 EX", "transform.toggle_ex"], ["切换烟花", "transform.toggle_firework"], ["重置摆键", "transform.reset_tap_notes"]],
   视图: [["侧栏", "view.sidebar", "Ctrl+B"], ["底部面板", "view.bottom"], ["预览位置", "view.swap"], ["编辑 / 预览", "view.preview"], ["谱面信息", "page.metadata"], ["偏好设置", "page.preferences"]],
-  工具: [["BPM 与延迟", "page.latency"], ["视频导出", "page.export"], ["封面编辑", "page.cover"], ["预览设置", "page.preview-settings"], ["音频设置", "page.audio-settings"]],
+  工具: [["导入音乐", "media.audio"], ["BPM 与延迟", "page.latency"], ["视频导出", "page.export"], ["封面编辑", "page.cover"], ["预览设置", "page.preview-settings"], ["音频设置", "page.audio-settings"]],
   帮助: [["关于 MiaCode", "page.about"]],
 };
 
@@ -26,6 +28,7 @@ export class Workbench extends EventTarget {
   constructor(root, viewState) {
     super();
     this.root = root;
+    this.popups = new PopupHost(root, (id, args) => this.command(id, args));
     this.viewState = viewState;
     this.documentSession = { hasDocument: false, sourceText: "", charts: [] };
     this.abort = new AbortController();
@@ -50,8 +53,13 @@ export class Workbench extends EventTarget {
     this.update();
   }
   command(id, args = {}) {
+    if (id === "edit.bookmarkMenu") {
+      const bookmark = this.documentSession.charts.find(chart => chart.id === this.documentSession.activeDifficultyId)?.bookmarks?.some(bookmark => bookmark.line === args.line);
+      this.showMenu(args.trigger, bookmark ? [["删除书签", "edit.deleteBookmark", null, { line: args.line }], ["重命名书签", "edit.renameBookmarkPrompt", null, { line: args.line }]] : [["添加书签", "edit.bookmark", null, { line: args.line }]]);
+      return;
+    }
     if (id === "editor.activate") return this.editorTabs.activate(args.key);
-    if (id === "document.designerSlots") return openDesignerSlots(this.content, { documentSession: this.documentSession, command: (key, values) => this.command(key, values), language: this.viewState.preferences.languageToken || "zh", opener: args.opener });
+    if (id === "document.designerSlots") return openDesignerSlots(this.root, { documentSession: this.documentSession, command: (key, values) => this.command(key, values), language: this.viewState.preferences.languageToken || "zh", opener: args.opener });
     if (id === "edit.find") {
       if (this.documentSession.hasDocument) this.viewState.openEditor(`difficulty:${this.documentSession.activeDifficultyId ?? 5}`);
       this.sourceEditor.showFind();
@@ -73,7 +81,35 @@ export class Workbench extends EventTarget {
       state.changed();
       return;
     }
-    this.dispatchEvent(new CustomEvent("command", { detail: { id, args } }));
+    const detail = { id, args, result: undefined };
+    this.dispatchEvent(new CustomEvent("command", { detail }));
+    return detail.result;
+  }
+  setAudio(audio) {
+    this.documentSession.audio = audio;
+    if (this.pageKey === "audio-settings") updateAudioSettings(this.content.firstElementChild, audio,
+      this.viewState.preferences.languageToken || "zh");
+  }
+  setExportStatus(state) {
+    Object.assign(this.documentSession,{exportRunning:state.running,exportProgress:state.progress,exportMessage:state.message});
+    if(this.pageKey==="export")this.content.firstElementChild?.updateProgress?.(this.documentSession);
+  }
+  setIntroAudition(state) {
+    this.documentSession.introAudition=state;this.documentSession.introAuditionPlaying=state.playing;
+    if(this.previewTransport.state.playing!==state.playing)this.previewTransport.update({playing:state.playing});
+    if(this.pageKey==="export")this.content.firstElementChild?.updateAudition?.(state);
+  }
+  setLatency(state) {
+    const values = state.latency;
+    Object.assign(this.documentSession, { subdivision: values.subdivision, sfxVolumePercent: values.sfxVolumePercent,
+      auditionRunning: Boolean(values.onPage && state.playing) });
+    if (this.pageKey !== "latency") return;
+    const page = this.content.firstElementChild;
+    const audition = page.querySelector("#latencyAuditionButton");
+    const label = this.documentSession.auditionRunning ? "暂停" : "开始试听";
+    if (audition.textContent !== label) { audition.textContent = label; audition.title = label; audition.setAttribute("aria-label", label); }
+    audition.classList.toggle("primary", !this.documentSession.auditionRunning);
+    for (const button of page.querySelectorAll('.choice-row button')) button.setAttribute("aria-pressed", String(button.textContent === `1/${values.subdivision}`));
   }
   mount() {
     const state = this.viewState;
@@ -143,7 +179,6 @@ export class Workbench extends EventTarget {
     this.attachResize(bottomHandle, "bottomPanelHeightRatio");
     document.addEventListener("keydown", event => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f" && this.documentSession.hasDocument) { event.preventDefault(); this.command("edit.find"); }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "b") { event.preventDefault(); this.command("view.sidebar"); }
       if (event.key === "Escape") { if (state.compactPanel) { state.compactPanel = ""; state.changed(); } this.closeMenu(); }
     }, { signal: this.abort.signal });
   }
@@ -200,6 +235,7 @@ export class Workbench extends EventTarget {
     this.root.classList.toggle("preview-on-left", prefs.previewOnLeft);
     this.root.classList.toggle("show-preview", state.compactView === "preview");
     this.sourceEditor.setWrap(prefs.editorAutoWrap);
+    this.sourceEditor.setPreferences(prefs);
   }
   update() {
     const state = this.viewState;
@@ -266,72 +302,25 @@ export class Workbench extends EventTarget {
     }
     else this.bottomBody.replaceChildren(createAnalysisPanel(this.viewState.bottomPanel, { documentSession: this.documentSession, command: (id, args) => this.command(id, args), language: this.viewState.preferences.languageToken || "zh" }));
   }
-  showMenu(trigger, items, options = {}) {
-    if (this.menuTrigger === trigger) return this.closeMenu();
-    const popup = h("div", { className: "popover", role: "menu" });
-    if (options.className) popup.classList.add(options.className);
-    for (const item of items) {
-      if (!item) { popup.append(h("hr")); continue; }
-      const entry = button(item[0], () => { this.closeMenu(); this.command(item[1], item[3]); }, { className: "nav-row", role: "menuitem" });
-      if (item[4]) {
-        entry.setAttribute("role", item[4].role);
-        entry.setAttribute("aria-checked", String(item[4].checked));
-        entry.prepend(h("span", { className: "menu-check", "aria-hidden": "true" }, item[4].checked ? icon("check", 14) : null));
-      }
-      if (item[1] === "document.addDifficulty") entry.prepend(h("span", { className: "difficulty-swatch", style: `background: var(--difficulty-${item[3].difficulty})`, "aria-hidden": "true" }));
-      if (item[2]) entry.append(h("span", { className: "shortcut", "aria-hidden": "true" }, item[2]));
-      popup.append(entry);
-    }
-    popup.addEventListener("keydown", event => {
-      const entries = [...popup.querySelectorAll("button")];
-      const index = entries.indexOf(document.activeElement);
-      if (["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
-        event.preventDefault();
-        const next = event.key === "Home" ? 0 : event.key === "End" ? entries.length - 1
-          : (index + (event.key === "ArrowDown" ? 1 : -1) + entries.length) % entries.length;
-        entries[next]?.focus();
-      } else if (event.key === "Tab") this.closeMenu();
-    });
-    this.openPopup(trigger, popup, options);
-  }
-  openPopup(trigger, popup, { above = false, alignEnd = false } = {}) {
-    if (this.menuTrigger === trigger) return this.closeMenu();
-    this.closeMenu();
-    const anchor = trigger.getBoundingClientRect();
-    const style = getComputedStyle(this.root);
-    popup.style.fontFamily = style.fontFamily;
-    popup.style.setProperty("--ui-font-family", style.fontFamily);
-    popup.style.setProperty("--ui-font-size", style.getPropertyValue("--ui-font-size"));
-    popup.style.fontSize = "var(--ui-font-size)";
-    document.body.append(popup);
-    popup.style.left = `${Math.max(8, Math.min(alignEnd ? anchor.right - popup.offsetWidth : anchor.left, innerWidth - popup.offsetWidth - 8))}px`;
-    popup.style.top = `${Math.max(8, Math.min(above ? anchor.top - popup.offsetHeight : anchor.bottom + 3, innerHeight - popup.offsetHeight - 8))}px`;
-    this.menu = popup;
-    this.menuTrigger = trigger;
-    trigger.setAttribute("aria-expanded", "true");
-    popup.querySelector("button,input")?.focus();
-    this.outsideMenu = event => { if (!popup.contains(event.target) && event.target !== trigger && !trigger.contains(event.target)) this.closeMenu(); };
-    document.addEventListener("pointerdown", this.outsideMenu);
-  }
-  closeMenu() {
-    if (!this.menu) return;
-    this.menu.remove();
-    this.menu = null;
-    const trigger = this.menuTrigger;
-    this.menuTrigger = null;
-    trigger?.setAttribute("aria-expanded", "false");
-    trigger?.focus();
-    document.removeEventListener("pointerdown", this.outsideMenu);
-  }
+  showMenu(...args) { return this.popups.showMenu(...args); }
+  openPopup(...args) { return this.popups.openPopup(...args); }
+  closeMenu() { return this.popups.closeMenu(); }
   setDocument(snapshot) {
     this.documentSession = snapshot;
     this.previewTransport.setDocument(snapshot);
     this.noteStatistics.update(snapshot.statistics || [], { dataAvailable: snapshot.statisticsAvailable, noteSkin: snapshot.previewSettings?.noteSkin });
-    this.sourceEditor.setValue(snapshot.chartText ?? snapshot.sourceText ?? "");
+    this.sourceEditor.setDocument(snapshot.documentOpenGeneration, snapshot.activeDifficultyId, snapshot.chartText ?? snapshot.sourceText ?? "");
+    this.sourceEditor.setAnnotations(snapshot);
     if (!this.viewState.activeEditorKey.startsWith("difficulty:")) this.pageKey = null;
     this.bottomKey = null;
     this.update();
   }
   status(message) { this.statusLabel.textContent = message; }
-  destroy() { this.content.firstElementChild?.destroy?.(); this.closeMenu(); this.abort.abort(); this.editorTabs.destroy(); this.sourceEditor.destroy(); this.timelineView.destroy(); this.noteStatistics.destroy(); this.root.replaceChildren(); }
+  setAnalysis(snapshot) {
+    Object.assign(this.documentSession, snapshot);
+    this.sourceEditor.setAnnotations(this.documentSession);
+    this.bottomKey = null;
+    this.update();
+  }
+  destroy() { this.content.firstElementChild?.destroy?.(); this.popups.destroy(); this.abort.abort(); this.editorTabs.destroy(); this.sourceEditor.destroy(); this.timelineView.destroy(); this.noteStatistics.destroy(); this.root.replaceChildren(); }
 }

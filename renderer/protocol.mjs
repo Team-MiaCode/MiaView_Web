@@ -9,17 +9,40 @@ export const commands = new Set([
   "seek",
   "setSettings",
   "setPlayback",
+  "setPerformance",
   "setMediaSettings",
+  "setResources",
+  "readAudioInfo",
+  "normalizeShortcuts",
+  "setInputShortcuts",
+  "normalizeBackground",
+  "importFont",
+  "importSkin",
+  "importJudgeLine",
+  "getExportCapabilities",
+  "startExport",
+  "setIntroAudition",
+  "cancelExport",
+  "getExportStatus",
   "setCanvasSize",
   "getTimeline",
   "navigateTimeline",
   "getTimelineFollow",
   "getDocument",
+  "getAnalysis",
   "documentCommand",
+  "editorCommand",
+  "audioCommand",
+  "setLatency",
+  "detectLatency",
   "getDocumentSaveText",
   "setTheme",
   "setCoverComposition",
+  "setCoverChart",
   "getCoverComposition",
+  "coverCommand",
+  "importCoverImage",
+  "exportCover",
   "getState",
   "getDiagnostics",
   "setDiagnostics",
@@ -99,7 +122,14 @@ export function trustedResponse(event, frame, origin, sessionId) {
       "playbackChanged",
       "timeupdate",
       "coverChanged",
+      "coverPlaybackChanged",
+      "touchPadAuthoring",
       "documentChanged",
+      "shortcutInput",
+      "exportProgress",
+      "introAuditionChanged",
+      "exportCompleted",
+      "exportFailed",
       "performance",
     ].includes(message.type) ||
     !message.payload ||
@@ -113,15 +143,30 @@ export function normalizeSettings(settings) {
     throw new Error("Settings must be an object");
   const result = {};
   for (const [name, value] of Object.entries(settings)) {
-    if (name === "outerBrightness" || name === "innerBrightness") {
+    if (name === "hudFontPaths") {
+      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("HUD font paths must be an object");
+      for (const [area, path] of Object.entries(value)) {
+        if (!["chart_info", "timestamp", "center_display", "object_stats", "debug_info"].includes(area) || typeof path !== "string")
+          throw new Error("Unknown HUD font area or path");
+      }
+    } else if (name === "outerBrightness" || name === "innerBrightness") {
       if (!Number.isFinite(value) || value < 0 || value > 1)
         throw new Error(`${name} must be between 0 and 1`);
     } else if (name === "tapFlowSpeed" || name === "touchFlowSpeed") {
       if (!Number.isFinite(value) || value < 1 || value > 10)
         throw new Error(`${name} must be between 1 and 10`);
-    } else if (name === "earlierSlideOnTop") {
+    } else if (["earlierSlideOnTop", "smoothBrightness", "showTimestamp", "showDebugInfo", "showChartInfoHud", "showObjectStatsHud", "touchPadAuthoringShortcut", "touchPadAuthoringContext", "forceLabeledJudgeLineWhenPaused", "pauseDisplayAltHoldActive", "judgeEffectSlide", "judgeEffectTap", "judgeEffectBreak", "judgeEffectTouch"].includes(name)) {
       if (typeof value !== "boolean")
         throw new Error(`${name} must be a boolean`);
+    } else if (name === "layoutSquareScale") {
+      if (!Number.isFinite(value) || value < .5 || value > 1) throw new Error(`${name} must be between 0.5 and 1`);
+    } else if (["scaleMode", "outlineIndex", "centerDisplay", "tapJudgeTextDistance", "skinJudgeEffectIndex"].includes(name)) {
+      const maximum = { scaleMode: 3, outlineIndex: 3, centerDisplay: 7, tapJudgeTextDistance: 2, skinJudgeEffectIndex: 1 }[name];
+      if (!Number.isInteger(value) || value < 0 || value > maximum) throw new Error(`${name} must be an integer from 0 to ${maximum}`);
+    } else if (name === "skinDirectoryName") {
+      if (typeof value !== "string" || !/^(skinSD|skinDX|skin-[a-f0-9]{64})$/.test(value)) throw new Error("Invalid skin directory name");
+    } else if (name === "customOutlineFileName") {
+      if (typeof value !== "string" || value !== "" && !/^outline-[a-f0-9]{64}\.png$/.test(value)) throw new Error("Invalid custom outline filename");
     } else if (name === "noteSkin") {
       if (value !== "SD" && value !== "DX")
         throw new Error("noteSkin must be SD or DX");
@@ -179,4 +224,29 @@ export function normalizeChart(chart, base) {
   for (const name of ["audio", "cover", "video"])
     if (chart[name] != null) result[name] = normalizedSource(chart[name], base);
   return result;
+}
+
+export function normalizeResources(resources, base) {
+  if (!resources || typeof resources !== "object" || Array.isArray(resources) || !Object.keys(resources).length)
+    throw new Error("Specify audio, cover or video resources");
+  const result = {};
+  for (const [kind, resource] of Object.entries(resources)) {
+    if (!["audio", "cover", "video"].includes(kind)) throw new Error(`Unknown chart resource: ${kind}`);
+    result[kind] = resource === null ? null : normalizedSource(resource, base);
+  }
+  return result;
+}
+
+export function normalizeSkinFiles(files, base) {
+  if (!Array.isArray(files) || !files.length) throw new Error("请选择皮肤 PNG 素材");
+  const paths = new Set();
+  const result = files.map(file => {
+    const path = file?.path;
+    if (typeof path !== "string" || /[\x00-\x1f\\]/.test(path) || path.split("/").some(part => !part || part === "." || part === "..")
+        || !path.endsWith(".png") || paths.has(path.toLowerCase())) throw new Error("皮肤素材路径无效");
+    paths.add(path.toLowerCase());
+    return { path, image: normalizedSource(file.image, base) };
+  });
+  if (!paths.has("tap.png")) throw new Error("皮肤目录需要 tap.png");
+  return result.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
 }

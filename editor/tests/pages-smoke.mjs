@@ -14,15 +14,16 @@ const build = spawnSync(process.execPath, ["scripts/build-pages.mjs", join(outpu
   { cwd: root, encoding: "utf8" });
 assert.equal(build.status, 0, build.stderr);
 const siteRoot = join(output, "site");
+const prefix = process.env.MIACODE_PAGES_PREFIX || "/MiaView_Web/";
 const mime = { ".html": "text/html", ".mjs": "text/javascript", ".js": "text/javascript",
   ".wasm": "application/wasm", ".css": "text/css", ".json": "application/json", ".wav": "audio/wav", ".svg": "image/svg+xml" };
 const server = createServer((request, response) => {
   // Deliberately omit dev upload/log routes: this must run on static hosting.
   if (!["GET", "HEAD"].includes(request.method)) { response.writeHead(405).end(); return; }
-  if (!request.url.startsWith("/MiaView_Web/")) { response.writeHead(404).end(); return; }
+  if (!request.url.startsWith(prefix)) { response.writeHead(404).end(); return; }
   try {
     const pathname = decodeURIComponent(new URL(request.url, "http://localhost").pathname);
-    const path = resolve(siteRoot, "." + pathname.slice("/MiaView_Web".length));
+    const path = resolve(siteRoot, "." + pathname.slice(prefix.length - 1));
     if (!path.startsWith(siteRoot + sep) || !statSync(path).isFile()) { response.writeHead(404).end(); return; }
     const bytes = readFileSync(path);
     response.writeHead(200, { "Content-Type": mime[extname(path)] ?? "application/octet-stream", "Content-Length": bytes.length });
@@ -30,7 +31,7 @@ const server = createServer((request, response) => {
   } catch { response.writeHead(404).end(); }
 });
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
-const base = `http://127.0.0.1:${server.address().port}/MiaView_Web/`;
+const base = `http://127.0.0.1:${server.address().port}${prefix}`;
 const browser = await chromium.launch({ executablePath: process.env.MIACODE_CHROMIUM,
   headless: true, args: ["--no-sandbox", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
 try {
@@ -48,6 +49,16 @@ try {
   await page.goto(base + "index.html");
   await page.locator(".welcome-title").waitFor();
   await page.evaluate(() => document.getElementById("workbench").editor.ready);
+  await page.evaluate(() => document.getElementById("workbench").editor.command("file.demo"));
+  const opening = page.waitForEvent("popup");
+  await page.evaluate(() => document.getElementById("workbench").editor.command("preview.detach"));
+  const detached = await opening;
+  detached.on("pageerror", error => errors.push(error.message));
+  assert.equal(new URL(detached.url()).pathname, `${prefix}preview-window.html`);
+  const detachedRenderer = new URL(await detached.locator("iframe").getAttribute("src"));
+  assert.equal(detachedRenderer.pathname, `${prefix}renderer/index.html`);
+  await page.evaluate(() => document.getElementById("workbench").editor.command("preview.detach"));
+  assert.equal(detached.isClosed(), true);
   await page.goto(base + "examples/index.html");
   assert.equal(await page.locator("#local-pv").isDisabled(), true);
   const folder = join(output, "chart");
@@ -57,14 +68,14 @@ try {
   await page.locator("#play:not([disabled])").waitFor({ timeout: 90000 });
   const frame = page.frameLocator("#preview iframe");
   const iframeUrl = new URL(await page.locator("#preview iframe").getAttribute("src"));
-  assert.equal(iframeUrl.pathname, "/MiaView_Web/renderer/index.html");
+  assert.equal(iframeUrl.pathname, `${prefix}renderer/index.html`);
   await page.locator("#difficulty").selectOption("3");
   await page.waitForFunction(() => document.getElementById("status").textContent === "");
   await page.locator("#local-pv").setInputFiles({ name: "unsupported.webm", mimeType: "video/webm", buffer: Buffer.from("invalid video") });
   await page.waitForFunction(() => document.getElementById("status").textContent.includes("无法解码"));
   assert.equal(await page.locator("#local-pv").isEnabled(), true, "A failed PV must remain replaceable");
   await page.locator("#local-pv").setInputFiles(join(root, "tests/fixtures/bg-pattern.webm"));
-  await page.locator("#play:not([disabled])").waitFor();
+  await page.locator("#local-pv:not([disabled])").waitFor();
   assert.equal(await page.locator("#difficulty").inputValue(), "3");
   assert.ok((await page.locator("#media-status").textContent()).includes("bg-pattern.webm"));
   const wave = Buffer.alloc(44 + 24000 * 12 * 2);
@@ -76,7 +87,7 @@ try {
   const audio = join(output, "local-track.wav");
   writeFileSync(audio, wave);
   await page.locator("#local-audio").setInputFiles(audio);
-  await page.locator("#play:not([disabled])").waitFor();
+  await page.locator("#local-audio:not([disabled])").waitFor();
   assert.ok((await page.locator("#media-status").textContent()).includes("local-track.wav"));
   await page.locator("#play").click();
   await frame.locator("#play").filter({ hasText: "暂停" }).waitFor();
@@ -85,7 +96,7 @@ try {
   mkdirSync(join(root, "artifacts/ui"), { recursive: true });
   await page.screenshot({ path: join(root, "artifacts/ui/pages-local-files.png"), fullPage: true });
   await page.locator("#remove-pv").click();
-  await page.locator("#play:not([disabled])").waitFor();
+  await page.locator("#local-pv:not([disabled])").waitFor();
   assert.ok((await page.locator("#media-status").textContent()).includes("PV：未选择"));
   assert.equal(await page.locator("#remove-pv").isDisabled(), true);
   assert.ok(methods.every(method => ["GET", "HEAD"].includes(method)), "Local media must not be uploaded");

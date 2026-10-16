@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 function hashNativeInputs(hash, native) {
   for (const name of ["browser-host.cpp", "CMakeLists.txt", "browser-assets.qrc.in",
-    "firework-layer.cpp", "firework-layer.h", "cover-scene.cpp", "cover-scene.h", "timeline-bridge.cpp", "timeline-bridge.h", "document-bridge.cpp", "document-bridge.h"])
+    "firework-layer.cpp", "firework-layer.h", "cover-scene.cpp", "cover-scene.h", "timeline-bridge.cpp", "timeline-bridge.h", "document-bridge.cpp", "document-bridge.h", "editor-bridge.cpp", "editor-bridge.h", "touch-bridge.cpp", "touch-bridge.h", "latency-bridge.cpp", "latency-bridge.h", "preferences-bridge.cpp", "preferences-bridge.h", "appearance-bridge.cpp", "appearance-bridge.h", "export-bridge.cpp", "export-bridge.h"])
     hash.update(name).update(readFileSync(join(native, name), "utf8").replace(/\r\n/g, "\n"));
   return hash;
 }
@@ -16,6 +16,7 @@ export function rendererVersion(sourceRevision, toolchain, native, renderer) {
     const content = name.endsWith(".wasm") ? readFileSync(join(renderer, name)) : readFileSync(join(renderer, name), "utf8").replace(/\r\n/g, "\n");
     hash.update(name).update(content);
   }
+  hash.update("vendor/mediabunny/index.mjs").update(readFileSync(join(renderer,"vendor/mediabunny/index.mjs"),"utf8").replace(/\r\n/g,"\n"));
   return `miaview-web-2-${hash.digest("hex").slice(0, 12)}`;
 }
 

@@ -1,0 +1,20 @@
+{
+  "sourceRevision": "ff9f65856b8591589aba0582ac867220202a44c6",
+  "qtVersion": "6.11.1",
+  "sampleRate": 24000,
+  "decoder": "upstream BASS",
+  "cases": {
+    "pulse.wav": {
+      "bpm": 119.95,
+      "meterId": "6/8",
+      "offsetSeconds": 0.10925000000000008,
+      "sha256": "e910e15cef72add4e9275fc8a2b723089b8399c2f951c3728a199f5a8fff0937"
+    },
+    "long.wav": {
+      "bpm": 150.00000000000023,
+      "meterId": "6/8",
+      "offsetSeconds": 0.24000000000000019,
+      "sha256": "16d83d7ee4a94f1852f92c0540e3a199bf086917ca26014a4c9166d3d5534594"
+    }
+  }
+}

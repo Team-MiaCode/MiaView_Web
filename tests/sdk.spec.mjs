@@ -3,7 +3,7 @@ import test from "node:test";
 import { createPreview } from "../sdk/index.mjs";
 import { FRAME_SOURCE } from "../sdk/protocol.mjs";
 
-function dom({ invalidIdentity = false, respond = true } = {}) {
+function dom({ invalidIdentity = false, respond = true, reply = () => undefined } = {}) {
   const messages = [],
     listeners = new Set();
   const identity = {
@@ -53,7 +53,7 @@ function dom({ invalidIdentity = false, respond = true } = {}) {
             requestId: message.requestId,
             type: "response",
             ok: true,
-            value: { type: message.type },
+            value: reply(message) ?? { type: message.type },
             playerVersion: identity.version,
             sourceRevision: identity.sourceRevision,
           };
@@ -71,8 +71,29 @@ function dom({ invalidIdentity = false, respond = true } = {}) {
     append.call(this, child);
     queueMicrotask(() => child.children[0].onload?.());
   };
-  return { container, messages, listeners };
+  return { container, messages, listeners, identity };
 }
+test("cover playback observes a stalled renderer and releases the host timer on pause and destruction", async t => {
+  const { container, messages, listeners, identity } = dom({ reply: message =>
+    message.type === "getCoverComposition" ? { chartFramePlaying: true } : undefined });
+  const preview = createPreview(container, { rendererUrl: "https://renderer.example/index.html" }); await preview.ready;
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const settle = () => new Promise(resolve => setImmediate(resolve));
+  const pulse = playing => {
+    const data = { source: FRAME_SOURCE, protocolVersion: 1, sessionId: preview.sessionId,
+      type: "coverPlaybackChanged", payload: { chartFramePlaying: playing },
+      playerVersion: identity.version, sourceRevision: identity.sourceRevision };
+    for (const listener of listeners) listener({ source: preview.iframe.contentWindow, origin: preview.origin, data });
+  };
+  const observations = () => messages.filter(message => message.type === "getCoverComposition").length;
+  try {
+    pulse(true); t.mock.timers.tick(249); await settle(); assert.equal(observations(), 0);
+    pulse(true); t.mock.timers.tick(249); await settle(); assert.equal(observations(), 0);
+    t.mock.timers.tick(1); await settle(); assert.equal(observations(), 1);
+    pulse(false); t.mock.timers.tick(1000); await settle(); assert.equal(observations(), 1);
+    pulse(true); preview.destroy(); t.mock.timers.tick(1000); await settle(); assert.equal(observations(), 1);
+  } finally { preview.destroy(); }
+});
 test("SDK mounts without touching host content, serializes commands and releases its iframe", async () => {
   const { container, messages, listeners } = dom();
   const unrelated = {};
@@ -90,16 +111,19 @@ test("SDK mounts without touching host content, serializes commands and releases
   assert.equal(url.searchParams.get("width"), "720");
   assert.equal(url.searchParams.get("maxFps"), "120");
   assert.equal(url.searchParams.get("theme"), "light");
+  assert.equal(url.searchParams.get("audioContextOwner"), "renderer");
   assert.equal(iframe.referrerPolicy, "no-referrer");
   await Promise.all([
     preview.load({ maidata: "&inote_5=1,E" }),
     preview.seek(1),
     preview.setSettings({ tapFlowSpeed: 8 }),
+    preview.setResources({ audio: "./track.wav", video: null }),
   ]);
   assert.deepEqual(
     messages.map((message) => message.type),
-    ["initialize", "load", "seek", "setSettings"],
+    ["initialize", "load", "seek", "setSettings", "setResources"],
   );
+  assert.deepEqual(messages.at(-1).payload, { audio: { url: "https://host.example/demo/track.wav" }, video: null });
   assert.ok(
     messages.every((message) => message.origin === "https://renderer.example"),
   );
@@ -108,6 +132,28 @@ test("SDK mounts without touching host content, serializes commands and releases
   assert.deepEqual(container.children, [unrelated]);
   assert.equal(listeners.size, 0);
   await assert.rejects(preview.getState(), /destroyed/);
+});
+test("detached preview audio ownership is explicit and validated before mounting", async () => {
+  const { container } = dom();
+  const rendererUrl = "https://renderer.example/index.html";
+  assert.throws(() => createPreview(container, { rendererUrl, audioContextOwner: "parent" }), /audio context owner/);
+  assert.equal(container.children.length, 0);
+  const preview = createPreview(container, { rendererUrl, audioContextOwner: "opener" });
+  await preview.ready;
+  assert.equal(new URL(preview.iframe.src).searchParams.get("audioContextOwner"), "opener");
+  preview.destroy();
+});
+test("performance preferences use the same validated SDK command boundary", async () => {
+  const { container, messages } = dom();
+  const preview = createPreview(container, { rendererUrl: "https://renderer.example/index.html" });
+  await preview.ready;
+  const changes = { canvasFrameRateMode: 0, stageMediaFrameRateMode: 3, videoDecodePrefersSoftware: true };
+  await preview.setPerformance(changes);
+  assert.equal(messages.at(-1).type, "setPerformance"); assert.deepEqual(messages.at(-1).payload, changes);
+  const count = messages.length;
+  await assert.rejects(preview.setPerformance({ videoDecodePrefersSoftware: 1 }), /布尔/);
+  await assert.rejects(preview.setPerformance({ canvasFrameRateMode: 4 }), /帧率/);
+  assert.equal(messages.length, count); preview.destroy();
 });
 test("startup failure and early disposal do not leak a widget or message listeners", async () => {
   const fixture = dom({ invalidIdentity: true });
@@ -151,6 +197,19 @@ test("invalid resolutions are rejected before adding any iframe", () => {
   assert.equal(container.children.length, 0);
   assert.throws(() => createPreview(container, { theme: "invalid" }), /theme/);
   assert.equal(container.children.length, 0);
+});
+
+test("Font, metadata and intro resources resolve against the embedding page",async()=>{
+  const {container,messages}=dom();const preview=createPreview(container,{rendererUrl:"https://renderer.example/index.html"});await preview.ready;
+  await preview.importFont("./font.ttf","font.ttf");
+  await preview.readAudioInfo("./track.wav");
+  await preview.startExport({introBackground:"./image.png",fps:30});
+  await preview.setIntroAudition({introBackground:"./intro.png",introAuditionLoop:true});
+  assert.equal(messages.find(message=>message.type==="importFont").payload.font.url,"https://host.example/demo/font.ttf");
+  assert.equal(messages.find(message=>message.type==="readAudioInfo").payload.audio.url,"https://host.example/demo/track.wav");
+  assert.equal(messages.find(message=>message.type==="startExport").payload.introBackground.url,"https://host.example/demo/image.png");
+  assert.equal(messages.find(message=>message.type==="setIntroAudition").payload.introBackground.url,"https://host.example/demo/intro.png");
+  await assert.rejects(preview.startExport({introBackground:"file:///private/image.png"}),/HTTP/);preview.destroy();
 });
 test("maximum FPS is validated before mounting and unlimited reaches the renderer", async () => {
   const { container } = dom();

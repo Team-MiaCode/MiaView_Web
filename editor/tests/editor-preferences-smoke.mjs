@@ -1,0 +1,42 @@
+import { launchPreviewBrowser } from "./preview-browser.mjs";
+import assert from "node:assert/strict";
+import {mkdirSync,writeFileSync} from "node:fs";
+import {resolve,join} from "node:path";
+import {pathToFileURL} from "node:url";
+import {staticServer} from "../scripts/serve.mjs";
+
+const browsers=await import(process.env.MIACODE_PLAYWRIGHT_MODULE?pathToFileURL(process.env.MIACODE_PLAYWRIGHT_MODULE).href:"playwright");
+const output=resolve("artifacts/editor-preferences");mkdirSync(output,{recursive:true});
+const server=staticServer(process.cwd(),{performanceTerminal:false});await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
+const browser=await launchPreviewBrowser(browsers, process.env.MIACODE_BROWSER || "chromium");
+try {
+  const page=await browser.newPage({viewport:{width:1366,height:900}});page.setDefaultTimeout(30000);
+  const errors=[];page.on("pageerror",error=>errors.push(error.message));
+  await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);await page.locator(".welcome-title").waitFor();
+  const chart="(120){4}\n"+Array.from({length:80},(_,index)=>index===30?"1, || [Bookmark]":"1,").join("\n")+"\nE";
+  await page.evaluate(async chart=>{const editor=document.getElementById("workbench").editor;await editor.ready;await editor.load({maidata:`&title=编辑器偏好\n&inote_5=${chart}\n`});},chart);
+  const input=page.locator(".source-input"),ruler=page.getByRole("scrollbar",{name:"概览标尺"});
+  await ruler.waitFor();
+  assert.equal(await page.locator(".overview-bookmark").count(),1);
+  const dimensions=()=>input.evaluate(node=>({height:node.clientHeight,scroll:node.scrollHeight,line:parseFloat(getComputedStyle(node).lineHeight),padding:parseFloat(getComputedStyle(node).paddingBottom),mode:node.inputMode}));
+  const enabled=await dimensions();assert.ok(enabled.padding>enabled.height*.8);assert.equal(enabled.mode,"url");
+  await ruler.focus();await page.keyboard.press("End");
+  assert.ok(await input.evaluate(node=>node.scrollTop>node.scrollHeight-node.clientHeight-2));
+  await page.keyboard.press("Home");assert.equal(await input.evaluate(node=>node.scrollTop),0);
+  const bounds=await ruler.boundingBox();await page.mouse.click(bounds.x+bounds.width/2,bounds.y+bounds.height*.8);
+  assert.ok(await input.evaluate(node=>node.scrollTop>node.scrollHeight*.5));
+  const set=(key,value)=>page.evaluate(({key,value})=>document.getElementById("workbench").editor.viewState.setPreference(key,value),{key,value});
+  await set("editorScrollPastEnd",false);await page.waitForFunction(()=>getComputedStyle(document.querySelector(".source-input")).paddingBottom==="0px");
+  const disabled=await dimensions();assert.ok(enabled.scroll-disabled.scroll>enabled.height*.8);
+  await set("editorOverviewRulerEnabled",false);assert.equal(await ruler.isVisible(),false);
+  await set("editorOverviewRulerEnabled",true);await ruler.waitFor();
+  await set("editorInputHandlingMode",2);assert.equal(await input.getAttribute("inputmode"),"text");
+  await input.focus();await input.press("Control+a");await page.keyboard.insertText("（１２３）中文");
+  await page.waitForFunction(()=>document.querySelector(".source-input").value==="（１２３）中文");
+  await set("editorInputHandlingMode",0);await input.press("Control+a");await page.keyboard.insertText("（１２３）中文");
+  await page.waitForFunction(()=>document.querySelector(".source-input").value==="(123)中文");
+  await set("editorInputHandlingMode",1);assert.equal(await input.getAttribute("inputmode"),"url");
+  await page.screenshot({path:join(output,"source.png")});
+  assert.deepEqual(errors,[]);writeFileSync(join(output,"results.json"),JSON.stringify({browser:browser.version(),enabled,disabled,errors},null,2)+"\n");
+  console.log("Scroll past end, overview click and keyboard, visibility, Latin keyboard hints and native character modes passed");
+}finally{await browser.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
