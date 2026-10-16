@@ -198,7 +198,7 @@ try {
   const firstFrame = page.frameLocator("#one iframe");
   assert.deepEqual(
     await firstFrame
-      .locator("#viewport canvas")
+      .locator("#qt-screen canvas")
       .evaluate((canvas) => ({ width: canvas.width, height: canvas.height })),
     { width: 1280, height: 720 },
   );
@@ -303,7 +303,7 @@ try {
   assert.equal(await firstFrame.locator("#stage-video").isVisible(), true);
   assert.equal(
     await firstFrame
-      .locator("#viewport canvas")
+      .locator("#qt-screen canvas")
       .evaluate(
         (canvas) => canvas.getContext("webgl2").getContextAttributes().alpha,
       ),
@@ -343,7 +343,7 @@ try {
   assert.equal(state.settings.tapFlowSpeed, 8.25);
   assert.equal(state.settings.touchFlowSpeed, 9.25);
   assert.equal(state.settings.noteSkin, "SD");
-  assert.equal(state.settings.showJudgeEffects, true);
+  assert.equal(state.settings.skinJudgeEffectIndex, 1);
   assert.equal(state.settings.previewMode, "maimuri_dx_style");
   // Component UI and host API must share the same state and event boundary.
   await page.evaluate(() => { window.events.length = 0; });
@@ -398,7 +398,7 @@ try {
     { rejected: [true, true, true, true, true], unchanged: true },
   );
   await firstFrame
-    .locator("#viewport canvas")
+    .locator("#qt-screen canvas")
     .screenshot({ path: join(output, "wide-pv.png") });
   // Verify actual composed pixels, not only that the DOM video is visible.
   // Both points lie in the green quarter of the fixture, away from HUD/notes.
@@ -489,7 +489,7 @@ try {
   const secondFrame = page.frameLocator("#two iframe");
   assert.deepEqual(
     await secondFrame
-      .locator("#viewport canvas")
+      .locator("#qt-screen canvas")
       .evaluate((canvas) => ({ width: canvas.width, height: canvas.height })),
     { width: 720, height: 720 },
   );
@@ -518,7 +518,7 @@ try {
     "Instances must not share preview mode",
   );
   await secondFrame
-    .locator("#viewport canvas")
+    .locator("#qt-screen canvas")
     .screenshot({ path: join(output, "square.png") });
   await page.evaluate(() => {
     document.getElementById("two").style.width = "356px";
@@ -788,7 +788,7 @@ try {
   await page.locator("#resolution").selectOption("1080x1080");
   await waitLoaded();
   assert.equal(await page.locator("#preview iframe").getAttribute("data-original-instance"), null);
-  assert.deepEqual(await devFrame.locator("#viewport canvas").evaluate((canvas) => ({ width: canvas.width, height: canvas.height })), { width: 1080, height: 1080 });
+  assert.deepEqual(await devFrame.locator("#qt-screen canvas").evaluate((canvas) => ({ width: canvas.width, height: canvas.height })), { width: 1080, height: 1080 });
   for (const maxFps of ["30", "unlimited"]) {
     await page.locator("#max-fps").selectOption(maxFps);
     await waitLoaded();
