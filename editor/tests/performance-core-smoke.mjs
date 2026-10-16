@@ -87,15 +87,19 @@ try {
       window.playheadObserver = new MutationObserver(records => { timelineTicks += records.filter(record => record.attributeName === "x1").length; });
       playheadObserver.observe(line, { attributes: true }); await editor.preview.play();
     });
-    const before = await state(); await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 1200)));
-    const after = await state(), ticks = await page.evaluate(() => timelineTicks);
-    await page.evaluate(() => editor.preview.pause()); return { pvFrames: after.videoPresentation.frames - before.videoPresentation.frames, timelineTicks: ticks };
+    const before = await state(), timelineBefore = await page.evaluate(() => ({ ticks: timelineTicks, now: performance.now() }));
+    await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 1200)));
+    const after = await state(), timelineAfter = await page.evaluate(() => ({ ticks: timelineTicks, now: performance.now() }));
+    const pvFrames = after.videoPresentation.frames - before.videoPresentation.frames, ticks = timelineAfter.ticks - timelineBefore.ticks;
+    const pvSeconds = after.currentTime - before.currentTime, timelineSeconds = (timelineAfter.now - timelineBefore.now) / 1000;
+    await page.evaluate(() => editor.preview.pause()); return { pvFrames, timelineTicks: ticks, pvSeconds, timelineSeconds,
+      pvFps: pvFrames / pvSeconds, timelineFps: ticks / timelineSeconds };
   };
   results.slow = await sample(0); results.fast = await sample(1);
-  assert.ok(results.slow.pvFrames >= 25 && results.slow.pvFrames <= 39, JSON.stringify(results.slow));
-  assert.ok(results.fast.pvFrames > results.slow.pvFrames + 10, JSON.stringify(results.fast));
-  assert.ok(results.slow.timelineTicks >= 25 && results.slow.timelineTicks <= 40, JSON.stringify(results.slow));
-  assert.ok(results.fast.timelineTicks > results.slow.timelineTicks + 10, JSON.stringify(results.fast));
+  assert.ok(results.slow.pvFps >= 25 / 1.2 && results.slow.pvFps <= 39 / 1.2, JSON.stringify(results.slow));
+  assert.ok(results.fast.pvFps > results.slow.pvFps + 10 / 1.2, JSON.stringify(results.fast));
+  assert.ok(results.slow.timelineFps >= 25 / 1.2 && results.slow.timelineFps <= 40 / 1.2, JSON.stringify(results.slow));
+  assert.ok(results.fast.timelineFps > results.slow.timelineFps + 10 / 1.2, JSON.stringify(results.fast));
   results.phase = "persistence";
   await command("preferences.performance", { canvasFrameRateMode: 2, stageMediaFrameRateMode: 0, timelineFrameRateMode: 2 });
   assert.equal((await state()).maxFps, 120);

@@ -7,11 +7,13 @@ import {staticServer} from "../scripts/serve.mjs";
 import {waitForAsync} from "./helpers/wait-async.mjs";
 import {listenForBrowser} from "./helpers/browser-server.mjs";
 import {observeVideoDecoders,decoderSnapshot} from "./helpers/video-decoder-probe.mjs";
+import {observeAudioDecoding} from "./helpers/audio-decoder-probe.mjs";
 
 const browsers=await import(process.env.MIACODE_PLAYWRIGHT_MODULE?pathToFileURL(process.env.MIACODE_PLAYWRIGHT_MODULE).href:"playwright");
 const format=process.env.MIACODE_EXPORT_FORMAT||"auto";
 const software=process.env.MIACODE_SOFTWARE_VIDEO==="1";
-const output=resolve(`artifacts/video-export-core/${process.env.MIACODE_BROWSER||"chromium"}-${format}${software?"-software":""}`);mkdirSync(output,{recursive:true});
+const sampleRate=Number(process.env.MIACODE_AUDIO_SAMPLE_RATE)||undefined;
+const output=resolve(`artifacts/video-export-core/${process.env.MIACODE_BROWSER||"chromium"}-${format}${software?"-software":""}${sampleRate?`-${sampleRate}`:""}`);mkdirSync(output,{recursive:true});
 const server=staticServer(process.cwd(),{performanceTerminal:false});await listenForBrowser(server);
 const browser=await launchPreviewBrowser(browsers, process.env.MIACODE_BROWSER||"chromium");
 const errors=[];
@@ -20,6 +22,7 @@ try {
   page.on("pageerror",error=>errors.push(error.message));
   page.on("console",message=>{if(message.type()==="error")errors.push(message.text());});
   await observeVideoDecoders(page);
+  await observeAudioDecoding(page,sampleRate);
   await page.goto(`http://127.0.0.1:${server.address().port}/tests/host.html`);
   await page.evaluate(async software=>{
     const {createPreview}=await import("/sdk/index.mjs");
@@ -40,6 +43,9 @@ try {
     await preview.seek(.3);
     await preview.setSettings({showTimestamp:false,showChartInfoHud:false,showObjectStatsHud:false});
   },software);
+  const sourceAudio=await page.frames().find(frame=>frame.url().includes("/renderer/index.html")).evaluate(()=>
+    audioDecodes.find(item=>Math.abs(item.duration-4)<.1));
+  assert.ok(sourceAudio);assert.ok(Math.abs(sourceAudio.duration-4)<=1/sourceAudio.sampleRate+1e-9);
   const capabilities=await page.evaluate(format=>preview.getExportCapabilities({width:320,height:180,fps:30,format}),format);
   console.log(JSON.stringify({capabilities}));
   console.log(JSON.stringify(await page.evaluate(async()=>{const media=await import("/renderer/vendor/mediabunny/index.mjs");return{videoCodecs:await media.getEncodableVideoCodecs(["avc","vp8","vp9"]),audioCodecs:await media.getEncodableAudioCodecs(["aac","opus"])};})));
@@ -110,8 +116,11 @@ try {
       } finally {input.dispose();}
     },job.jobId);
     assert.equal(intro.frames,intro.declaredFrames);assert.ok(intro.bright>1000,`Intro pixels: ${intro.bright}`);
-    const expected=pv?452:355;
-    console.log(JSON.stringify({intro:pv?"pv":"classic",expected,frames:intro.frames,declaredFrames:intro.declaredFrames,sourceDuration:(await page.evaluate(()=>preview.getState())).duration}));
+    const sourceDuration=(await page.evaluate(()=>preview.getState())).duration;
+    assert.ok(Math.abs(sourceDuration-sourceAudio.duration)<1e-9);
+    // v2 authors 349 classic / 544 PV intro frames at 60 FPS, plus the two-second lead-in.
+    const expected=Math.round(((pv?544:349)/60+2+sourceDuration)*30);
+    console.log(JSON.stringify({intro:pv?"pv":"classic",expected,frames:intro.frames,declaredFrames:intro.declaredFrames,sourceAudio,sourceDuration}));
     assert.equal(intro.frames,expected);
     writeFileSync(join(output,`intro-${pv?"pv":"classic"}.png`),Buffer.from(intro.screenshot.split(",")[1],"base64"));
     writeFileSync(join(output,`intro-${pv?"pv":"classic"}${capabilities.extension}`),Buffer.from(intro.encoded.split(",")[1],"base64"));
@@ -127,7 +136,7 @@ try {
   const decoderProbe=await page.frames().find(frame=>frame.url().includes("/renderer/index.html")).evaluate(decoderSnapshot);
   if(software){assert.ok(decoderProbe.configurations.length>0);assert.ok(decoderProbe.configurations.every(value=>value==="prefer-software"));}
   assert.deepEqual(errors,[]);
-  writeFileSync(join(output,"results.json"),JSON.stringify({capabilities,result,cancellation,intros,coverRestored:true,decoderProbe,errors},null,2));
+  writeFileSync(join(output,"results.json"),JSON.stringify({capabilities,sourceAudio,result,cancellation,intros,coverRestored:true,decoderProbe,errors},null,2));
   await page.screenshot({path:join(output,"restored-preview.png")});
   console.log("Video export frames, partial-range audio, restored preview and atomic cancellation passed");
 } finally {await browser.close();await new Promise(resolve=>server.close(resolve));}

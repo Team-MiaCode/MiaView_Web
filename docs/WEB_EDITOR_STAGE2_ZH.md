@@ -141,7 +141,7 @@ PV 的填充、适应、方形适应及内圈适应模式从原生 `PreviewScene
 
 工作台为任务建立独立预览实例，读取启动时的正文、难度、素材、外观、音频及字体快照。主工程支持导出期间编辑。视频按选定难度与区间输出，支持文件句柄写入及 Blob 下载。文件句柄在编码成功后提交，取消时终止当前写入。进度更新作用于导出页页脚，任务结束释放导出实例。
 
-`tests/video-export-core-smoke.mjs` 解码生成文件，核对帧数、预载静音、音乐接入、画面内容、经典片头、PV 片头、预览状态恢复与文件取消。30 FPS 的样本中，选定区间生成 60 帧，经典片头全曲生成 355 帧，PV 片头全曲生成 452 帧；MP4 与 WebM 通过验证。`tests/video-export-workbench-smoke.mjs` 验证主工程并行编辑、独立导出实例、选定难度、帧数与单视频下载。SDK 类型验收采用 `tests/tsconfig.json`，浏览器环境声明由 TypeScript 的 DOM 库提供。
+`tests/video-export-core-smoke.mjs` 解码生成文件，核对帧数、预载静音、音乐接入、画面内容、经典片头、PV 片头、预览状态恢复与文件取消。30 FPS 的样本中，选定区间生成 60 帧，经典片头全曲在 48 kHz 音频时钟下生成 355 帧，在 44.1 kHz 下按实际解码时长生成 354 帧，PV 片头全曲生成 452 帧；MP4 与 WebM 通过验证。`tests/video-export-workbench-smoke.mjs` 验证主工程并行编辑、独立导出实例、选定难度、帧数与单视频下载。SDK 类型验收采用 `tests/tsconfig.json`，浏览器环境声明由 TypeScript 的 DOM 库提供。
 
 `tests/video-export-long-smoke.mjs` 在 Chromium 中导出三分钟音轨，采用 128×128、30 FPS；含两秒预载的文件时长为 182 秒，逐帧解码得到 5460 帧。验证覆盖连续时间戳、音频末尾时间、预载静音、音乐首段/中段/尾段的能量，以及导出后的播放位置、倍率与画布恢复。编码文件和采样记录位于 `artifacts/video-export-long/`。
 
