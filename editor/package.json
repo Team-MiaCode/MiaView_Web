@@ -78,7 +78,14 @@
     "test:performance-core": "node tests/performance-core-smoke.mjs",
     "test:creation-workflow": "node tests/creation-workflow-smoke.mjs",
     "test:video-geometry": "node tests/video-geometry-smoke.mjs",
-    "test:stage2": "node tests/stage2-acceptance.mjs"
+    "test:stage2": "node tests/stage2-acceptance.mjs",
+    "test:preview-lifecycle": "node tests/preview-lifecycle-smoke.mjs",
+    "test:preview-benchmark": "node tests/preview-benchmark.mjs",
+    "test:timeline-playback": "node tests/timeline-playback-smoke.mjs",
+    "test:pv-sync": "node tests/pv-sync-smoke.mjs",
+    "test:preview-resources": "node tests/preview-resources-smoke.mjs",
+    "test:analysis-worker": "node tests/analysis-worker-smoke.mjs",
+    "test:preview-parity": "node tests/preview-parity-smoke.mjs"
   },
   "engines": {
     "node": ">=22"

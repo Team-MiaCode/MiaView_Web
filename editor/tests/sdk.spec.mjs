@@ -73,6 +73,28 @@ function dom({ invalidIdentity = false, respond = true, reply = () => undefined 
   };
   return { container, messages, listeners, identity };
 }
+test("An analysis request preserves its snapshot while later commands continue", async () => {
+  const f = dom({ respond: false });
+  const preview = createPreview(f.container, { rendererUrl: "https://renderer.example/index.html" });
+  await preview.ready;
+  const analysis = preview.getAnalysis();
+  await new Promise(resolve => setImmediate(resolve));
+  const state = preview.getState();
+  await new Promise(resolve => setImmediate(resolve));
+  const requests = f.messages.filter(message => message.type !== "initialize");
+  try {
+    assert.deepEqual(requests.map(message => message.type), ["getAnalysis", "getState"]);
+    const reply = (request, value) => {
+      const data = { source: FRAME_SOURCE, protocolVersion: 1, sessionId: preview.sessionId,
+        type: "response", requestId: request.requestId, ok: true, value,
+        playerVersion: f.identity.version, sourceRevision: f.identity.sourceRevision };
+      for (const listener of f.listeners) listener({ source: preview.iframe.contentWindow, origin: preview.origin, data });
+    };
+    reply(requests[1], { currentTime: 2 }); assert.deepEqual(await state, { currentTime: 2 });
+    reply(requests[0], { revision: 3 }); assert.deepEqual(await analysis, { revision: 3 });
+  } finally { preview.destroy(); }
+});
+
 test("cover playback observes a stalled renderer and releases the host timer on pause and destruction", async t => {
   const { container, messages, listeners, identity } = dom({ reply: message =>
     message.type === "getCoverComposition" ? { chartFramePlaying: true } : undefined });

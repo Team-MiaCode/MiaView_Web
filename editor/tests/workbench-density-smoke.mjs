@@ -55,7 +55,7 @@ try {
           assert.ok(Math.abs(geometry.deltaX) <= 1 && Math.abs(geometry.deltaY) <= 1);
           assert.ok(Math.abs(geometry.inputScrollHeight - geometry.paintScrollHeight) <= 1, `${name}/${density}/${scale} wrapped height ${JSON.stringify(geometry)}`);
           assert.equal(geometry.inputScroll, geometry.paintScroll);
-          assert.deepEqual(geometry.gutter, geometry.paint);
+          assert.deepEqual(geometry.gutter, geometry.paint, `${name}/${density}/${scale} wrapped gutter heights`);
           results.push({ browser: name, version: browser.version(), density, scale, cssViewport: [width, height], webAudio, inputAlignment: "pass" });
         }
         assert.deepEqual(errors, [], `${name}/${density} JavaScript errors`);

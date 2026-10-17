@@ -40,8 +40,6 @@
 #include "core/scene/PreviewSfxAssets.h"
 #include "core/chart/model/TimelineMarkerOffset.h"
 #include "core/analysis/MuriAnalyzer.h"
-#include "core/analysis/MuriPanelEntries.h"
-#include "core/analysis/MuriStaticChecker.h"
 #include "core/video/AssetPaths.h"
 
 using namespace miacode::preview::scene;
@@ -54,6 +52,9 @@ EM_JS(void, publishCoverPlayback, (const char* data), {
 });
 EM_JS(void, publishExportFrame, (), {
     Module.onExportFrame?.();
+});
+EM_JS(void, publishPreviewFrame, (double started, double second), {
+    Module.onPreviewFrame?.(performance.now(), started, second);
 });
 namespace {
 PreviewFrameState state;
@@ -71,6 +72,7 @@ QByteArray response;
 QString skinDirectoryName = QStringLiteral("skinDX"), customOutlineFileName, effectiveOutlinePath;
 miacode::preview::runtime::PreviewOutlineImageMode effectiveOutlineImageMode = miacode::preview::runtime::PreviewOutlineImageMode::Direct;
 double presentedFrames = 0;
+double frameRenderStarted = 0;
 MuriAnalysisReport cachedAnalysis;
 bool analysisReady = false;
 quint64 analysisRevision = 0;
@@ -123,9 +125,6 @@ bool touchPadAuthoringShortcut = false;
 bool touchPadAuthoringContext = false;
 PreviewOutlineVariant selectedOutline = PreviewOutlineVariant::Line;
 PreviewOutlineVariant effectiveOutline = PreviewOutlineVariant::Line;
-QByteArray cachedEditorAnalysis;
-quint64 editorAnalysisGeneration = 0, editorAnalysisRevision = 0;
-QString editorAnalysisLanguage;
 int loadedDifficulty = 0;
 quint64 renderedRevision = 0;
 QByteArray cachedLoadResponse;
@@ -619,70 +618,30 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_document_command(const char* source) {
     if (!request.isObject()) return json({{"error", "Document command must be an object"}});
     auto result = editorDocument.command(request.object());
     if (result.contains("error")) return json(result);
+    if (request.object().value("id").toString() == QLatin1String("document.replaceActiveDifficultyChart")
+        && request.object().value("args").toObject().value("deferPreview").toBool()) {
+        result.insert("previewDeferred", true);
+        return json(result);
+    }
     const bool resetTime = request.object().value("id").toString() == QLatin1String("document.selectDifficulty");
     const auto preview = QJsonDocument::fromJson(QByteArray(renderDocument(editorDocument.workspace.snapshot().activeDifficultyId, resetTime)));
     result.insert("preview", preview.object());
     return json(result);
 }
+EMSCRIPTEN_KEEPALIVE const char* miacode_document_refresh() {
+    const auto preview = QJsonDocument::fromJson(QByteArray(renderDocument(editorDocument.workspace.snapshot().activeDifficultyId, false)));
+    return json({{"document", editorDocument.snapshot()}, {"preview", preview.object()}});
+}
 EMSCRIPTEN_KEEPALIVE const char* miacode_document_save_text(int section) {
     return json({{"sourceText", editorDocument.workspace.textForSectionSave(section)},
         {"revision", double(editorDocument.workspace.snapshot().revision)}});
 }
-EMSCRIPTEN_KEEPALIVE const char* miacode_analysis(const char* language) {
+EMSCRIPTEN_KEEPALIVE const char* miacode_analysis_input(const char* language) {
     const auto identity = editorDocument.workspace.snapshot();
-    const QString localeToken = QString::fromUtf8(language);
-    if (!cachedEditorAnalysis.isEmpty() && identity.documentOpenGeneration == editorAnalysisGeneration
-        && identity.revision == editorAnalysisRevision && localeToken == editorAnalysisLanguage)
-        return cachedEditorAnalysis.constData();
-    const auto& doc = editorDocument.workspace.document();
-    const auto* difficulty = doc.difficulty(identity.activeDifficultyId);
-    QJsonArray validationRows, muriRows;
-    int errors = 0, warnings = 0;
-    const auto locale = localeToken.startsWith("zh") ? SimaiValidationLocale::Chinese
-        : localeToken.startsWith("ja") ? SimaiValidationLocale::Japanese : SimaiValidationLocale::English;
-    if (identity.hasDocument && difficulty) {
-        const auto timing = miacode::simai::buildTimingMetadata(doc);
-        const auto parsed = SimaiParser::parseForTimeline(difficulty->chart, timing);
-        const auto validation = SimaiParser::buildValidationReport(difficulty->chart, locale, &parsed, timing);
-        errors = validation.errorCount;
-        warnings = validation.warningCount;
-        for (const auto& issue : validation.issues) {
-            validationRows.append(QJsonObject{{"line", issue.line}, {"column", issue.col}, {"endColumn", issue.endCol},
-                {"second", -1}, {"severity", issue.severity == SimaiValidationSeverity::Warning ? "warning" : "error"},
-                {"detail", issue.displayMessage}, {"difficultyId", identity.activeDifficultyId},
-                {"revision", double(identity.revision)}, {"documentOpenGeneration", double(identity.documentOpenGeneration)}});
-        }
-        if (parsed.ok) {
-            bool firstOk = false;
-            const double first = miacode::timeline::offset::parsedFirstSeconds(doc.first, &firstOk);
-            if (firstOk && qIsFinite(first)) {
-                const auto markers = miacode::timeline::offset::shiftedNoteMarkers(parsed.noteMarkers, first,
-                    miacode::timeline::offset::NonFiniteHandling::Propagate);
-                const auto report = analysisReady ? cachedAnalysis : MuriAnalyzer::analyze(markers, state.muriRenderOptions);
-                const auto references = miacode::muri::buildStaticMuriReferences(markers,
-                    miacode::muri::kStaticTapOnSlideThresholdDefaultMs / 1000.0);
-                for (const auto& entry : miacode::muri::buildVisibleMuriPanelEntries(report, references)) {
-                    const bool warning = entry.alertLevel == MuriAlertLevel::Warning;
-                    QString detail = renderMuriDetail(entry.detailKind, entry.detailArgs, locale).trimmed();
-                    if (detail.isEmpty()) detail = entry.rawDetail;
-                    muriRows.append(QJsonObject{{"line", qMax(1, entry.line)}, {"column", qMax(1, entry.col)},
-                        {"endColumn", qMax(1, entry.col)}, {"second", entry.second}, {"severity", warning ? "warning" : "error"},
-                        {"alert", warning ? "warning" : "muri"}, {"title", muriKindDisplayName(entry.kind, locale == SimaiValidationLocale::Chinese)},
-                        {"detail", detail}, {"difficultyId", identity.activeDifficultyId}, {"revision", double(identity.revision)},
-                        {"documentOpenGeneration", double(identity.documentOpenGeneration)}});
-                }
-            }
-        }
-    }
-    const QJsonObject result{{"available", identity.hasDocument && difficulty != nullptr}, {"pending", false},
-        {"revision", double(identity.revision)}, {"documentOpenGeneration", double(identity.documentOpenGeneration)},
-        {"difficultyId", identity.activeDifficultyId}, {"validationRows", validationRows}, {"muriRows", muriRows},
-        {"syntaxErrorCount", errors}, {"syntaxWarningCount", warnings}};
-    cachedEditorAnalysis = QJsonDocument(result).toJson(QJsonDocument::Compact);
-    editorAnalysisGeneration = identity.documentOpenGeneration;
-    editorAnalysisRevision = identity.revision;
-    editorAnalysisLanguage = localeToken;
-    return cachedEditorAnalysis.constData();
+    return json({{"sourceText", identity.sourceText}, {"hasDocument", identity.hasDocument},
+        {"difficultyId", identity.activeDifficultyId}, {"revision", double(identity.revision)},
+        {"documentOpenGeneration", double(identity.documentOpenGeneration)},
+        {"language", QString::fromUtf8(language)}, {"renderMode", muriRenderModeToken(state.muriRenderOptions.renderMode)}});
 }
 EMSCRIPTEN_KEEPALIVE const char* miacode_cover(const char* source) {
     QJsonParseError error;
@@ -957,8 +916,12 @@ int main(int argc, char** argv) {
     state.framePacingTargetFps = 60;
     QQuickWindow window;
     previewWindow = &window;
+    QObject::connect(&window, &QQuickWindow::beforeSynchronizing, &window, [] {
+        frameRenderStarted = emscripten_get_now();
+    });
     QObject::connect(&window, &QQuickWindow::frameSwapped, &window, [] {
         ++presentedFrames;
+        publishPreviewFrame(frameRenderStarted, state.playheadSeconds);
         if (exportFramePending) {
             exportFramePending = false;
             publishExportFrame();
@@ -972,6 +935,7 @@ int main(int argc, char** argv) {
     window.resize(renderSize);
     scene = new PreviewQuickSceneRoot(window.contentItem());
     hud = new PreviewQuickHudLayer(window.contentItem());
+    hud->setRenderTarget(QQuickPaintedItem::FramebufferObject);
     WebExportScene exportRenderer(window.contentItem());
     exportScene = &exportRenderer;
     scene->setSize(renderSize);

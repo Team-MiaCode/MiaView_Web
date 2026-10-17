@@ -218,6 +218,10 @@ export class Workbench extends EventTarget {
     const state = this.viewState;
     const prefs = state.preferences;
     const bottomAvailable = state.activeEditorKey.startsWith("difficulty:") || state.activeEditorKey === "latency";
+    const layoutKey = JSON.stringify([prefs, state.activeThemeToken, bottomAvailable, state.sidebarVisible,
+      state.compactPanel, state.bottomPanelVisible, state.compactView]);
+    if (layoutKey === this.layoutKey) return;
+    this.layoutKey = layoutKey;
     document.documentElement.dataset.theme = state.activeThemeToken;
     this.root.style.setProperty("--sidebar-width", `${prefs.sidebarWidth}px`);
     this.root.style.setProperty("--preview-width", `${prefs.previewWidthRatio * 100}%`);
@@ -243,7 +247,8 @@ export class Workbench extends EventTarget {
     this.timelineControls.update({});
     this.difficultyHeader.update(this.documentSession);
     for (const node of this.activityButtons) node.setAttribute("aria-pressed", String(node.dataset.view === state.activeSidebarView));
-    this.titleLabel.textContent = this.documentSession.hasDocument ? `${this.documentSession.dirty ? "* " : ""}${this.documentSession.title || "未命名谱面"}` : "谱面编辑器";
+    const title = this.documentSession.hasDocument ? `${this.documentSession.dirty ? "* " : ""}${this.documentSession.title || "未命名谱面"}` : "谱面编辑器";
+    if (this.titleLabel.textContent !== title) this.titleLabel.textContent = title;
     this.updateSidebar();
     this.editorTabs.update(this.documentSession);
     for (const [control, active, symbol] of [[this.sidebarToggle, state.sidebarVisible, "panel-left"], [this.bottomToggle, state.bottomPanelVisible, "panel-bottom"]]) {
@@ -297,7 +302,7 @@ export class Workbench extends EventTarget {
   }
   renderBottom() {
     if (this.viewState.bottomPanel === "timeline") {
-      this.bottomBody.replaceChildren(this.timelinePanel);
+      if (this.bottomBody.firstElementChild !== this.timelinePanel) this.bottomBody.replaceChildren(this.timelinePanel);
       this.timelineView.setState(this.documentSession.timelineSceneState || null);
     }
     else this.bottomBody.replaceChildren(createAnalysisPanel(this.viewState.bottomPanel, { documentSession: this.documentSession, command: (id, args) => this.command(id, args), language: this.viewState.preferences.languageToken || "zh" }));

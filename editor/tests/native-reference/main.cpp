@@ -16,6 +16,7 @@
 #include <QTranslator>
 #include <cmath>
 #include "editor-reference.h"
+#include "preview-reference.h"
 
 #include "export/cover_export/CoverLayoutModel.h"
 #include "timeline/TimelineQuickModel.h"
@@ -59,6 +60,8 @@ int captureSurface(QQuickWindow& window, QQuickRenderControl& control, const QSi
     if (!completed) return 2;
     QImage image(reinterpret_cast<const uchar*>(result.data.constData()), size.width(), size.height(), QImage::Format_RGBA8888_Premultiplied);
     const bool saved = (rhi->isYUpInFramebuffer() ? image.flipped(Qt::Vertical) : image).save(path);
+    window.setRenderTarget(QQuickRenderTarget());
+    target.reset(); pass.reset(); depth.reset(); texture.reset();
     control.invalidate();
     return saved ? 0 : 2;
 }
@@ -87,10 +90,19 @@ int main(int argc, char** argv)
     arguments.addOption({"layout", "Cover layout fixture", "file"});
     arguments.addOption({"timeline", "Timeline fixture", "file"});
     arguments.addOption({"editor", "Editor appearance fixture", "file"});
+    arguments.addOption({"preview", "Preview scene fixture", "file"});
     arguments.addOption({"capture", "Offscreen timeline capture", "file"});
     arguments.addOption({"viewport", "Timeline viewport size", "size", "800x240"});
     arguments.addPositionalArgument("scene", "Original QML reference scene");
     arguments.process(application);
+    if (arguments.isSet("preview")) {
+        QFile fixture(arguments.value("preview"));
+        const auto dimensions = arguments.value("viewport").split('x');
+        if (!fixture.open(QIODevice::ReadOnly) || dimensions.size() != 2 || !arguments.isSet("capture")) return 2;
+        const auto value = QJsonDocument::fromJson(fixture.readAll());
+        if (!value.isObject()) return 2;
+        return capturePreview(value.object(), QSize(dimensions[0].toInt(), dimensions[1].toInt()), arguments.value("capture"));
+    }
     if (arguments.positionalArguments().size() != 1 && !arguments.isSet("capture"))
         arguments.showHelp(2);
 

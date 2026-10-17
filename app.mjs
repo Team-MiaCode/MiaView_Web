@@ -45,7 +45,7 @@ export function createWorkbench(container, options = {}) {
   let project, recoveryTimer;
   let savePending = Promise.resolve();
   let mediaPending = Promise.resolve();
-  let analysisTimer, analysisSequence = 0;
+  let analysisTimer, editPreviewTimer, analysisSequence = 0;
   let analysisLanguage = viewState.preferences.languageToken || "zh";
   let authoringContext = false;
   let latencyPage = false, latencyPending = Promise.resolve();
@@ -77,8 +77,7 @@ export function createWorkbench(container, options = {}) {
       const documentReady = workbench.documentSession.hasDocument && !loadingDocument;
       if (id.startsWith("transform.") || id === "editor.overwrite_mode") return documentReady && viewState.activeEditorKey.startsWith("difficulty:");
       if (id.startsWith("timeline.")) return documentReady && (event.type !== "wheel" || workbench.timelineView.root.contains(event.target));
-      if (id.startsWith("preview.")) return documentReady && (id !== "preview.play_pause_global" || event.target?.ownerDocument !== document || document.activeElement !== workbench.sourceEditor.input)
-        && (id !== "preview.pause_display_hold" || !workbench.previewTransport.state.playing);
+      if (id.startsWith("preview.")) return documentReady && (id !== "preview.play_pause_global" || event.target?.ownerDocument !== document || document.activeElement !== workbench.sourceEditor.input);
       return true;
     },
     changed: rows => {
@@ -150,7 +149,8 @@ export function createWorkbench(container, options = {}) {
     const record = recordProject(snapshot);
     recoveryTimer = setTimeout(() => { recoveryTimer = null; void projectStore.put(record).catch(error => workbench.status(error.message)); }, 2000);
   }
-  const timelineOptions = { zoomScale: .5, horizontalScrollValue: 0, cursorSeconds: 0, waveformBrightness: .5, measureLineBrightness: 1, followPreviewEnabled: false };
+  const timelineOptions = { zoomScale: .5, horizontalScrollValue: 0, cursorSeconds: 0, waveformBrightness: .5, measureLineBrightness: 1,
+    followPreviewEnabled: false, followProgressEnabled: true };
   workbench.timelineControls.update(timelineOptions);
   async function updateTimelineFollow(second) {
     const doc = workbench.documentSession;
@@ -296,6 +296,8 @@ export function createWorkbench(container, options = {}) {
     preview.on("timeupdate", state => {
       applyPlaybackState(state);
       workbench.timelineView.setPlayback(state);
+      if (!state.playing && workbench.timelineView.scrollValue !== undefined)
+        timelineOptions.horizontalScrollValue = workbench.timelineView.scrollValue;
       void updateTimelineFollow(state.currentTime).catch(error => workbench.status(error.message));
     });
     preview.on("playbackChanged", playback => workbench.previewTransport.update({ playback }));
@@ -654,7 +656,10 @@ export function createWorkbench(container, options = {}) {
       return viewState.setPreference("editorFontSize", Math.max(8, Math.min(28, viewState.preferences.editorFontSize + (id === "editor.font_increase" ? 1 : -1))));
     if (id === "preview.stop_or_play") return command("preview.stop");
     if (id === "preview.play_pause_global") return command("preview.toggle");
-    if (id === "preview.pause_display_hold") return preview.setSettings({ pauseDisplayAltHoldActive: args.active });
+    if (id === "preview.pause_display_hold") {
+      if (args.active && (await preview.getState()).playing) return;
+      return preview.setSettings({ pauseDisplayAltHoldActive: args.active });
+    }
     if (id === "preview.speed_down" || id === "preview.speed_up") {
       const rate = workbench.previewTransport.state.rate;
       const next = id === "preview.speed_up" ? PLAYBACK_RATES.find(value => value > rate) ?? 2 : PLAYBACK_RATES.findLast(value => value < rate) ?? .25;
@@ -856,8 +861,13 @@ export function createWorkbench(container, options = {}) {
       return audio;
     }
     if (id === "timeline.viewport") return refreshTimeline();
+    if (id === "timeline.playbackViewport") {
+      timelineOptions.horizontalScrollValue = args.horizontalScrollValue;
+      return refreshTimeline();
+    }
     if (id === "timeline.settings") {
       Object.assign(timelineOptions, args);
+      if (Object.hasOwn(args, "followProgressEnabled")) workbench.timelineView.followProgressEnabled = args.followProgressEnabled;
       workbench.timelineControls.update(timelineOptions);
       if (args.followPreviewEnabled === false) workbench.sourceEditor.setFollowState({ active: false });
       else if (args.followPreviewEnabled) await updateTimelineFollow(workbench.previewTransport.state.currentTime);
@@ -865,7 +875,8 @@ export function createWorkbench(container, options = {}) {
     }
     if (id === "timeline.scroll") {
       const state = workbench.documentSession.timelineSceneState;
-      timelineOptions.horizontalScrollValue = Math.max(0, Math.min(Math.max(0, (state?.contentWidth ?? 0) - (state?.viewportSize.width ?? 0)), timelineOptions.horizontalScrollValue + args.delta));
+      timelineOptions.horizontalScrollValue = Math.max(0, Math.min(Math.max(0, (state?.contentWidth ?? 0) - (state?.viewportSize.width ?? 0)),
+        (args.horizontalScrollValue ?? timelineOptions.horizontalScrollValue) + args.delta));
       return refreshTimeline();
     }
     if (id === "timeline.zoom") {
@@ -874,6 +885,10 @@ export function createWorkbench(container, options = {}) {
       return refreshTimeline();
     }
     if (id === "timeline.navigateAtPoint") {
+      if (args.horizontalScrollValue !== undefined && args.horizontalScrollValue !== timelineOptions.horizontalScrollValue) {
+        timelineOptions.horizontalScrollValue = args.horizontalScrollValue;
+        await refreshTimeline();
+      }
       const target = await preview.navigateTimeline(args);
       await preview.seek(target.second);
       if (target.resolved && !latencyPage) {
@@ -1108,18 +1123,31 @@ export function createWorkbench(container, options = {}) {
     event.detail.result = command(event.detail.id, event.detail.args);
     void event.detail.result.catch(error => workbench.status(error.message));
   }, { signal: abort.signal });
+  function scheduleEditedPreview() {
+    clearTimeout(editPreviewTimer);
+    editPreviewTimer = setTimeout(() => {
+      void preview.getState().then(state => { applyPlaybackState(state); return refreshTimeline(); })
+        .catch(error => workbench.status(error.message));
+    }, 120);
+  }
+  workbench.sourceEditor.input.addEventListener("beforeinput", () => {
+    clearTimeout(editPreviewTimer);
+    const pending = workbench.sourceEditor.pending;
+    void pending.then(() => { if (pending === workbench.sourceEditor.pending) scheduleEditedPreview(); });
+  }, { signal: abort.signal });
   workbench.addEventListener("sourcechange", event => {
     const sequence = ++editSequence;
     const generation = workbench.documentSession.documentOpenGeneration;
     editPending = preview.documentCommand("document.replaceActiveDifficultyChart", { value: event.detail,
-      documentOpenGeneration: generation, difficulty: workbench.documentSession.activeDifficultyId }).then(async result => {
+      documentOpenGeneration: generation, difficulty: workbench.documentSession.activeDifficultyId, deferPreview: true }).then(result => {
       if (sequence !== editSequence || generation !== result.document.documentOpenGeneration) return;
       applyDocument(result.document);
       if (result.previewError) workbench.status(result.previewError);
-      await refreshTimeline();
+      scheduleEditedPreview();
     });
     void editPending.catch(error => workbench.status(error.message));
-    workbench.titleLabel.textContent = `* ${workbench.documentSession.title || "未命名谱面"}`;
+    const title = `* ${workbench.documentSession.title || "未命名谱面"}`;
+    if (workbench.titleLabel.textContent !== title) workbench.titleLabel.textContent = title;
   }, { signal: abort.signal });
   document.addEventListener("keydown", event => {
     if (event.defaultPrevented) return;
@@ -1163,7 +1191,7 @@ export function createWorkbench(container, options = {}) {
   void ready.catch(() => {});
   return { workbench, viewState, ready, load: open, command,
     get preview() { return preview; },
-    destroy() { clearTimeout(introUpdateTimer);clearTimeout(analysisTimer); ++analysisSequence; void flushRecovery().then(() => projectStore.close()).catch(error => workbench.status(error.message)); exportJobs.destroy();background.destroy();userFonts?.destroy();void preferenceAssets.close().catch(error=>workbench.status(error.message));abort.abort(); cancelAnimationFrame(selectionFrame); canvasResize.disconnect(); preview?.destroy(); if (coverSource) URL.revokeObjectURL(coverSource); workbench.destroy(); viewState.destroy(); },
+    destroy() { clearTimeout(introUpdateTimer);clearTimeout(analysisTimer);clearTimeout(editPreviewTimer); ++analysisSequence; void flushRecovery().then(() => projectStore.close()).catch(error => workbench.status(error.message)); exportJobs.destroy();background.destroy();userFonts?.destroy();void preferenceAssets.close().catch(error=>workbench.status(error.message));abort.abort(); cancelAnimationFrame(selectionFrame); canvasResize.disconnect(); preview?.destroy(); if (coverSource) URL.revokeObjectURL(coverSource); workbench.destroy(); viewState.destroy(); },
   };
 }
 

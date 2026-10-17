@@ -18,9 +18,14 @@ import { CoverPvFrames } from "./cover-pv.mjs";
 import { IntroAudition } from "./intro-audition.mjs";
 import { DEFAULT_PERFORMANCE, frameRateForMode, performanceSettings } from "./performance-settings.mjs";
 import { VideoPresentation } from "./video-presentation.mjs";
+import { nextAnimationFrame } from "./animation-frame.mjs";
+import { synchronizeVideoClock } from "./video-clock.mjs";
+import { PreviewAnalysis } from "./analysis-client.mjs";
 
 // Each renderer document owns one engine; UI and SDK share its controller.
 export function createPlayerEngine(view) {
+  const lifetime = new AbortController();
+  let disposed = false, frameRequest;
   let WIDTH = DEFAULT_RESOLUTION.width,
     HEIGHT = DEFAULT_RESOLUTION.height;
 
@@ -36,7 +41,8 @@ export function createPlayerEngine(view) {
     generation = 0,
     abort,
     videoUrl;
-  let audio, defaultSettings, appearance, audioSettings;
+  let audio, defaultSettings, appearance, audioSettings, analysis, runtimeManifest;
+  let previewDeferred = false;
   let loadedAudioResource, exportJob;
   let introAudition,introOptions,introSaved;
   let introWasPlaying=false;
@@ -52,7 +58,8 @@ export function createPlayerEngine(view) {
       value: JSON.parse(call("miacode_media_geometry", "string", ["number", "number"], [width, height])) };
     return videoGeometry.value;
   };
-  const videoPresentation = new VideoPresentation($("stage-pv"), mediaGeometry, error => fail(error));
+  const videoPresentation = new VideoPresentation($("stage-pv"), mediaGeometry, error => fail(error), videoFrameReady);
+  let renderedSecond = 0;
   let introVideoSecond = 0;
   let coverState, coverPixelPointer = 0, coverPixelCapacity = 0;
   const coverPv = new CoverPvFrames({ load: prepareVideo,
@@ -259,7 +266,8 @@ export function createPlayerEngine(view) {
     module?.qtResizeContainerElement($("qt-screen"));
     resize();
   }
-  new ResizeObserver(resize).observe($("stage"));
+  const resizeObserver = new ResizeObserver(resize);
+  resizeObserver.observe($("stage"));
   resize();
   // Qt measures its screen through getBoundingClientRect. Keep that measurement
   // in the fixed export coordinate system; the outer viewport alone scales the
@@ -315,9 +323,11 @@ export function createPlayerEngine(view) {
     performanceOptions.canvasFrameRateMode = frameRateMode < 0 ? null : frameRateMode;
     setSurfaceSize(resolution.width, resolution.height);
     const runtime = await diagnostics.measureAsync("engineLoad", () =>
-      loadPreviewRuntime(import.meta.url),
+      loadPreviewRuntime(import.meta.url, undefined, undefined, undefined, undefined, lifetime.signal),
     );
+    lifetime.signal.throwIfAborted();
     identity = runtime.identity;
+    runtimeManifest = runtime.manifest;
     phase = "engine-init";
     diagnostics.flush();
     module = await diagnostics.measureAsync("engineInit", () =>
@@ -331,6 +341,7 @@ export function createPlayerEngine(view) {
         },
       }),
     );
+    lifetime.signal.throwIfAborted();
     const configured = JSON.parse(
       call(
         "miacode_set_resolution",
@@ -362,11 +373,24 @@ export function createPlayerEngine(view) {
       }
       emit("coverPlaybackChanged", state);
     };
+    let lastPresentation;
+    module.onPreviewFrame = (now, renderStarted, second) => {
+      renderedSecond = introAudition ? introVideoSecond : second;
+      // Paused updates have no subsequent frame to retry a rate-limited draw.
+      presentVideo(now, !(introAudition?.playing || audio?.playing));
+      if (!playbackDiagnostics.enabled || !(introAudition?.playing || audio?.playing)) {
+        lastPresentation = undefined;
+        return;
+      }
+      if (lastPresentation !== undefined) playbackDiagnostics.record("presentInterval", now - lastPresentation);
+      playbackDiagnostics.record("renderWork", now - renderStarted);
+      lastPresentation = now;
+    };
     view.settings(defaultSettings);
     // Qt renders asynchronously. Wait for a presented transparent firework draw,
     // including its real pipeline and mipmapped ball, before accepting playback.
     while (!call("miacode_firework_ready", "number", [], [])) {
-      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await nextAnimationFrame(lifetime.signal);
     }
     $("settings-toggle").disabled = false;
     fpsSampleTime = performance.now();
@@ -376,7 +400,7 @@ export function createPlayerEngine(view) {
     diagnostics.flush();
     status("");
   })().catch((error) => {
-    fail(error);
+    if (!disposed) fail(error);
     throw error;
   });
   // Keep startup rejection handled before the first host/file message arrives.
@@ -412,29 +436,39 @@ export function createPlayerEngine(view) {
   }
   async function play() {
     if(introAudition)return introAudition.play();
-    if (!chart) return;
+    if (!chart || audio.playing) return;
     await audio.context.resume();
     if (playback.rangePlaybackEnabled && (audio.offset < playback.exportStartSeconds || audio.offset >= playback.exportEndSeconds))
       seek(playback.exportStartSeconds);
     diagnostics.flush();
+    if (video.src && !hidePv && !performanceOptions.videoDecodePrefersSoftware) {
+      await seekVideo(video, audio.offset, abort.signal);
+      video.playbackRate = playback.rate;
+      video.pause();
+    }
+    if (video.src && !hidePv) {
+      await videoPresentation.ready(audio.offset, abort.signal);
+      if (renderedSecond === audio.currentSecond()) await presentVideo(performance.now(), true);
+    }
     audio.start();
     call("miacode_set_playing", null, ["number"], [1]);
     playbackDiagnostics.setEnabled(diagnostics.enabled);
     status("");
     $("play").textContent = "暂停";
-    if (video.src && !hidePv && !performanceOptions.videoDecodePrefersSoftware) {
-      video.currentTime = audio.offset;
-      video.playbackRate = playback.rate;
-      void video.play().catch(() => {});
-    }
     emit("playing", { elapsedMs: elapsed() });
     updateTransport();
+  }
+  function positionVideo(second) {
+    const target = Math.min(Math.max(0, second), Math.max(0, video.duration - .000001));
+    if (video.seeking || Math.abs(video.currentTime - target) >= .000001) {
+      videoPresentation.beginSeek(); video.currentTime = target;
+    }
   }
   function seek(second) {
     if (!chart) return;
     audio.seek(second);
     call("miacode_seek", null, ["number"], [audio.offset]);
-    if (video.src && !performanceOptions.videoDecodePrefersSoftware) video.currentTime = audio.offset;
+    if (video.src && !performanceOptions.videoDecodePrefersSoftware) positionVideo(audio.offset);
     $("seek").value = String(audio.offset);
     updateTransport();
   }
@@ -560,6 +594,7 @@ export function createPlayerEngine(view) {
     }
   }
   async function loadChart(resources, difficultyId) {
+    previewDeferred = false;
     if (coverState) {
       if (coverState.chartFramePlaying) exportCall("miacode_cover_command", ["string"], [JSON.stringify({ id: "cover.toggleActiveLayerPlayback", args: {} })]);
       coverPv.clear(); coverState = null;
@@ -777,6 +812,19 @@ export function createPlayerEngine(view) {
     const second = request.id === "document.selectDifficulty" ? 0 : audio?.currentSecond() ?? 0;
     const result = JSON.parse(call("miacode_document_command", "string", ["string"], [JSON.stringify(request)]));
     if (result.error) throw new Error(result.error);
+    previewDeferred = Boolean(result.previewDeferred);
+    delete result.previewDeferred;
+    if (previewDeferred) { emit("documentChanged", result.document); return result; }
+    return applyDocumentPreview(result, wasPlaying, wasPlaying ? audio.currentSecond() : second);
+  }
+  async function flushPreview() {
+    if (!previewDeferred) return;
+    previewDeferred = false;
+    const wasPlaying = audio?.playing ?? false;
+    const result = JSON.parse(call("miacode_document_refresh", "string", [], []));
+    await applyDocumentPreview(result, wasPlaying, audio?.currentSecond() ?? 0, false);
+  }
+  async function applyDocumentPreview(result, wasPlaying, second, notify = true) {
     if (!result.document.hasDocument) {
       mediaCache.clear(); clearInput(); delete result.preview;
       emit("documentChanged", result.document); return result;
@@ -799,7 +847,7 @@ export function createPlayerEngine(view) {
     }
     delete result.preview;
     for (const id of ["play", "restart", "seek"]) $(id).disabled = !chart;
-    emit("documentChanged", result.document);
+    if (notify) emit("documentChanged", result.document);
     return result;
   }
   function previewState() {
@@ -809,7 +857,7 @@ export function createPlayerEngine(view) {
       media: { hidePv, audioAvailable: Boolean(audio?.track), coverAvailable: Boolean(loadedCover), videoAvailable: Boolean(video.src) },
       maxFps: frameLimiter.maxFps,
       performance: { ...performanceOptions },
-      videoPresentation: coverState ? coverPv.snapshot() : { decoder: videoPresentation.decoder ? "software" : "browser", frames: videoPresentation.frames, timestamp: videoPresentation.decoder?.timestamp ?? video.currentTime },
+      videoPresentation: coverState ? coverPv.snapshot() : { decoder: videoPresentation.decoder ? "software" : "browser", frames: videoPresentation.frames, timestamp: videoPresentation.timestamp ?? video.currentTime },
       pvTimeoutMs,
       loaded: Boolean(chart),
       playing: Boolean(introAudition?.playing || audio?.playing),
@@ -884,7 +932,7 @@ export function createPlayerEngine(view) {
     audio.seek(Math.min(second, audio.duration));
     if (chart) seek(audio.offset);
     video.playbackRate = playback.rate;
-    if (video.src && !performanceOptions.videoDecodePrefersSoftware) video.currentTime = Math.min(audio.offset, video.duration);
+    if (video.src && !performanceOptions.videoDecodePrefersSoftware) positionVideo(audio.offset);
     mediaCache.clear();
     emit("playbackChanged", { ...playback }); updateTransport();
     if (latency.onPage) await setLatency({});
@@ -899,18 +947,6 @@ export function createPlayerEngine(view) {
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) pause();
   });
-  window.addEventListener("pagehide", () => {
-    introAudition?.destroy();
-    exportJob?.controller.abort(new DOMException("播放器关闭","AbortError"));
-    ++generation;
-    abort?.abort();
-    mediaCache.clear();
-    clearInput();
-    diagnostics.dispose();
-    playbackDiagnostics.dispose();
-    void audio?.context.close();
-  });
-
   function render(now) {
     if (ready && now - fpsSampleTime >= 1000) {
       const frames = call("miacode_frame_count", "number", [], []);
@@ -943,31 +979,74 @@ export function createPlayerEngine(view) {
           emit("ended", { elapsedMs: elapsed() });
         }
       }
-      if (!performanceOptions.videoDecodePrefersSoftware && !hidePv && video.readyState >= 2 && !video.seeking) {
-        const audioSecond = audio.currentSecond();
-        const videoSecond = Number.isFinite(video.duration)
-          ? Math.min(audioSecond, video.duration)
-          : audioSecond;
-        if (Math.abs(video.currentTime - videoSecond) > 0.25) {
-          playbackDiagnostics.count("videoResyncs");
-          video.currentTime = videoSecond;
-        }
-      }
     });
+  }
+  function videoFollowsScene() {
+    const canvasRate = frameLimiter.maxFps === "unlimited" ? Infinity : frameLimiter.maxFps;
+    const videoRate = videoPresentation.limiter.maxFps === "unlimited" ? Infinity : videoPresentation.limiter.maxFps;
+    return canvasRate >= videoRate;
+  }
+  function presentVideo(now, force = false) {
+    if (!ready || disposed || exportJob?.running) return;
+    const second = introAudition ? introVideoSecond : videoFollowsScene() ? renderedSecond : audio?.currentSecond() ?? 0;
+    return videoPresentation.tick(now, second,
+      Boolean(video.src && !video.hidden && !document.body.classList.contains("cover-view")), WIDTH, HEIGHT, force,
+      introAudition ? 1 : playback.rate);
+  }
+  function videoFrameReady() {
+    if (!ready || disposed) return;
+    const playing = introAudition?.playing || audio?.playing;
+    const second = introAudition ? introVideoSecond : audio?.currentSecond() ?? 0;
+    if (!videoFollowsScene() || !playing && renderedSecond === second) presentVideo(performance.now(), !playing);
   }
   function frame(now) {
     try {
-      if (ready && !exportJob?.running) videoPresentation.tick(now, introAudition ? introVideoSecond : audio?.currentSecond() ?? 0,
-        Boolean(video.src && !video.hidden && !document.body.classList.contains("cover-view")), WIDTH, HEIGHT);
+      if (ready && chart && video.src && !performanceOptions.videoDecodePrefersSoftware && !introAudition) {
+        const playing = audio.playing && audio.context.currentTime >= audio.startedAt && !hidePv && !video.ended;
+        if (playing && video.paused) void video.play().catch(() => {});
+        else if (!playing && !video.paused) video.pause();
+        // Decode ahead by half a 60 Hz frame; presentation selects the rendered scene time.
+        const decodeSecond = audio.currentSecond() + (playing ? playback.rate / 120 : 0);
+        if (!hidePv && synchronizeVideoClock(video, decodeSecond, playback.rate, playing)) {
+          videoPresentation.beginSeek();
+          playbackDiagnostics.count("videoResyncs");
+        }
+      }
+      if (ready && !videoFollowsScene()) presentVideo(now);
       render(now);
     } finally {
       // Qt's update() queues its own RAF. Register the next host tick AFTER that
       // request so Qt draws before the next tick, rather than merging two ticks.
       // Keep scheduling after early returns and errors, as the old loop did.
-      requestAnimationFrame(frame);
+      if (!disposed) frameRequest = requestAnimationFrame(frame);
     }
   }
-  requestAnimationFrame(frame);
+  frameRequest = requestAnimationFrame(frame);
+
+  function clear() {
+    if (disposed) return;
+    disposed = true;
+    previewDeferred = false;
+    lifetime.abort(new DOMException("播放器关闭", "AbortError"));
+    cancelAnimationFrame(frameRequest);
+    resizeObserver.disconnect();
+    exportJob?.controller.abort(lifetime.signal.reason);
+    ++generation;
+    abort?.abort();
+    introAudition?.destroy(); introAudition = null;
+    mediaCache.clear(); coverPv.clear();
+    if (coverPixelPointer) module._free(coverPixelPointer);
+    coverPixelPointer = 0; coverPixelCapacity = 0;
+    clearInput();
+    diagnostics.dispose(); playbackDiagnostics.dispose();
+    analysis?.close();
+    ready = false;
+    if (module) {
+      module.onCoverChanged = module.onCoverPlaybackChanged = module.onPreviewFrame = null;
+    }
+    if (audio && audio.context.state !== "closed") void audio.context.close().catch(() => {});
+    status("");
+  }
 
   function normalizeShortcuts(sequences) {
     const result = JSON.parse(call("miacode_shortcuts", "string", ["string"], [JSON.stringify(sequences)]));
@@ -1148,7 +1227,7 @@ export function createPlayerEngine(view) {
       performanceOptions = next;
       if ("canvasFrameRateMode" in changes) frameLimiter = new PreviewFrameLimiter(frameRateForMode(next.canvasFrameRateMode));
       if (!next.videoDecodePrefersSoftware && video.src && !hidePv) {
-        video.currentTime = introAudition ? introVideoSecond : audio?.currentSecond() ?? 0;
+        positionVideo(introAudition ? introVideoSecond : audio?.currentSecond() ?? 0);
         if (audio?.playing || introAudition?.playing) void video.play().catch(() => {});
       }
       return { ...performanceOptions };
@@ -1180,20 +1259,15 @@ export function createPlayerEngine(view) {
     load,
     play,
     pause,
-    seek,
-    fail,
-    clear: () => {
-      ++generation;
-      abort?.abort();
-      introAudition?.destroy(); introAudition=null;
-      mediaCache.clear();
-      coverPv.clear();
-      if (coverPixelPointer) module._free(coverPixelPointer);
-      coverPixelPointer = 0; coverPixelCapacity = 0;
-      clearInput();
-      if(audio && audio.context.state!=="closed")void audio.context.close().catch(()=>{});
-      status("");
+    seek: async second => {
+      seek(second);
+      if (video.src && !hidePv) {
+        await videoPresentation.ready(audio.offset, abort.signal);
+        if (renderedSecond === audio.currentSecond()) await presentVideo(performance.now(), true);
+      }
     },
+    fail,
+    clear,
     state: previewState,
     normalizeBackground: values => {
       const result = JSON.parse(call("miacode_background_settings", "string", ["string"], [JSON.stringify(values)]));
@@ -1297,7 +1371,15 @@ export function createPlayerEngine(view) {
     navigateTimeline: point => JSON.parse(call("miacode_timeline_navigate", "string", ["number", "number"], [point.x, point.y])),
     getTimelineFollow: second => JSON.parse(call("miacode_timeline_follow", "string", ["number"], [second])),
     getDocument: () => JSON.parse(call("miacode_document", "string", [], [])),
-    getAnalysis: language => JSON.parse(call("miacode_analysis", "string", ["string"], [language || "zh"])),
+    getAnalysis: language => {
+      const input = JSON.parse(call("miacode_analysis_input", "string", ["string"], [language || "zh"]));
+      if (!input.hasDocument) return { available: false, pending: false, revision: input.revision,
+        documentOpenGeneration: input.documentOpenGeneration, difficultyId: input.difficultyId,
+        validationRows: [], muriRows: [], syntaxErrorCount: 0, syntaxWarningCount: 0 };
+      analysis ||= new PreviewAnalysis(identity, runtimeManifest);
+      return analysis.analyze(input);
+    },
+    flushPreview,
     setLatency,
     detectLatency,
     getDocumentSaveText: section => JSON.parse(call("miacode_document_save_text", "string", ["number"], [section])),
@@ -1335,7 +1417,7 @@ export function createPlayerEngine(view) {
         else {
           call("miacode_external_video", null, ["number"], [1]);
           if (!performanceOptions.videoDecodePrefersSoftware) {
-            video.currentTime = audio.currentSecond();
+            positionVideo(audio.currentSecond());
             if (audio.playing) void video.play().catch(() => {});
           }
         }

@@ -89,10 +89,13 @@ export async function loadPreviewRuntime(
   document = globalThis.document,
   compiler = WebAssembly,
   cache = engineCache,
+  signal,
 ) {
+  signal?.throwIfAborted();
   const read = async (name) => {
     const response = await fetcher(new URL(name, baseUrl), {
       cache: "no-store",
+      signal,
     });
     if (!response.ok) throw new Error("播放器文件加载失败，请刷新页面");
     return response;
@@ -102,6 +105,7 @@ export async function loadPreviewRuntime(
     read("artifact-manifest.json").then((response) => response.json()),
   ]);
   const identity = JSON.parse(new TextDecoder().decode(identityBytes));
+  signal?.throwIfAborted();
   const mismatch = () => new Error("播放器文件版本不一致，请刷新页面");
   if (
     identity.upstream !== PLAYER_SOURCE ||
@@ -154,6 +158,7 @@ export async function loadPreviewRuntime(
     const cached = Number.isSafeInteger(wasm.byteSize)
       ? await cache.read(wasm.sha256, wasm.byteSize)
       : null;
+    signal?.throwIfAborted();
     const response = cached
       ? new Response(cached, {
           headers: { "content-type": "application/wasm" },
@@ -161,6 +166,7 @@ export async function loadPreviewRuntime(
       : await fetcher(wasm.url, {
           cache: "force-cache",
           credentials: "omit",
+          signal,
         });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const mime = response.headers.get("content-type")?.split(";")[0].trim();
@@ -187,29 +193,38 @@ export async function loadPreviewRuntime(
         ? compiler.compileStreaming(response)
         : response.arrayBuffer().then((bytes) => compiler.compile(bytes));
     [wasmModule] = await Promise.all([compiled, verified]);
+    signal?.throwIfAborted();
   } catch (cause) {
     preload.remove();
+    signal?.throwIfAborted();
     throw new Error("播放器文件加载或校验失败，请刷新页面", { cause });
   }
   await new Promise((resolve, reject) => {
     const script = document.createElement("script");
+    const cancel = () => {
+      preload.remove(); script.remove(); reject(signal.reason);
+    };
     script.src = glue.url.href;
     script.integrity = glue.integrity;
     script.crossOrigin = "anonymous";
     script.onload = () => {
+      signal?.removeEventListener("abort", cancel);
       preload.remove();
       resolve();
     };
     script.onerror = () => {
+      signal?.removeEventListener("abort", cancel);
       preload.remove();
       script.remove();
       reject(mismatch());
     };
+    signal?.addEventListener("abort", cancel, { once: true });
     document.head.append(script);
   });
+  signal?.throwIfAborted();
   const entryFunction = document.defaultView.miacode_preview_entry;
   if (typeof entryFunction !== "function") throw mismatch();
-  return { identity, wasmModule, entryFunction };
+  return { identity, manifest, wasmModule, entryFunction };
 }
 
 export function decodeMaidata(bytes) {

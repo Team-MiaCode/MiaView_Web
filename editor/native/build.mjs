@@ -98,6 +98,8 @@ for (const name of ["answer.wav", "break_slide.wav", "break_tap.wav", "break.wav
 copyFileSync(join(source, "src/intro/audio/track_start.wav"), join(publicRoot, "sfx/track_start.wav"));
 syncTheme(source, upstreamGitCommit);
 copyFileSync(join(build, "miacode-preview.wasm"), join(publicRoot, "miacode-preview.wasm"));
+for (const name of ["miacode-analysis.js", "miacode-analysis.wasm"])
+  copyFileSync(join(build, name), join(publicRoot, name));
 // Keep generated text reproducible across host line-ending conventions.
 for (const name of ["miacode-preview.js", "qtloader.js", "LICENSE", "LICENSE_SCOPE.md", "THIRD_PARTY_NOTICES.md"]) {
   const input = join(name.endsWith(".js") ? build : source, name);

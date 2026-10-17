@@ -1,14 +1,18 @@
 export async function observeVideoDecoders(page) {
   await page.addInitScript(() => {
     window.decoderConfigurations = []; window.decoders = [];
-    window.videoFrames = new Set();
+    window.videoFrames = new Set(); window.browserVideoFrames = new WeakSet();
     const Frame = window.VideoFrame;
     const track = value => {
       if (Frame && value instanceof Frame) videoFrames.add(value);
       else if (value && (Array.isArray(value) || Object.getPrototypeOf(value) === Object.prototype)) for (const item of Object.values(value)) track(item);
     };
     if (Frame) {
-      window.VideoFrame = new Proxy(Frame, { construct(target, args) { const frame = Reflect.construct(target, args); videoFrames.add(frame); return frame; } });
+      window.VideoFrame = new Proxy(Frame, { construct(target, args) {
+        const frame = Reflect.construct(target, args); videoFrames.add(frame);
+        if (args[0] instanceof HTMLVideoElement) browserVideoFrames.add(frame);
+        return frame;
+      } });
       const clone = Frame.prototype.clone, close = Frame.prototype.close;
       Frame.prototype.clone = function (...args) { const frame = clone.apply(this, args); videoFrames.add(frame); return frame; };
       Frame.prototype.close = function (...args) { videoFrames.delete(this); return close.apply(this, args); };
@@ -31,5 +35,7 @@ export async function observeVideoDecoders(page) {
 export function decoderSnapshot() {
   for (const frame of globalThis.videoFrames) if (!frame.codedWidth) globalThis.videoFrames.delete(frame);
   return { configurations: globalThis.decoderConfigurations, active: globalThis.decoders.filter(decoder => decoder.state !== "closed").length,
-    frames: globalThis.videoFrames.size };
+    frames: globalThis.videoFrames.size,
+    softwareFrames: [...globalThis.videoFrames].filter(frame => !globalThis.browserVideoFrames.has(frame)).length,
+    browserFrames: [...globalThis.videoFrames].filter(frame => globalThis.browserVideoFrames.has(frame)).length };
 }

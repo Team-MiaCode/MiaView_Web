@@ -110,8 +110,14 @@ try {
   assert.equal((await state()).videoPresentation.decoder, "software");
   await command("preferences.performance", { videoDecodePrefersSoftware: false, canvasFrameRateMode: 3 });
   assert.equal((await state()).maxFps, "unlimited"); assert.equal((await state()).videoPresentation.decoder, "browser");
-  const remaining = await page.frames().find(frame => frame.url().includes("/renderer/index.html")).evaluate(decoderSnapshot);
-  assert.equal(remaining.active, 0); assert.equal(remaining.frames, 0); assert.deepEqual(errors, []);
+  const activeRenderer = page.frames().find(frame => frame.url().includes("/renderer/index.html"));
+  const remaining = await activeRenderer.evaluate(decoderSnapshot);
+  results.decoderRelease = remaining;
+  assert.equal(remaining.active, 0); assert.equal(remaining.softwareFrames, 0);
+  assert.ok(remaining.browserFrames <= 3, JSON.stringify(remaining));
+  await page.evaluate(() => editor.preview.setResources({ video: null }));
+  const cleared = await activeRenderer.evaluate(decoderSnapshot);
+  results.cleared = cleared; assert.equal(cleared.frames, 0); assert.deepEqual(errors, []);
   console.log("Performance UI, decoder preference, PV pixels, independent frame rates, persistence and decoder release passed");
 } catch (error) {
   results.failure = String(error); if (page) await page.screenshot({ path: join(output, "failure.png") }).catch(() => {}); throw error;

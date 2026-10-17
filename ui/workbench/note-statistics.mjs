@@ -34,9 +34,14 @@ export class NoteStatistics {
     this.root.classList.toggle("efficient", efficientMode);
     for (const [kind, cell] of this.cells) {
       const entry = statistics.find(item => item.kind === kind);
-      cell.name.textContent = entry?.name || translate(`note_stats.${kind}`, this.language());
-      cell.value.textContent = dataAvailable && entry ? entry.value : "—";
-      if (kind !== "total") cell.image.src = new URL(`../components/notes/${noteSkin === "SD" ? "SD" : "DX"}/${kind === "break" ? "tap_break" : kind}.png`, import.meta.url).href;
+      const name = entry?.name || translate(`note_stats.${kind}`, this.language());
+      const value = dataAvailable && entry ? String(entry.value) : "—";
+      if (cell.name.textContent !== name) cell.name.textContent = name;
+      if (cell.value.textContent !== value) cell.value.textContent = value;
+      if (kind !== "total") {
+        const url = new URL(`../components/notes/${noteSkin === "SD" ? "SD" : "DX"}/${kind === "break" ? "tap_break" : kind}.png`, import.meta.url).href;
+        if (cell.image.src !== url) cell.image.src = url;
+      }
     }
   }
   destroy() { this.resize.disconnect(); }

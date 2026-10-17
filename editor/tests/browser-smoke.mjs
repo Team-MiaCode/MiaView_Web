@@ -392,6 +392,7 @@ try {
       const after = await first.getState();
       // The PV renderer can finish a previously queued frame while commands are rejected.
       delete before.videoPresentation.frames; delete after.videoPresentation.frames;
+      delete before.videoPresentation.timestamp; delete after.videoPresentation.timestamp;
       return {
         rejected,
         unchanged:

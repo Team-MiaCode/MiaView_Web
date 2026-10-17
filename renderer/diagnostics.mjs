@@ -275,6 +275,10 @@ export class PreviewDiagnostics {
           "Accepted host ticks during playback; not GPU presentation intervals. Long gaps exceed 50ms.",
         hostWork:
           "Synchronous JS frame work and WASM calls; excludes browser video composition and deferred Qt render/GPU work.",
+        presentInterval:
+          "Elapsed time between native Qt frameSwapped callbacks during active playback; separate from RAF scheduling intervals.",
+        renderWork:
+          "Native Qt beforeSynchronizing to frameSwapped duration; includes scene synchronization and render submission, excludes compositor display latency.",
         wasmTick:
           "Synchronous miacode_tick; excludes deferred scene graph rendering.",
         videoPipeline:

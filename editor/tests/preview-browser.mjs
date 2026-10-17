@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 
-export async function launchPreviewBrowser(playwright, name) {
+export async function launchPreviewBrowser(playwright, name, { hardware = false, headless = true } = {}) {
   const channel = name === "chrome" || name === "msedge" ? name : undefined;
   const type = channel ? playwright.chromium : playwright[name];
   return type.launch({
-    headless: true,
+    headless,
+    ...(hardware ? { args: ["--enable-gpu", ...(process.platform === "win32" ? ["--use-angle=d3d11"] : [])] } : {}),
     ...(channel ? { channel } : {}),
     ...(name === "firefox" ? {
       // CI runners use Mesa software rendering for Qt's WebGL2 surface.

@@ -7,6 +7,7 @@ function fixture({ intro = false } = {}) {
   const calls = [];
   const engine = {
     boot: Promise.resolve(),
+    async flushPreview() {},
     events(listener) { this.emit = listener; },
     exportRunning:()=>exporting,
     introAuditionActive:()=>intro,
@@ -38,8 +39,20 @@ function fixture({ intro = false } = {}) {
   const controller = createPlayerController(engine);
   const events = [];
   controller.events((type, payload) => events.push({ type, payload }));
-  return { controller, events, calls };
+  return { controller, engine, events, calls };
 }
+
+test("Read-only analysis keeps the captured revision while preview commands flush current edits", async () => {
+  const { controller, engine } = fixture();
+  let resolveAnalysis, stateResolved = false, flushed = false;
+  engine.getAnalysis = () => new Promise(resolve => { resolveAnalysis = resolve; });
+  engine.flushPreview = async () => { flushed = true; };
+  const analysis = controller.execute("getAnalysis");
+  const state = controller.execute("getState").then(value => { stateResolved = true; return value; });
+  await new Promise(resolve => setImmediate(resolve));
+  try { assert.equal(stateResolved, true); assert.equal(flushed, true); }
+  finally { resolveAnalysis({ revision: 3 }); await state; await analysis; }
+});
 
 test("performance changes retain an active intro audition and validate frame rate modes", async () => {
   const { controller, calls } = fixture({ intro: true });

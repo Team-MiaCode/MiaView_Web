@@ -26,10 +26,13 @@ export class TimelineControls {
   }
   update(state) {
     Object.assign(this.state, state);
-    this.zoom.firstChild.textContent = `${Math.round(this.state.zoomScale * 100)}%`;
+    const label = `${Math.round(this.state.zoomScale * 100)}%`;
+    if (this.zoom.firstChild.textContent !== label) this.zoom.firstChild.textContent = label;
     this.follow.querySelector("input").checked = this.state.followPreviewEnabled;
     const style = getComputedStyle(this.zoom);
-    this.measure.font = `${style.fontSize} ${style.fontFamily}`;
+    const font = `${style.fontSize} ${style.fontFamily}`;
+    if (font === this.font) return;
+    this.font = this.measure.font = font;
     const widest = Math.max(...TIMELINE_ZOOM_PRESETS.map(value => this.measure.measureText(`${Math.round(value * 100)}%`).width));
     this.zoom.style.width = `${Math.ceil(widest) + 30}px`;
   }

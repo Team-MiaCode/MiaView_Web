@@ -21,9 +21,9 @@ export class DifficultyHeader {
   update(doc) {
     for (const { field, key, caption, input } of this.fields) {
       const label = translate(key, this.language());
-      caption.textContent = label;
-      input.setAttribute("aria-label", label);
-      if (document.activeElement !== input) input.value = doc[field] ?? "";
+      if (caption.textContent !== label) caption.textContent = label;
+      if (input.getAttribute("aria-label") !== label) input.setAttribute("aria-label", label);
+      if (document.activeElement !== input && input.value !== (doc[field] ?? "")) input.value = doc[field] ?? "";
     }
   }
 }

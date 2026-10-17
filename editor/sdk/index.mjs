@@ -259,7 +259,7 @@ class MiaCodePreview {
       if (this.failed) throw this.failed;
       return this.request(type, payload);
     });
-    this.queue = next.catch(() => {});
+    if (type !== "getAnalysis") this.queue = next.catch(() => {});
     return next;
   }
   load(chart) {

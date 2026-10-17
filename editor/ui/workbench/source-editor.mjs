@@ -55,6 +55,7 @@ export class SourceEditor {
     this.completion = new CompletionPopup(this.viewport, command);
     this.completionState = { completionActive: false, completionCandidates: [], completionIndex: -1 };
     this.input.addEventListener("beforeinput", event => {
+      if (this.applyingTransaction) return;
       this.history?.remember(this.capture());
       if (event.inputType === "historyUndo" || event.inputType === "historyRedo") {
         event.preventDefault(); command(event.inputType === "historyUndo" ? "edit.undo" : "edit.redo");
@@ -65,8 +66,10 @@ export class SourceEditor {
       }
     });
     this.input.addEventListener("input", event => {
+      if (this.applyingTransaction) return;
+      this.draw();
       this.history?.record(this.capture(), event.isComposing || event.inputType?.includes("Composition") ? "composition" : event.inputType || "");
-      this.draw(); this.onInput?.(this.input.value); this.cursor();
+      this.cursor(); this.onInput?.(this.input.value);
     });
     this.input.addEventListener("compositionstart", () => { this.compositionStart = this.capture(); this.history?.breakGroup(); });
     this.input.addEventListener("compositionend", event => this.finishComposition(event.data));
@@ -103,9 +106,12 @@ export class SourceEditor {
       if(event==="keyup")this.key=null;
       this.cursor();
     });
-    this.resize = new ResizeObserver(() => this.requestDraw());
-    this.resize.observe(this.input);
-    this.fontLoaded = () => this.requestDraw();
+    this.resize = new ResizeObserver(entries => {
+      if (entries.some(entry => entry.target === this.viewport
+        || this.renderedLines?.some(record => record.node === entry.target && record.height !== entry.contentRect.height))) this.draw();
+    });
+    this.resize.observe(this.viewport);
+    this.fontLoaded = () => { this.lineGeometry = null; this.draw(); };
     document.fonts.addEventListener("loadingdone", this.fontLoaded);
   }
   setValue(value) {
@@ -209,48 +215,126 @@ export class SourceEditor {
     this.drawFrame = requestAnimationFrame(() => { this.drawFrame = 0; this.draw(); });
   }
   draw() {
-    if (!this.input.clientWidth) return;
-    this.root.style.setProperty("--source-tail-height",`${this.preferences?.editorScrollPastEnd===false?0:Math.max(0,this.input.clientHeight-this.lineHeight())}px`);
+    const viewportStyle = getComputedStyle(this.viewport);
+    const width = parseFloat(viewportStyle.width), height = parseFloat(viewportStyle.height);
+    if (!width || !height) return;
+    this.root.style.setProperty("--source-tail-height",`${this.preferences?.editorScrollPastEnd===false?0:Math.max(0,height-this.lineHeight())}px`);
     const lines = this.input.value.split("\n");
     this.root.style.setProperty("--gutter-width", `calc(${String(lines.length).length}ch + 18px)`);
+    const gutterWidth = parseFloat(getComputedStyle(this.gutter).width);
+    const overviewWidth = this.ruler.hidden ? 0 : parseFloat(getComputedStyle(this.ruler).width);
+    // A shared pixel width keeps textarea and syntax wrapping on the same boundary.
+    this.input.style.width = `${Math.max(0, Math.floor(width - gutterWidth - overviewWidth))}px`;
+    this.input.style.height = `${height}px`;
     const scrollbarWidth = this.input.offsetWidth - this.input.clientWidth;
-    this.paint.style.width = `calc(${getComputedStyle(this.input).width} - ${scrollbarWidth}px)`;
+    this.paint.style.width = `calc(${this.input.style.width} - ${scrollbarWidth}px)`;
     this.paint.style.height = `${this.input.clientHeight}px`;
-    this.paint.replaceChildren();
-    for (const { highlight } of this.syntaxHighlights.values()) highlight.clear();
     const styles = styleSourceLines(this.input.value);
-    for (const spans of styles) {
+    const previous = this.renderedLines || [];
+    this.visibleSyntax ||= new Set();
+    const same = (record, spans) => record.spans.length === spans.length
+      && record.spans.every((span, index) => span.kind === spans[index].kind && span.text === spans[index].text);
+    let start = 0, oldEnd = previous.length, nextEnd = styles.length;
+    while (start < oldEnd && start < nextEnd && same(previous[start], styles[start])) ++start;
+    while (oldEnd > start && nextEnd > start && same(previous[oldEnd - 1], styles[nextEnd - 1])) { --oldEnd; --nextEnd; }
+    for (let index = start; index < oldEnd; ++index) {
+      const record = previous[index];
+      for (const [kind, range] of record.ranges) this.syntaxHighlights.get(kind).highlight.delete(range);
+      this.visibleSyntax.delete(record);
+      this.resize.unobserve(record.node);
+      record.node.remove(); record.gutter.remove();
+    }
+    const added = [], paint = document.createDocumentFragment(), gutter = document.createDocumentFragment();
+    for (let index = start; index < nextEnd; ++index) {
+      const spans = styles[index], ranges = [];
       const line = element("div", { className: "source-code-line" });
       const text = document.createTextNode(spans.map(span => span.text).join("") || "\u200b");
       line.append(text);
-      let offset = 0;
-      for (const span of spans) {
-        if (span.kind) {
-          const range = document.createRange();
-          range.setStart(text, offset); range.setEnd(text, offset + span.text.length);
-          this.syntaxHighlights.get(span.kind).highlight.add(range);
-        }
-        offset += span.text.length;
-      }
-      this.paint.append(line);
+      const number = element("div", {}, String(index + 1));
+      added.push({ node: line, gutter: number, spans, ranges, visible: true });
+      paint.append(line); gutter.append(number);
     }
-    const heights = [...this.paint.children].map(line => line.getBoundingClientRect().height);
-    this.gutter.replaceChildren(...heights.map((height, index) => {
-      const line = element("div", {}, String(index + 1));
-      line.style.height = `${height}px`;
-      return line;
-    }));
+    this.paint.insertBefore(paint, previous[oldEnd]?.node || null);
+    this.gutter.insertBefore(gutter, previous[oldEnd]?.gutter || null);
+    this.renderedLines = [...previous.slice(0, start), ...added, ...previous.slice(oldEnd)];
+    this.updateCurrentLine();
+    const inputStyle = getComputedStyle(this.input);
+    const geometry = `${this.paint.style.width}:${inputStyle.font}:${inputStyle.lineHeight}:${this.input.wrap}`;
+    const resized = geometry !== this.lineGeometry;
+    this.lineGeometry = geometry;
+    if (resized) for (const record of this.renderedLines) {
+      record.node.hidden = record.gutter.hidden = false; record.visible = true;
+    }
+    // Measure changed lines together; stable lines retain their wrap geometry.
+    const heights = this.renderedLines.map(record => resized || record.visible || record.height === undefined
+      ? record.node.offsetHeight : record.height);
+    let top = 0;
+    this.renderedLines.forEach((record, index) => {
+      const number = String(index + 1);
+      if (record.gutter.textContent !== number) record.gutter.textContent = number;
+      if (record.height !== heights[index]) record.gutter.style.height = `${heights[index]}px`;
+      record.height = heights[index];
+      record.top = top; top += record.height;
+    });
+    this.contentHeight = top;
+    this.paint.style.setProperty("--source-content-width", `${Math.max(0, this.input.scrollWidth
+      - parseFloat(inputStyle.paddingLeft) - parseFloat(inputStyle.paddingRight))}px`);
     this.drawOverviewMarks();
     this.scroll();
-    this.updateCurrentLine();
     if (this.followState) this.setFollowState(this.followState, true);
   }
   scroll() {
+    this.updateRenderedWindow();
     this.gutter.style.transform = `translateY(${-this.input.scrollTop}px)`;
     this.paint.scrollTop = this.input.scrollTop;
     this.paint.scrollLeft = this.input.scrollLeft;
+    this.updateSyntaxHighlights();
     this.updateCompletion(this.completionState);
     this.updateOverview();
+  }
+  updateRenderedWindow() {
+    const records = this.renderedLines || [], height = this.input.clientHeight, top = this.input.scrollTop;
+    const lowerBound = offset => {
+      let low = 0, high = records.length;
+      while (low < high) {
+        const middle = (low + high) >>> 1;
+        if (records[middle].top < offset) low = middle + 1; else high = middle;
+      }
+      return low;
+    };
+    const start = Math.max(0, lowerBound(top - height) - 1);
+    const end = Math.min(records.length, lowerBound(top + height * 2) + 1);
+    const visibleRows = new Set(records.slice(start, end));
+    for (const record of this.visibleRows || []) if (!visibleRows.has(record)) this.resize.unobserve(record.node);
+    for (const record of visibleRows) if (!this.visibleRows?.has(record)) this.resize.observe(record.node);
+    this.visibleRows = visibleRows;
+    records.forEach((record, index) => {
+      const visible = index >= start && index < end;
+      if (visible !== record.visible) { record.node.hidden = record.gutter.hidden = !visible; record.visible = visible; }
+    });
+    for (const surface of [this.paint, this.gutter]) {
+      surface.style.setProperty("--source-offset-start", `${records[start]?.top || 0}px`);
+      surface.style.setProperty("--source-offset-end", `${(this.contentHeight || 0) - (records[end]?.top ?? this.contentHeight ?? 0)}px`);
+    }
+  }
+  updateSyntaxHighlights() {
+    const visible = this.visibleRows || new Set();
+    for (const record of this.visibleSyntax || []) if (!visible.has(record)) {
+      for (const [kind, range] of record.ranges) this.syntaxHighlights.get(kind).highlight.delete(range);
+      record.ranges = [];
+    }
+    for (const record of visible) if (!this.visibleSyntax?.has(record)) {
+      let offset = 0;
+      for (const span of record.spans) {
+        if (span.kind) {
+          const range = document.createRange();
+          range.setStart(record.node.firstChild, offset); range.setEnd(record.node.firstChild, offset + span.text.length);
+          this.syntaxHighlights.get(span.kind).highlight.add(range); record.ranges.push([span.kind, range]);
+        }
+        offset += span.text.length;
+      }
+    }
+    this.visibleSyntax = visible;
   }
   cursor() {
     const prefix = this.input.value.slice(0, this.input.selectionStart);
@@ -262,8 +346,10 @@ export class SourceEditor {
     this.updateCompletion(this.completionState);
   }
   updateCurrentLine(index = this.input.value.slice(0, this.input.selectionStart).split("\n").length - 1) {
+    const current = this.input.selectionStart === this.input.selectionEnd ? this.paint.children[index] : null;
+    if (current === this.currentLine) return;
     this.currentLine?.classList.remove("current-line");
-    this.currentLine = this.input.selectionStart === this.input.selectionEnd ? this.paint.children[index] : null;
+    this.currentLine = current;
     this.currentLine?.classList.add("current-line");
   }
   updateCompletion(state) {
@@ -314,12 +400,12 @@ export class SourceEditor {
   }
   revealPosition(position) {
     const index = this.input.value.slice(0, position).split("\n").length - 1;
-    const line = this.paint.children[index];
+    const line = this.renderedLines?.[index];
     if (!line) return;
-    const top = line.offsetTop;
+    const top = line.top;
     if (top < this.input.scrollTop) this.input.scrollTop = top;
-    else if (top + line.offsetHeight > this.input.scrollTop + this.input.clientHeight)
-      this.input.scrollTop = top + line.offsetHeight - this.input.clientHeight;
+    else if (top + line.height > this.input.scrollTop + this.input.clientHeight)
+      this.input.scrollTop = top + line.height - this.input.clientHeight;
     this.scroll();
   }
   jumpToPosition(position) {
@@ -360,7 +446,20 @@ export class SourceEditor {
   applyTransaction(transaction, inputType = "") {
     this.history?.remember(this.capture());
     if (!inputType) this.history?.breakGroup();
-    if (transaction.hasEdit) this.input.setRangeText(transaction.replacementText, transaction.replacementStart, transaction.replacementEnd, "end");
+    if (transaction.hasEdit) {
+      if (this.input.checkVisibility()) {
+        this.input.focus({ preventScroll: true });
+        this.input.setSelectionRange(transaction.replacementStart, transaction.replacementEnd);
+        this.applyingTransaction = true;
+        try {
+          if (!document.execCommand("insertText", false, transaction.replacementText))
+            throw new Error("浏览器文本编辑命令执行失败");
+        } finally { this.applyingTransaction = false; }
+      } else {
+        // Compact preview keeps the source hidden while touch input edits it.
+        this.input.setRangeText(transaction.replacementText, transaction.replacementStart, transaction.replacementEnd);
+      }
+    }
     this.input.setSelectionRange(Math.min(transaction.anchor, transaction.position), Math.max(transaction.anchor, transaction.position), transaction.anchor > transaction.position ? "backward" : "forward");
     if (transaction.hasEdit) this.input.dispatchEvent(new InputEvent("input", { inputType: inputType === "composition" ? "insertCompositionText" : inputType }));
     else { this.draw(); this.cursor(); }
@@ -375,8 +474,10 @@ export class SourceEditor {
   lineHeight() { return parseFloat(getComputedStyle(this.input).lineHeight) || 22; }
   setPreferences(preferences) {
     const changed=this.preferences?.editorScrollPastEnd!==preferences.editorScrollPastEnd
-      || this.preferences?.editorOverviewRulerEnabled!==preferences.editorOverviewRulerEnabled;
-    this.preferences={editorScrollPastEnd:preferences.editorScrollPastEnd,editorOverviewRulerEnabled:preferences.editorOverviewRulerEnabled};
+      || this.preferences?.editorOverviewRulerEnabled!==preferences.editorOverviewRulerEnabled
+      || this.preferences?.editorFontSize!==preferences.editorFontSize || this.preferences?.editorLineSpacing!==preferences.editorLineSpacing;
+    this.preferences={editorScrollPastEnd:preferences.editorScrollPastEnd,editorOverviewRulerEnabled:preferences.editorOverviewRulerEnabled,
+      editorFontSize:preferences.editorFontSize,editorLineSpacing:preferences.editorLineSpacing};
     const overview=preferences.editorOverviewRulerEnabled!==false;
     this.root.classList.toggle("overview-enabled",overview);this.ruler.hidden=!overview;
     this.input.inputMode=(preferences.editorInputHandlingMode ?? 1)===1?"url":"text";
@@ -389,10 +490,11 @@ export class SourceEditor {
     this.drawOverviewMarks();
   }
   drawOverviewMarks() {
+    if (!this.annotations?.length) { if (this.rulerMarks.firstChild) this.rulerMarks.replaceChildren(); return; }
     if(!this.input.clientHeight)return;
     this.rulerMarks.replaceChildren(...(this.annotations || []).map(item=>{
-      const line=this.paint.children[item.line-1];
-      return line?element("i",{className:`overview-${item.kind}`,style:`top:${line.offsetTop/this.input.scrollHeight*100}%`}):null;
+      const line=this.renderedLines?.[item.line-1];
+      return line?element("i",{className:`overview-${item.kind}`,style:`top:${line.top/this.input.scrollHeight*100}%`}):null;
     }).filter(Boolean));
   }
   updateOverview(line) {
@@ -402,8 +504,8 @@ export class SourceEditor {
     this.ruler.setAttribute("aria-valuemax",String(Math.max(0,height-this.input.clientHeight)));
     this.ruler.setAttribute("aria-valuenow",String(this.input.scrollTop));
     if(line!=null)this.overviewLine=line;
-    const current=this.paint.children[this.overviewLine ?? 0];
-    this.rulerCaret.style.top=`${(current?.offsetTop || 0)/height*100}%`;
+    const current=this.renderedLines?.[this.overviewLine ?? 0];
+    this.rulerCaret.style.top=`${(current?.top || 0)/height*100}%`;
   }
-  destroy() { CSS.highlights.delete(this.followHighlight); for (const { name } of this.syntaxHighlights.values()) CSS.highlights.delete(name); this.resize.disconnect(); cancelAnimationFrame(this.drawFrame); document.fonts.removeEventListener("loadingdone", this.fontLoaded); this.completion.destroy(); }
+  destroy() { CSS.highlights.delete(this.followHighlight); for (const { name, highlight } of this.syntaxHighlights.values()) { CSS.highlights.delete(name); highlight.clear(); } this.visibleSyntax?.clear(); this.renderedLines = []; this.resize.disconnect(); cancelAnimationFrame(this.drawFrame); document.fonts.removeEventListener("loadingdone", this.fontLoaded); this.completion.destroy(); }
 }

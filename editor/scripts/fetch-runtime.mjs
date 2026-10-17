@@ -21,7 +21,7 @@ const toolchain = JSON.parse(readFileSync(join(root, "native/toolchain.json")));
 if (sourcePin(root).upstreamGitCommit !== identity.upstreamGitCommit || identity.upstreamDirty ||
     nativeInputsFingerprint(identity.sourceRevision, toolchain, join(root, "native")) !== identity.nativeInputsFingerprint)
   throw new Error("Published runtime does not match the pinned native source; build:native is required");
-const generated = new Set(["miacode-preview.js", "miacode-preview.wasm", "qtloader.js", "build-identity.json", "LICENSE", "LICENSE_SCOPE.md", "THIRD_PARTY_NOTICES.md"]);
+const generated = new Set(["miacode-preview.js", "miacode-preview.wasm", "miacode-analysis.js", "miacode-analysis.wasm", "qtloader.js", "build-identity.json", "LICENSE", "LICENSE_SCOPE.md", "THIRD_PARTY_NOTICES.md"]);
 const files = manifest.files.filter(file => generated.has(file.path) || file.path.startsWith("sfx/"));
 for (let start = 0; start < files.length; start += 3) {
   await Promise.all(files.slice(start, start + 3).map(async file => {

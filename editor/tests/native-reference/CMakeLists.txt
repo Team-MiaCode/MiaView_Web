@@ -13,7 +13,7 @@ set(MIACODE_BUILD_APP OFF CACHE BOOL "Consume the preview libraries" FORCE)
 set(MIACODE_PREVIEW_MULTIMEDIA OFF CACHE BOOL "Static reference scenes" FORCE)
 add_subdirectory("${MIACODE_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/miacode")
 
-qt_add_executable(miacode-ui-reference main.cpp
+qt_add_executable(miacode-ui-reference main.cpp preview-reference.cpp
     "${MIACODE_SOURCE_DIR}/src/export/cover_export/CoverLayoutModel.cpp"
     "${MIACODE_SOURCE_DIR}/src/export/cover_export/CoverLayoutModel.h")
 set(MIACODE_REFERENCE_EDITOR_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../.deps/editor-reference-source" CACHE PATH "Pinned editor appearance source")

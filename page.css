@@ -129,7 +129,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .designer-choice { display: grid; gap: 8px; }
 .designer-choice p { margin: 0; }
 .source-editor { height: 100%; min-height: 0; display: grid; grid-template-rows: minmax(0, max-content) minmax(30px, 1fr); overflow: hidden; --gutter-width: 54px; font: var(--code-font-size)/var(--code-line-height) var(--code-font-family), "Cascadia Mono", "Consolas", "Microsoft YaHei UI", monospace; }
-.source-viewport { grid-row: 2; position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.source-viewport { grid-row: 2; position: relative; min-width: 0; min-height: 0; overflow: hidden; contain: strict; }
 .completion-popup { position: absolute; z-index: 4; width: max-content; min-width: 120px; max-width: calc(100% - 8px); max-height: min(260px, 100%); overflow: auto; border: 1px solid var(--border-normal); border-radius: var(--control-radius); padding: 4px; background: var(--background-elevated); box-shadow: 0 4px 12px #0004; }
 .completion-candidate { display: block; width: 100%; min-height: max(var(--control-min-height), var(--code-line-height)); font: inherit; border: 0; border-radius: 4px; background: transparent; padding: 4px 8px; text-align: left; overflow: hidden; text-overflow: ellipsis; }
 .completion-candidate[aria-selected="true"] { background: var(--popup-state-selected); color: var(--text-active); }
@@ -152,6 +152,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .source-overview-marks .overview-bookmark { background: var(--accent-primary); }
 .source-paint { color: var(--text-editor); pointer-events: none; scrollbar-width: none; clip-path: inset(0 12px 0 0); }
 .source-paint::-webkit-scrollbar { display: none; }
+.source-paint::before, .line-numbers::before { content: ""; display: block; height: var(--source-offset-start, 0px); }
+.source-paint::after, .line-numbers::after { content: ""; display: block; height: var(--source-offset-end, 0px); }
+.source-paint::after { width: var(--source-content-width, 0px); }
 .source-input { background: transparent; color: transparent; caret-color: var(--text-editor); resize: none; outline: none !important; -webkit-text-fill-color: transparent; }
 .source-input::selection { background: var(--state-selection-highlight); }
 .source-code-line.current-line { background: var(--state-focus-line); }

@@ -29,7 +29,7 @@ export function writeArtifacts(builtIdentity) {
   }
   identity.version = rendererVersion(identity.sourceRevision, toolchain, here, publicRoot);
   writeFileSync(join(publicRoot, "build-identity.json"), JSON.stringify(identity, null, 2) + "\n");
-  for (const name of ["miacode-preview.wasm", "miacode-preview.js"]) {
+  for (const name of ["miacode-preview.wasm", "miacode-preview.js", "miacode-analysis.js", "miacode-analysis.wasm"]) {
     const bytes = readFileSync(join(publicRoot, name));
     writeFileSync(join(publicRoot, `${name}.br`), brotliCompressSync(bytes, {
       params: { [constants.BROTLI_PARAM_QUALITY]: 9 },

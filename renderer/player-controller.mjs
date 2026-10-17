@@ -36,6 +36,8 @@ export function createPlayerController(engine) {
     if (engine.exportRunning() && !["getState","getExportStatus","cancelExport","destroy","getDocument","getDiagnostics","getExportCapabilities"].includes(type))
       throw new Error("视频导出任务占用此预览实例，请通过独立预览实例编辑谱面");
     if(engine.introAuditionActive()&&!introSafeCommands.has(type))await engine.stopIntroAudition();
+    if (!["load", "destroy", "documentCommand", "editorCommand", "getDocument", "getDocumentSaveText", "getAnalysis"].includes(type))
+      await engine.flushPreview();
     if (type === "load") {
       if (!payload.maidata) throw new Error("maidata is required");
       const difficulty = difficultyId(payload.difficulty);
@@ -141,12 +143,12 @@ export function createPlayerController(engine) {
     if (type === "play") await engine.play();
     else if (type === "pause") engine.pause();
     else if (type === "restart") {
-      engine.seek(0);
+      await engine.seek(0);
       await engine.play();
     } else if (type === "seek") {
       if (!Number.isFinite(payload.second) || payload.second < 0)
         throw new Error("Seek time must be finite and non-negative");
-      engine.seek(payload.second);
+      await engine.seek(payload.second);
       emit("seeked", { currentTime: engine.state().currentTime });
     }
     return engine.state();
@@ -160,7 +162,7 @@ export function createPlayerController(engine) {
     },
     execute(type, payload) {
       const pending = queue.then(() => executeCommand(type, payload));
-      queue = pending.catch(() => {});
+      if (type !== "getAnalysis") queue = pending.catch(() => {});
       return pending;
     },
   };

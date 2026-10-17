@@ -55,7 +55,7 @@ export function attachSdkBridge(engine, controller) {
       if (message.type !== "initialize") return;
       sessionId = message.sessionId;
     }
-    queue = queue.then(async () => {
+    const next = queue.then(async () => {
       try {
         send("response", null, {
           requestId: message.requestId,
@@ -73,6 +73,7 @@ export function attachSdkBridge(engine, controller) {
         });
       }
     });
+    if (message.type !== "getAnalysis") queue = next;
   };
   window.addEventListener("message", receive);
   window.addEventListener(

@@ -26,9 +26,9 @@ assert.ok(existsSync(new URL("renderer/artifact-manifest.json", root)),
       file.path,
     );
   }
-  for (const path of ["build-identity.json", "miacode-preview.js", "miacode-preview.wasm", "qtloader.js", "theme.css", "player.css", "player.mjs", "player-engine.mjs", "player-controller.mjs", "player-controls.mjs", "index.html", "LICENSE", "LICENSE_SCOPE.md", "THIRD_PARTY_NOTICES.md", "miacode-preview.js.br", "miacode-preview.js.gz", "miacode-preview.wasm.br", "miacode-preview.wasm.gz"])
+  for (const path of ["build-identity.json", "miacode-preview.js", "miacode-preview.wasm", "miacode-analysis.js", "miacode-analysis.wasm", "qtloader.js", "theme.css", "player.css", "player.mjs", "player-engine.mjs", "player-controller.mjs", "player-controls.mjs", "index.html", "LICENSE", "LICENSE_SCOPE.md", "THIRD_PARTY_NOTICES.md", "miacode-preview.js.br", "miacode-preview.js.gz", "miacode-preview.wasm.br", "miacode-preview.wasm.gz"])
     assert.ok(paths.has(path), `Missing artifact: ${path}`);
-  for (const name of ["miacode-preview.js", "miacode-preview.wasm"]) {
+  for (const name of ["miacode-preview.js", "miacode-preview.wasm", "miacode-analysis.js", "miacode-analysis.wasm"]) {
     const bytes = readFileSync(new URL(`renderer/${name}`, root));
     assert.deepEqual(brotliDecompressSync(readFileSync(new URL(`renderer/${name}.br`, root))), bytes);
     assert.deepEqual(gunzipSync(readFileSync(new URL(`renderer/${name}.gz`, root))), bytes);

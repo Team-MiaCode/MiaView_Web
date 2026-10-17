@@ -5,7 +5,7 @@ import { sourcePin } from "./source-pin.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const runtime = process.argv.includes("--runtime");
-const generated = new Set(["miacode-preview.js", "miacode-preview.wasm", "qtloader.js", "theme.css", "build-identity.json", "artifact-manifest.json", "LICENSE", "LICENSE_SCOPE.md", "THIRD_PARTY_NOTICES.md", "sfx"]);
+const generated = new Set(["miacode-preview.js", "miacode-preview.wasm", "miacode-analysis.js", "miacode-analysis.wasm", "qtloader.js", "theme.css", "build-identity.json", "artifact-manifest.json", "LICENSE", "LICENSE_SCOPE.md", "THIRD_PARTY_NOTICES.md", "sfx"]);
 const configuration = sourcePin(root);
 const packageSource = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 function sameFile(source, target) {

@@ -338,3 +338,13 @@ test("WASM hash mismatch blocks glue execution even when compilation succeeds", 
   assert.equal(f.executed(), false);
   assert.equal(f.persisted(), false);
 });
+
+test("Disposal during WASM compilation prevents runtime script execution", async () => {
+  const f = runtimeFixture(), controller = new AbortController();
+  const loading = loadPreviewRuntime("https://example.com/renderer/index.html",
+    f.fetcher, f.document, f.compiler, f.cache, controller.signal);
+  await f.compiling.promise;
+  controller.abort(); f.tail.resolve();
+  await assert.rejects(loading, { name: "AbortError" });
+  assert.equal(f.executed(), false);
+});

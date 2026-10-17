@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const generated = new Set([
-  "miacode-preview.js", "miacode-preview.wasm", "qtloader.js", "theme.css",
+  "miacode-preview.js", "miacode-preview.wasm", "miacode-analysis.js", "miacode-analysis.wasm", "qtloader.js", "theme.css",
   "build-identity.json", "artifact-manifest.json", "LICENSE", "LICENSE_SCOPE.md",
   "THIRD_PARTY_NOTICES.md",
 ]);

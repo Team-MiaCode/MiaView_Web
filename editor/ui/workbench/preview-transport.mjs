@@ -38,7 +38,7 @@ export class PreviewTransport {
   }
   setDocument(doc) {
     this.loaded = Boolean(doc.hasDocument);
-    for (const node of this.root.querySelectorAll("button,input")) node.disabled = !this.loaded;
+    for (const node of this.root.querySelectorAll("button,input")) if (node.disabled === this.loaded) node.disabled = !this.loaded;
     this.range.hidden = !this.loaded || !doc.exportValues?.introEnabled && !doc.exportValues?.exportEndSeconds;
   }
   setDetached(detached) {
@@ -48,23 +48,27 @@ export class PreviewTransport {
   }
   paintTime(second, duration) {
     const format = value => `${value < 0 ? "-" : ""}${String(Math.floor(Math.abs(value) / 60)).padStart(2, "0")}:${String(Math.floor(Math.abs(value) % 60)).padStart(2, "0")}`;
-    this.positionText.textContent = format(second);
-    this.durationText.textContent = ` / ${format(duration)}`;
+    const positionText = format(second), durationText = ` / ${format(duration)}`;
+    if (this.positionText.textContent !== positionText) this.positionText.textContent = positionText;
+    if (this.durationText.textContent !== durationText) this.durationText.textContent = durationText;
   }
   update(state) {
     Object.assign(this.state, state, state.playback);
-    this.seek.max = String(this.state.duration);
-    if (!this.scrubbing()) this.seek.value = String(this.state.currentTime);
+    const duration = String(this.state.duration), currentTime = String(this.state.currentTime);
+    if (this.seek.max !== duration) this.seek.max = duration;
+    if (!this.scrubbing() && this.seek.value !== currentTime) this.seek.value = currentTime;
     const fraction = this.state.duration ? this.state.currentTime / this.state.duration : 0;
     this.seek.style.setProperty("--range-value", `${fraction * 100}%`);
     this.paintTime(this.state.currentTime, this.state.duration);
     const text = translate(this.state.playing ? "preview.pause" : "preview.play", this.viewState.preferences.languageToken || "zh");
-    this.play.setAttribute("aria-label", text);
-    this.play.title = text;
-    this.play.replaceChildren(icon(this.state.playing ? "pause" : "play", 16));
-    this.rate.firstChild.textContent = `${this.state.rate}x`;
+    if (this.play.getAttribute("aria-label") !== text) { this.play.setAttribute("aria-label", text); this.play.title = text; }
+    const playIcon = this.state.playing ? "pause" : "play";
+    if (this.play.firstChild?.dataset.icon !== playIcon) this.play.replaceChildren(icon(playIcon, 16));
+    const rate = `${this.state.rate}x`;
+    if (this.rate.firstChild.textContent !== rate) this.rate.firstChild.textContent = rate;
     this.rangeEnabled = this.state.rangePlaybackEnabled ?? false;
     this.range.setAttribute("aria-pressed", String(this.rangeEnabled));
-    this.range.replaceChildren(icon(this.rangeEnabled ? "range-play-active" : "range-play", 16));
+    const rangeIcon = this.rangeEnabled ? "range-play-active" : "range-play";
+    if (this.range.firstChild?.dataset.icon !== rangeIcon) this.range.replaceChildren(icon(rangeIcon, 16));
   }
 }

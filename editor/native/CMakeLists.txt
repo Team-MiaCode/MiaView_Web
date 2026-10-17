@@ -91,6 +91,16 @@ qt_add_executable(miacode-preview browser-host.cpp cover-scene.cpp cover-scene.h
     "${MIACODE_SOURCE_DIR}/src/export/cover_export/CoverLayoutModel.h"
     "${CMAKE_CURRENT_BINARY_DIR}/browser-assets.qrc")
 target_link_libraries(miacode-preview PRIVATE miacode_preview_quick miacode_preview_quickplugin miaview_timeline miaview_editor Qt6::Svg)
+qt_add_executable(miacode-analysis analysis-host.cpp)
+target_link_libraries(miacode-analysis PRIVATE miacode_analysis Qt6::Core)
+set_target_properties(miacode-analysis PROPERTIES
+    QT_WASM_EXPORT_NAME "createAnalysisModule"
+    QT_WASM_EXTRA_EXPORTED_METHODS "ccall,UTF8ToString"
+    QT_WASM_INITIAL_MEMORY "32MB"
+    QT_WASM_MAXIMUM_MEMORY "1073741824")
+target_link_options(miacode-analysis PRIVATE
+    "-sEXPORT_ES6=1" "-sENVIRONMENT=worker" "-sALLOW_MEMORY_GROWTH=1"
+    "-sEXPORTED_FUNCTIONS=_main,_malloc,_free")
 file(GLOB_RECURSE intro_assets CONFIGURE_DEPENDS
     "${MIACODE_SOURCE_DIR}/src/intro/qml/*"
     "${MIACODE_SOURCE_DIR}/src/intro/assets/*"

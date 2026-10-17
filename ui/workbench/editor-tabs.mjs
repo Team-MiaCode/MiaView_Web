@@ -23,6 +23,7 @@ export class EditorTabs {
   }
   update(doc) {
     const keys = this.state.openEditorTabs;
+    const structureChanged = keys.length !== this.entries.size || keys.some(key => !this.entries.has(key));
     for (const [key, entry] of this.entries) {
       if (!keys.includes(key)) { entry.root.remove(); this.entries.delete(key); }
     }
@@ -44,7 +45,8 @@ export class EditorTabs {
         this.entries.set(key, entry);
       }
       const dirty = difficulty ? doc.dirtyDifficultyIds?.includes(difficulty) : key === "metadata" && doc.metadataDirty;
-      entry.label.textContent = `${dirty ? "*" : ""}${title}`;
+      const label = `${dirty ? "*" : ""}${title}`;
+      if (entry.label.textContent !== label) entry.label.textContent = label;
       entry.root.classList.toggle("active", key === this.state.activeEditorKey);
       entry.activate.setAttribute("aria-selected", String(key === this.state.activeEditorKey));
       entry.activate.title = difficulty ? `${doc.filePath || "maidata.txt"}\n${title}` : title;
@@ -53,7 +55,7 @@ export class EditorTabs {
     }
     const changed = this.activeKey !== this.state.activeEditorKey;
     this.activeKey = this.state.activeEditorKey;
-    this.layout(changed);
+    if (changed || structureChanged) this.layout(changed);
   }
   layout(reveal = true) {
     const count = this.entries.size;
