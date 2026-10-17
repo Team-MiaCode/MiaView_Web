@@ -96,6 +96,14 @@ test("SDK responses reject unrelated frames and malformed replies", () => {
     false,
   );
 });
+
+test("editor commands require the editor bridge command set", () => {
+  const parent = {}, origin = "https://host.example";
+  const event = { source: parent, origin, data: { source: HOST_SOURCE, sessionId, requestId, protocolVersion: 1, type: "workbenchCommand" } };
+  assert.equal(trustedRequest(event, parent, origin, sessionId), null);
+  assert.equal(trustedRequest(event, parent, origin, sessionId, new Set(["workbenchCommand"])), event.data);
+  assert.equal(trustedRequest({ ...event, origin: "https://other.example" }, parent, origin, sessionId, new Set(["workbenchCommand"])), null);
+});
 test("resource interface accepts text, Blobs and URLs without website manifests", () => {
   const base = "https://host.example/charts/one/";
   const file = new Blob(["audio"], { type: "audio/wav" });

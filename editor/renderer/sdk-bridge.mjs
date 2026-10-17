@@ -49,7 +49,7 @@ export function attachSdkBridge(engine, controller) {
     return engine.state();
   }
   const receive = (event) => {
-    const message = trustedRequest(event, window.parent, origin, sessionId);
+    const message = trustedRequest(event, window.parent, origin, sessionId, controller.commands);
     if (!message || disposed) return;
     if (!sessionId) {
       if (message.type !== "initialize") return;

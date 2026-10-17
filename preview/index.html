@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>MiaView Web · 独立预览</title>
+  <link rel="stylesheet" href="ui/components/theme.css">
+  <link rel="stylesheet" href="page.css">
+</head>
+<body>
+  <header>
+    <h1>MiaView Web</h1>
+    <label class="folder">打开谱面文件夹<input id="files" type="file" webkitdirectory multiple></label>
+    <select id="project" aria-label="谱面文件夹" hidden></select>
+    <select id="difficulty" aria-label="难度" disabled></select>
+    <output id="status" role="status">选择包含 maidata.txt、音乐和素材的文件夹</output>
+  </header>
+  <main id="preview" aria-label="谱面预览"></main>
+  <template id="local-server-help"><main class="local-server-help"><h1>MiaView Web</h1><p>预览通过 HTTP 服务加载。请在本目录运行：</p><pre><code>npm run dev</code></pre><a href="http://127.0.0.1:3030/index.html">打开本地预览</a></main></template>
+  <script>
+    if (location.protocol === "file:") document.body.replaceChildren(document.getElementById("local-server-help").content.cloneNode(true));
+    else import("./app.mjs");
+  </script>
+</body>
+</html>

@@ -8,5 +8,5 @@
     "lib": ["DOM", "ES2022"],
     "types": []
   },
-  "include": ["tests/types.ts"]
+  "include": ["tests/types*.ts"]
 }

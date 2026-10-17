@@ -80,7 +80,7 @@ try {
   await command("page.export");
   await command("export.settings", { introEnabled: true, introPvPreview: true, introPvStartSeconds: .2, introAuditionLoop: true });
   await command("export.toggleIntroAudition");
-  await waitForAsync(page, async () => (await document.getElementById("workbench").editor.preview.getState()).introAudition.elapsed > .3);
+  await waitForAsync(page, async () => (await document.getElementById("workbench").editor.preview.getState()).introAudition?.elapsed > .3);
   const paused = await state(); await popup.getByRole("button", { name: "嵌回编辑器", exact: true }).click();
   await waitForAsync(page, () => !document.getElementById("workbench").editor.preview.windowRouter.presenting);
   assert.equal((await doc()).documentOpenGeneration, before.documentOpenGeneration);
@@ -109,12 +109,13 @@ try {
   assert.equal(third.isClosed(), true);
   assert.deepEqual(errors, []); console.log("Detached controls, document ownership, edits, keyboard, responsive window and playback restoration passed");
 } catch (error) {
-  results.failure = await page?.evaluate(() => {
+  results.failure = await page?.evaluate(async () => {
     const editor = document.getElementById("workbench").editor, router = editor.preview.windowRouter;
     return { status: editor.workbench.statusLabel.textContent, presenting: router.presenting, attaching: router.attaching,
       popup: Boolean(router.popup), clock: router.popup?.clock, closing: window.closingPreview?.closingState,
-      activation: navigator.userActivation.hasBeenActive };
+      activation: navigator.userActivation.hasBeenActive, state: await editor.preview.getState() };
   }).catch(() => null);
+  console.error(JSON.stringify({ phase: results.phase, failure: results.failure, errors }));
   throw error;
 } finally {
   writeFileSync(join(output, "results.json"), JSON.stringify({ ...results, errors }, null, 2));

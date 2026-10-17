@@ -30,3 +30,11 @@ test("picker cancellation returns no target, fallback generates the requested fi
   await fallback.write(await fallback.saveTarget({ filePath: "Song/maidata.txt" }), "chart");
   assert.deepEqual(outputs, [{ text: "chart", name: "maidata.txt" }]);
 });
+
+test("cross-origin picker restrictions use folder input and downloadable save targets", async () => {
+  const blocked = async () => { throw new DOMException("Cross origin picker", "SecurityError"); };
+  const files = [new File(["&inote_5=1,E"], "maidata.txt")];
+  const service = new BrowserFiles({ pickDirectory: blocked, pickSaveFile: blocked, readDirectory: async () => files });
+  assert.deepEqual((await service.openFolder()).files, files);
+  assert.deepEqual(await service.saveTarget(null, true, { all: true, files: [["Song/maidata.txt", files[0]]] }), { filePath: "maidata.txt", download: true });
+});

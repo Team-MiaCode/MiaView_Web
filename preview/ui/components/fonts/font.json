@@ -1,0 +1,40 @@
+{
+  "family": "Maple Mono Normal NL CN",
+  "sourceSha256": "892ca1113a44ba8c0e2f8af38bf1e7da787b4ccce5e68d970ecb2d53e5e87f45",
+  "characters": 22731,
+  "lineRatio": 1.32,
+  "files": [
+    {
+      "path": "MapleMonoNormalNL-CN-lower.woff2",
+      "sha256": "37e6fe52d309fb919ef5df97b88160c4d43fafe79864dfe4d5ccfbcb5d67c49b",
+      "byteSize": 2199608,
+      "unicodeRange": "U+0-6FFF"
+    },
+    {
+      "path": "MapleMonoNormalNL-CN-upper.woff2",
+      "sha256": "225fceff946433b0d73827a5a62054952c6e0464b8eda3ee902ff1a3d6f2717b",
+      "byteSize": 3358424,
+      "unicodeRange": "U+7000-10FFFF"
+    }
+  ],
+  "cardFonts": [
+    {
+      "family": "Resource Han Rounded CN Heavy",
+      "source": "vendor/MiaCode/src/intro/assets/fonts/ResourceHanRoundedCN-Heavy.ttf",
+      "sourceSha256": "a3d28a8ed5fd7bc9cf16fd9f0f2aab5f1b7ca7c8b997592584bf62721d583844",
+      "path": "ResourceHanRoundedCN-Heavy.woff2",
+      "sha256": "c8f413e23c2ed6aee8b756672629145979f752b8f9088a9b9495b859bf5edbbf",
+      "characters": 12213,
+      "byteSize": 2002200
+    },
+    {
+      "family": "Resource Han Rounded CN Bold",
+      "source": "vendor/MiaCode/src/intro/assets/fonts/ResourceHanRoundedCN-Bold.ttf",
+      "sourceSha256": "0a213a4733874f7b7e9908879efc0ee5b9740e04b6d55deb436201065259972d",
+      "path": "ResourceHanRoundedCN-Bold.woff2",
+      "sha256": "6feb46e26686854e24bb1e6a1b3d6d15ff2035ad0d3e428d3928d37e956374d1",
+      "characters": 12213,
+      "byteSize": 2073656
+    }
+  ]
+}

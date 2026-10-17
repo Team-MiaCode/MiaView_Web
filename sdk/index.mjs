@@ -43,6 +43,9 @@ class MiaCodePreview {
     this.resolution = resolution;
     this.controls = options.controls ?? true;
     if (typeof this.controls !== "boolean") throw new Error("controls must be a boolean");
+    const allow = options.allow ?? "autoplay; fullscreen";
+    const sandbox = options.sandbox ?? "allow-scripts allow-same-origin";
+    if (typeof allow !== "string" || typeof sandbox !== "string") throw new Error("Iframe allow and sandbox must be strings");
     this.pvTimeoutMs = previewPvTimeout(options.pvTimeoutMs);
     if (
       options.diagnostics !== undefined &&
@@ -101,9 +104,9 @@ class MiaCodePreview {
       border: "0",
     });
     this.iframe.title = "MiaView Web 谱面预览";
-    this.iframe.allow = "autoplay; fullscreen";
+    this.iframe.allow = allow;
     this.iframe.allowFullscreen = true;
-    this.iframe.setAttribute("sandbox", "allow-scripts allow-same-origin");
+    this.iframe.setAttribute("sandbox", sandbox);
     this.iframe.referrerPolicy = "no-referrer";
     this.wrapper.appendChild(this.iframe);
     this.receive = (event) => this.handleMessage(event);

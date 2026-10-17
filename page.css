@@ -549,6 +549,8 @@ progress { width: 100%; accent-color: var(--accent-primary); height: 6px; }
   .preview-divider { display: none; }
   .show-preview .preview-host { display: grid; }
   .show-preview .editor-host { display: none; }
+  .preview-initializing .preview-host { display: grid; }
+  .preview-initializing .editor-host { display: none; }
   .page { padding: 16px; }
   .welcome { padding: 48px 16px; }
   .field-grid { grid-template-columns: minmax(0, 1fr); }

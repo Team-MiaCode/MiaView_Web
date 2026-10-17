@@ -3,7 +3,7 @@ import test from "node:test";
 import { createPreview } from "../sdk/index.mjs";
 import { FRAME_SOURCE } from "../sdk/protocol.mjs";
 
-function dom({ invalidIdentity = false, respond = true, reply = () => undefined } = {}) {
+function dom({ invalidIdentity = false, respond = true, reply = () => undefined, onAppend = () => {} } = {}) {
   const messages = [],
     listeners = new Set();
   const identity = {
@@ -30,7 +30,8 @@ function dom({ invalidIdentity = false, respond = true, reply = () => undefined 
       ownerDocument: document,
       style: {},
       children: [],
-      setAttribute() {},
+      attributes: {},
+      setAttribute(name, value) { this.attributes[name] = value; },
       appendChild(child) {
         this.children.push(child);
         child.parent = this;
@@ -68,11 +69,22 @@ function dom({ invalidIdentity = false, respond = true, reply = () => undefined 
   const container = document.createElement("div");
   const append = container.appendChild;
   container.appendChild = function (child) {
+    onAppend(child.children[0]);
     append.call(this, child);
     queueMicrotask(() => child.children[0].onload?.());
   };
   return { container, messages, listeners, identity };
 }
+
+test("Iframe permissions are applied before the renderer enters the document", async () => {
+  const allow = "autoplay; fullscreen; clipboard-write", sandbox = "allow-scripts allow-same-origin allow-downloads";
+  let appended = false;
+  const { container } = dom({ onAppend(frame) {
+    assert.equal(frame.allow, allow); assert.equal(frame.attributes.sandbox, sandbox); appended = true;
+  } });
+  const preview = createPreview(container, { allow, sandbox, rendererUrl: "https://renderer.example/index.html" });
+  await preview.ready; assert.equal(appended, true); preview.destroy();
+});
 test("An analysis request preserves its snapshot while later commands continue", async () => {
   const f = dom({ respond: false });
   const preview = createPreview(f.container, { rendererUrl: "https://renderer.example/index.html" });

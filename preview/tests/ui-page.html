@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="../ui/components/theme.css">
+<link rel="stylesheet" href="../ui/components/fonts.css">
+<link rel="stylesheet" href="../page.css">
+<title>MiaCode 页面对照</title>
+<div id="page" style="width:800px;height:420px;overflow:auto"></div>
+<script type="module">
+  import { createPage } from "../ui/workbench/pages.mjs";
+  import { DifficultyHeader } from "../ui/workbench/difficulty-header.mjs";
+  import { openDesignerSlots } from "../ui/workbench/designer-slots.mjs";
+  import { createChartSidebar } from "../ui/workbench/chart-sidebar.mjs";
+  import { PreviewTransport } from "../ui/workbench/preview-transport.mjs";
+  import { NoteStatistics } from "../ui/workbench/note-statistics.mjs";
+  import { createAnalysisPanel } from "../ui/workbench/analysis-panel.mjs";
+  import { EditorTabs } from "../ui/workbench/editor-tabs.mjs";
+  import { SourceEditor } from "../ui/workbench/source-editor.mjs";
+  const query = new URLSearchParams(location.search);
+  document.documentElement.dataset.theme = query.get("theme") || "dark";
+  import { ViewState } from "../services/view-state.mjs";
+  const state = new ViewState({getItem:()=>null,setItem:()=>{}});
+  const theme = query.get("theme") || "dark";
+  state.preferences.themeModeToken = theme.endsWith("light") ? "light" : "dark";
+  state.preferences.darkThemeToken = theme;
+  state.preferences.lightThemeToken = theme;
+  const doc = query.has("document") ? {hasDocument:true,title:"MiaCode Example",bpm:120,clockCount:4} : {};
+  const key = query.get("page") || "latency";
+  const host = document.getElementById("page");
+  host.style.setProperty("--code-font-size", "14pt");
+  const difficultyNames = ["EASY", "BASIC", "ADVANCED", "EXPERT", "MASTER", "Re:MASTER", "UTAGE"];
+  const difficultyDoc = { currentDifficultyLevel: "13+", currentDifficultyOffset: "0.125", currentDifficultyDesigner: "MiaCode", metadataDesigner: "MiaCode",
+    designerSlots: difficultyNames.map((name, index) => ({ id: index + 1, name, designer: [2, 5].includes(index + 1) ? "MiaCode" : "", hasChart: [2, 5].includes(index + 1) })) };
+  if (key === "source-editor") {
+    host.style.width = `${Number(query.get("width") || 600)}px`;
+    host.style.height = `${Number(query.get("height") || 240)}px`;
+    host.style.setProperty("--code-line-height", "calc(round(nearest, calc(var(--code-font-size) * var(--code-font-line-ratio) + 1px), 1px) + 3px)");
+    const editor = new SourceEditor({ command: () => {}, language: () => "zh" });
+    host.append(editor.root);
+    editor.setValue("(120){4}\n1,2,3,4,5,6,7,8,\n1b,2x,3h[4:1],4-8[4:1],\nA1,B2,C,D3,E4,E");
+    host.sourceEditor = editor;
+  } else if (key === "editor-tabs") {
+    host.style.width = `${Number(query.get("width") || 480)}px`;
+    host.style.height = "34px";
+    state.openEditorTabs = ["metadata", "difficulty:5", "difficulty:6"];
+    state.activeEditorKey = "difficulty:6";
+    const tabs = new EditorTabs(state, () => {}, () => {}, { metadata: "谱面信息" });
+    tabs.root.style.height = "100%";
+    host.append(tabs.root);
+    tabs.update({ dirtyDifficultyIds: [5], filePath: "Song/maidata.txt" });
+  } else if (key.startsWith("analysis-")) {
+    const [, kind, status] = key.split("-");
+    const rows = kind === "validation"
+      ? [{ severity: "error", line: 3, column: 4, detail: "音符格式无效" }, { severity: "warning", line: 8, column: 2, detail: "请检查谱面等级", code: "missing_difficulty_level" }]
+      : [{ severity: "error", alert: "muri", title: "Slide", line: 3, column: 4, detail: "滑动轨迹与后续音符重叠" }, { severity: "warning", alert: "warning", title: "Touch", line: 8, column: 2, detail: "触摸区域需要检查" }];
+    host.style.height = "240px";
+    host.style.background = "var(--background-panel)";
+    host.append(createAnalysisPanel(kind, { documentSession: { pending: status === "pending", syntaxErrorCount: status === "results" ? 1 : 0, syntaxWarningCount: status === "results" ? 1 : 0, [kind === "validation" ? "validationRows" : "muriRows"]: status === "results" ? rows : [] }, command: () => {}, language: "zh" }));
+  } else if (key === "preview-controls") {
+    const loaded = query.has("loaded");
+    host.style.width = `${Number(query.get("width") || 600)}px`;
+    host.style.height = "auto";
+    host.style.containerType = "inline-size";
+    host.style.background = "var(--background-panel)";
+    const transport = new PreviewTransport(() => {}, () => {}, state);
+    transport.setDocument({ hasDocument: loaded });
+    transport.update({ currentTime: loaded ? 15 : 0, duration: loaded ? 120 : 0, playing: false, rate: 1 });
+    const statistics = new NoteStatistics(() => "zh");
+    statistics.update([...["tap", "hold", "slide", "touch", "break", "total"].map((kind, index) => ({ kind, name: ["TAP", "HOLD", "SLIDE", "TOUCH", "BREAK", "总计"][index], value: ["8/12", "2/4", "1/3", "1/2", "1/2", "13/23"][index] }))], { dataAvailable: loaded });
+    host.append(transport.root, statistics.root);
+  } else if (key.startsWith("difficulty-header")) {
+    host.style.width = key.endsWith("narrow") ? "240px" : "480px";
+    host.style.height = "auto";
+    const header = new DifficultyHeader(() => {}, () => "zh");
+    header.update(difficultyDoc);
+    host.append(header.root);
+  } else if (key.startsWith("export-")) {
+    host.style.height = "900px";
+    const tab = key.slice(7);
+    host.append(createPage("export", { viewState: state, documentSession: { charts: [{id: 2, name: "BASIC"}, {id: 5, name: "MASTER"}], activeDifficultyId: 5, duration: 30,
+      exportValues: { selectedDifficultyId: 5, settingsTab: tab, introEnabled: true, exportEndSeconds: 30 } }, command: () => {} }));
+  } else if (key.startsWith("cover-")) {
+    host.style.width = "1200px";
+    host.style.height = "720px";
+    const tab = key.slice(6);
+    host.append(createPage("cover", { viewState: state, nativeCover: query.has("native"), documentSession: { metadataTitle: "MiaCode Example", metadataArtist: "Team MiaCode", metadataDesigner: "MiaCode", currentDifficultyLevel: "13+", bpm: 120,
+      sourceText: "&title=MiaCode Example\n&inote_2=(120){4}1,2,E\n&inote_5=(120){4}1,2,3,4,E",
+      charts: [{id: 2, name: "BASIC"}, {id: 5, name: "MASTER"}], activeDifficultyId: 5, duration: 30,
+      coverValues: { activeLayerKey: tab === "canvas" ? "card" : tab, inspectorTab: tab === "canvas" ? "canvas" : "layer" },
+      coverLayers: [
+        {key:"card",kind:"card",label:"Difficulty card",nx:.5,ny:.5,sizeFraction:.85,z:0,visible:true,locked:false,opacity:1},
+        {key:"text",kind:"text",label:"Text",nx:.5,ny:.2,sizeFraction:.08,z:1,visible:true,locked:false,opacity:1,text:"MiaCode",textColor:"#FFFFFF",textBold:false},
+        {key:"image",kind:"image",label:"Image",nx:.5,ny:.5,sizeFraction:.2,z:2,visible:false,locked:false,opacity:.8,imagePath:""}
+      ] }, command: () => {} }));
+  } else if (key === "chart-sidebar") {
+    host.style.width = "240px";
+    host.style.height = "480px";
+    host.style.background = "var(--background-panel)";
+    state.openEditor("difficulty:5");
+    host.append(...createChartSidebar({ viewState: state, documentSession: { hasDocument: true, currentDifficultyId: 5, difficulties: [{id: 2, label: "BASIC"}, {id: 5, label: "MASTER"}], bookmarks: [{line: 2, title: "主歌"}, {line: 8, title: "副歌"}] }, command: () => {}, menu: () => {}, dialogHost: host }));
+  } else if (key.startsWith("metadata")) {
+    host.style.width = key.endsWith("narrow") ? "360px" : "800px";
+    host.style.height = "auto";
+    host.style.overflow = "visible";
+    host.append(createPage("metadata", { viewState: state, documentSession: { ...difficultyDoc, metadataTitle: "MiaCode Example", metadataArtist: "Team MiaCode", metadataFirst: "0.125", metadataClockCount: "4", metadataExtraText: "&custom=value" }, command: () => {} }));
+  } else if (key === "designer-slots") {
+    openDesignerSlots(host, { documentSession: difficultyDoc, command: () => {} });
+  } else {
+    if (key === "preferences") { host.style.height = "auto"; host.style.overflow = "visible"; }
+    host.append(createPage(key, {viewState:state,documentSession:doc,command:()=>{}}));
+  }
+</script>
+</html>

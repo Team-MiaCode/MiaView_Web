@@ -16,6 +16,13 @@ export function resolveChartResource(files, chartPath, field) {
   const path = parts.join("/").toLowerCase();
   return [...files].find(([key]) => key.toLowerCase() === path)?.[1] || null;
 }
+export function resolveChartMedia(files, chartPath, field) {
+  const file = resolveChartResource(files, chartPath, field);
+  const extension = file?.name.split(".").at(-1).toLowerCase();
+  if (file && ["mp4", "webm"].includes(extension)) return { video: file };
+  if (file && ["jpg", "jpeg", "png", "webp"].includes(extension)) return { video: undefined, cover: file };
+  return {};
+}
 export function resourceFile(file, path) {
   const result = new File([file], path.split("/").at(-1), { type: file.type, lastModified: file.lastModified });
   Object.defineProperty(result, "webkitRelativePath", { value: path });

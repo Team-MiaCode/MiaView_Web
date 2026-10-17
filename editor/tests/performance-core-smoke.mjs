@@ -83,9 +83,8 @@ try {
     await page.evaluate(async () => {
       await editor.preview.pause(); await editor.preview.seek(.3);
       window.timelineTicks = 0; window.playheadObserver?.disconnect();
-      const line = editor.workbench.timelineView.playhead;
-      window.playheadObserver = new MutationObserver(records => { timelineTicks += records.filter(record => record.attributeName === "x1").length; });
-      playheadObserver.observe(line, { attributes: true }); await editor.preview.play();
+      window.playheadObserver = new MutationObserver(records => { timelineTicks += records.filter(record => record.attributeName === "x1" && record.target.getAttribute("data-overlay") === "playheadLine").length; });
+      playheadObserver.observe(editor.workbench.timelineView.root, { attributes: true, subtree: true }); await editor.preview.play();
     });
     const before = await state(), timelineBefore = await page.evaluate(() => ({ ticks: timelineTicks, now: performance.now() }));
     await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 1200)));

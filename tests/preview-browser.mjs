@@ -15,6 +15,7 @@ export async function launchPreviewBrowser(playwright, name, { hardware = false,
         env: { ...process.env, LIBGL_ALWAYS_SOFTWARE: "1" },
       } : {}),
     } : {}),
+    ...(name === "webkit" && process.platform === "linux" ? { env: { ...process.env, LIBGL_ALWAYS_SOFTWARE: "1" } } : {}),
   });
 }
 

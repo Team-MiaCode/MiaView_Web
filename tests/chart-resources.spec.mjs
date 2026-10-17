@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resourceFile, stageResource, relocatePath, resolveChartResource } from "../services/chart-resources.mjs";
+import { resourceFile, stageResource, relocatePath, resolveChartResource, resolveChartMedia } from "../services/chart-resources.mjs";
 import { projectArchive } from "../services/zip-store.mjs";
 
 test("Resource staging backs up canonical files and retains sibling projects", async () => {
@@ -38,4 +38,12 @@ test("Stored ZIP exports UTF-8 paths, CRC and exact file bytes", async () => {
   assert.equal(new TextDecoder().decode(bytes.subarray(30+size,39+size)), "123456789");
   assert.equal(view.getUint32(bytes.length-22,true),0x06054b50); assert.equal(view.getUint16(bytes.length-12,true),2);
   await assert.rejects(projectArchive(new Map([["../outside.txt", new Blob(["data"])]])), /路径/);
+});
+
+test("Chart metadata selects uploaded video or image before default PV names", () => {
+  const video = new File(["video"], "clip.WEBM"), image = new File(["image"], "frame.PNG");
+  const files = new Map([["Song/assets/clip.webm", video], ["Song/assets/frame.png", image]]);
+  assert.deepEqual(resolveChartMedia(files, "Song/maidata.txt", "assets/CLIP.WEBM"), { video });
+  assert.deepEqual(resolveChartMedia(files, "Song/maidata.txt", "assets/frame.png"), { video: undefined, cover: image });
+  assert.deepEqual(resolveChartMedia(files, "Song/maidata.txt", "../outside.webm"), {});
 });

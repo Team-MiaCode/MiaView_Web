@@ -68,8 +68,28 @@ jobs:
           path: |
             sdk
             renderer
+            ui
+            services
+            index.html
+            app.mjs
+            page.css
+            preview-window.html
             backend
             README.md
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: miaview-editor
+          path: editor
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: miaview-preview-standalone
+          path: preview
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
@@ -126,10 +146,16 @@ jobs:
           name: stage2-${{ matrix.browser }}
           path: artifacts/stage2
           retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: shortcuts-debug-${{ matrix.browser }}
+          path: artifacts/shortcuts-core/failure.json
 
   ui-acceptance:
     needs: build-preview
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -145,11 +171,21 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dri mesa-utils xvfb
       - run: npm install --no-save --package-lock=false playwright@1.62.1
       - run: npx playwright install --with-deps chromium firefox webkit chrome msedge
+      - name: Configure UI audio output
+        run: |
+          sudo apt-get install -y pulseaudio pulseaudio-utils
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=miaview_products rate=48000
+          pactl set-default-sink miaview_products
       - name: Validate workbench and isolated editor template
         env:
           MIACODE_TEST_ENGINES: chromium,firefox,webkit
           MIACODE_DENSITY_ENGINES: chrome,msedge,firefox,webkit
         run: xvfb-run --auto-servernum bash -e -c 'npm run test:source-wrap && npm run test:workbench && npm run test:density && npm run test:gallery && npm run test:folder && npm run test:cover && npm run test:transport && npm run test:timeline && npm run test:document && npm run test:analysis-ui && npm run test:editor-tabs && npm run test:workbench-chrome && npm run test:source-editor-ui && npm run test:ime && npm run test:stage1 && npm run sync:products -- --runtime && npm run test:editor-template'
+      - name: Validate independent products and cross-origin embeds
+        run: |
+          npm run check:products
+          xvfb-run --auto-servernum npm run test:products
       - uses: actions/upload-artifact@v4
         if: always()
         with:

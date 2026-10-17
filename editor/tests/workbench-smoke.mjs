@@ -30,6 +30,7 @@ try {
   for (const name of engines) {
     const browser = await launchPreviewBrowser(playwright, name);
     let page, activeCase;
+    const deadline = setTimeout(() => { console.error(`${name}: workbench deadline at ${JSON.stringify(activeCase)}`); void browser.close(); }, 180000);
     try {
       const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });
       page = await context.newPage();
@@ -38,7 +39,9 @@ try {
       page.on("pageerror", error => errors.push(error.message));
       await page.goto(base + "/index.html");
       await page.locator(".welcome-title").waitFor();
+      activeCase = { engine: name, phase: "nativeReady" };
       await page.evaluate(() => document.getElementById("workbench").editor.ready);
+      console.log(`${name}: native workbench initialized`);
       const webAudio = await page.evaluate(() => typeof (globalThis.AudioContext ?? globalThis.webkitAudioContext) === "function");
       capabilities.push({ engine: name, version: browser.version(), webAudio, graphics, platform: process.platform, architecture: process.arch });
       for (const [width, height] of sizes) {
@@ -332,7 +335,7 @@ try {
       writeFileSync(resolve(output, `${name}-failure.json`), JSON.stringify(evidence, null, 2) + "\n");
       console.log(JSON.stringify(evidence));
       throw error;
-    } finally { await browser.close(); }
+    } finally { clearTimeout(deadline); await browser.close(); }
   }
 } finally {
   server.closeAllConnections();

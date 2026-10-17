@@ -15,6 +15,13 @@ let page, checkpoint="startup";
 try {
   page=await browser.newPage({viewport:{width:1366,height:900}});
   page.setDefaultTimeout(30000);
+  await page.addInitScript(() => {
+    window.shortcutKeyTrace = [];
+    for (const type of ["keydown", "keyup", "blur", "focus"]) window.addEventListener(type, event => {
+      shortcutKeyTrace.push({ type, key: event.key, ctrl: event.ctrlKey, shift: event.shiftKey, alt: event.altKey,
+        target: event.target?.tagName, at: performance.now() });
+    }, true);
+  });
   const errors=[];
   page.on("pageerror",error=>errors.push(error.message));
   const command=(id,args)=>page.evaluate(({id,args})=>document.getElementById("workbench").editor.command(id,args),{id,args});
@@ -50,6 +57,7 @@ try {
   await page.locator(".timeline-view").focus(); await page.keyboard.press("Control+Shift+x");
   await waitForAsync(page, async()=>(await document.getElementById("workbench").editor.preview.getState()).playing);
   await page.keyboard.press("Control+Shift+x"); await waitForAsync(page, async()=>!(await document.getElementById("workbench").editor.preview.getState()).playing);
+  checkpoint="editor hold";
   await editor.focus(); await page.keyboard.down("Alt");
   await waitForAsync(page, async()=>(await document.getElementById("workbench").editor.preview.getState()).settings.pauseDisplayAltHoldActive);
   await page.keyboard.up("Alt");
@@ -98,7 +106,10 @@ try {
   writeFileSync(join(output,"results.json"),JSON.stringify({initialFont,beforeZoom,bindings:await page.evaluate(()=>document.getElementById("workbench").editor.workbench.documentSession.shortcutRows),errors},null,2)+"\n");
   console.log("25 native shortcut definitions, chart transforms, playback, rate, hold, wheel, font, capture, persistence, clear and reset passed");
 } catch (error) {
-  const details=await page?.evaluate(async()=>({ trace:window.shortcutTrace,state:await document.getElementById("workbench").editor.preview.getState(),focused:document.activeElement.tagName }));
+  const details=await page?.evaluate(async()=>({ trace:window.shortcutTrace,keys:window.shortcutKeyTrace,
+    bindings:await document.getElementById("workbench").editor.preview.normalizeShortcuts({hold:"Alt"}),
+    state:await document.getElementById("workbench").editor.preview.getState(),focused:document.activeElement.tagName }));
   writeFileSync(join(output,"failure.json"),JSON.stringify({checkpoint,message:error.message,details},null,2)+"\n");
+  console.error(JSON.stringify({checkpoint,message:error.message,details}));
   throw error;
 } finally {await browser.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}

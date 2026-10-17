@@ -79,7 +79,7 @@ export function validIdentity(value) {
     /^[a-f0-9]{64}$/.test(value.sourceRevision ?? "")
   );
 }
-export function trustedRequest(event, parent, origin, sessionId) {
+export function trustedRequest(event, parent, origin, sessionId, allowedCommands = commands) {
   const message = event.data;
   if (
     event.source !== parent ||
@@ -88,7 +88,7 @@ export function trustedRequest(event, parent, origin, sessionId) {
     message.protocolVersion !== SDK_PROTOCOL ||
     !uuid.test(message.sessionId ?? "") ||
     !uuid.test(message.requestId ?? "") ||
-    !commands.has(message.type) ||
+    !allowedCommands.has(message.type) ||
     (sessionId && message.sessionId !== sessionId)
   )
     return null;

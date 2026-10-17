@@ -384,6 +384,10 @@ export interface DiagnosticsSnapshot {
   definitions: Record<string, string>;
 }
 export interface PreviewOptions {
+  /** Iframe Permissions Policy; default "autoplay; fullscreen". */
+  allow?: string;
+  /** Iframe sandbox attributes, applied before navigation; default "allow-scripts allow-same-origin". */
+  sandbox?: string;
   /** Detached same-origin previews may use their opener document's audio permission. */
   audioContextOwner?: "renderer" | "opener";
   /** Initial player theme; default dark. The player also provides a theme toggle. */

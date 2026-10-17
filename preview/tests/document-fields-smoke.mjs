@@ -1,0 +1,68 @@
+import assert from "node:assert/strict";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { staticServer } from "../scripts/serve.mjs";
+
+const { chromium } = await import(process.env.MIACODE_PLAYWRIGHT_MODULE ? pathToFileURL(process.env.MIACODE_PLAYWRIGHT_MODULE).href : "playwright");
+const output = resolve("artifacts/document-fields"); mkdirSync(output, { recursive: true });
+const server = staticServer(process.cwd(), { performanceTerminal: false });
+await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+const browser = await chromium.launch({ headless: true });
+try {
+  const page = await browser.newPage({ viewport: { width: 1366, height: 768 } });
+  const errors = []; page.on("pageerror", error => errors.push(error.message));
+  await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);
+  await page.locator(".welcome-title").waitFor();
+  await page.evaluate(async () => {
+    const editor = document.getElementById("workbench").editor;
+    await editor.ready;
+    await editor.load({ maidata: "&title=字段测试\n&first=0\n&Clock_Count=6\n&custom=value\n&des_7=独立\n&lv_5=12\n&des_5=甲\n&inote_5=(120){4}1,2,E\n&lv_6=13\n&des_6=乙\n&inote_6=(120){4}3,4,E\n" });
+    editor.viewState.openEditor("metadata");
+  });
+  const getDocument = () => page.evaluate(() => document.getElementById("workbench").editor.preview.getDocument());
+  assert.equal((await getDocument()).metadataClockCount, "6");
+  await page.getByRole("button", { name: "管理", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "谱师名义管理", exact: true });
+  await dialog.waitFor();
+  await dialog.getByRole("textbox", { name: "Master", exact: true }).fill("新的名义");
+  await dialog.getByRole("textbox", { name: "Master", exact: true }).press("Tab");
+  await page.waitForFunction(() => document.getElementById("workbench").editor.workbench.documentSession.designerSlots.find(slot => slot.id === 5).designer === "新的名义");
+  assert.equal(await dialog.isVisible(), true);
+  const separate = await getDocument();
+  assert.equal(separate.designerSlots.find(slot => slot.id === 6).designer, "乙");
+  assert.equal(separate.designerSlots.find(slot => slot.id === 7).hasChart, false);
+  await page.keyboard.press("Escape");
+  await dialog.waitFor({ state: "detached" });
+  await page.evaluate(() => document.getElementById("workbench").editor.command("document.applyDesignerSlots", { slots: [], unified: true, canonicalName: "统一名义" }));
+  const unified = await getDocument();
+  assert.equal(unified.unifiedDesignerEnabled, true);
+  assert.equal(unified.metadataDesigner, "统一名义");
+  assert.ok(unified.designerSlots.filter(slot => slot.hasChart || slot.designer).every(slot => slot.designer === "统一名义"));
+  await page.evaluate(() => document.getElementById("workbench").editor.command("document.currentDifficultyDesigner", { value: "同步名义" }));
+  const broadcast = await getDocument();
+  assert.equal(broadcast.metadataDesigner, "同步名义");
+  assert.ok(broadcast.designerSlots.filter(slot => slot.hasChart || slot.designer).every(slot => slot.designer === "同步名义"));
+  await page.evaluate(() => document.getElementById("workbench").editor.command("document.applyDesignerSlots", { slots: [{ id: 6, designer: "单独修改" }], unified: false, canonicalName: "" }));
+  const split = await getDocument();
+  assert.equal(split.unifiedDesignerEnabled, false);
+  assert.equal(split.designerSlots.find(slot => slot.id === 6).designer, "单独修改");
+  assert.equal(split.designerSlots.find(slot => slot.id === 5).designer, "同步名义");
+  await page.evaluate(() => document.getElementById("workbench").editor.command("document.metadataExtraText", { value: "&custom=updated" }));
+  const final = await getDocument();
+  assert.equal(final.metadataClockCount, "6");
+  assert.match(final.sourceText, /&clock_count=6/i);
+  assert.match(final.sourceText, /&custom=updated/);
+  assert.equal(final.charts.length, 2);
+  await page.evaluate(()=>document.getElementById("workbench").editor.load({maidata:"&clock_count=0\n&inote_5=(120)1,E\n&inote_6=(180)2,E",difficulty:5}));
+  const clockZero=await getDocument();assert.equal(clockZero.clockCount,0);assert.equal(clockZero.bpm,120);
+  await page.evaluate(()=>document.getElementById("workbench").editor.preview.selectDifficulty(6));
+  assert.equal((await getDocument()).bpm,180);
+  await page.evaluate(()=>document.getElementById("workbench").editor.preview.documentCommand("document.wholeBpm",{value:"200"}));
+  assert.equal((await getDocument()).bpm,200);
+  assert.deepEqual(errors, []);
+  writeFileSync(resolve(output, "results.json"), JSON.stringify({ separate, unified, broadcast, split, final, errors }, null, 2) + "\n");
+  console.log("Designer dialog updates, independent slots, unified broadcasting, mode separation and clock fields passed");
+} finally {
+  await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
+}

@@ -1,0 +1,8 @@
+{
+  "score": 94,
+  "verdict": "pass",
+  "category_match": true,
+  "differences": ["浏览器与 Qt 的字形抗锯齿、按钮文本测量和输入文字基线存在差异。"],
+  "suggestions": ["元数据与素材字段继续使用文档会话中的同名字段；按钮宽度按当前语言的文字测量。"],
+  "reasoning": "四主题对照原始 EditorPane 的 MetadataField 和元数据 Flickable 源码区域。800 像素宽度采用双列，360 像素宽度采用纵排，页面高度分别为 526 与 758 像素；字段、封面、PV 和扩展字段的边界与原生页面对应。Maple 代码字体使用原始字形与 14pt；中文界面字体依据启动代码使用 Microsoft YaHei UI。加权评分：布局 35、字体 18、色彩 14、控件 17、图标项 10。评分范围为元数据页面。"
+}

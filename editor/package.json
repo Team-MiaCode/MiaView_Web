@@ -3,18 +3,32 @@
   "version": "0.2.0-dev",
   "private": true,
   "type": "module",
-  "description": "MiaCode Web Editor: browser workbench and embeddable preview",
-  "main": "./sdk/index.mjs",
-  "types": "./sdk/index.d.mts",
+  "description": "MiaCode Web Editor",
+  "main": "./sdk/editor.mjs",
+  "types": "./sdk/editor.d.mts",
   "exports": {
+    "./editor": {
+      "types": "./sdk/editor.d.mts",
+      "import": "./sdk/editor.mjs"
+    },
     ".": {
+      "types": "./sdk/editor.d.mts",
+      "import": "./sdk/editor.mjs"
+    },
+    "./preview": {
       "types": "./sdk/index.d.mts",
       "import": "./sdk/index.mjs"
     }
   },
   "files": [
+    "index.html",
+    "app.mjs",
+    "page.css",
+    "preview-window.html",
     "sdk",
     "renderer",
+    "ui",
+    "services",
     "backend",
     "README.md"
   ],
@@ -25,6 +39,7 @@
     "check": "node scripts/verify.mjs",
     "check:repo": "node scripts/check-repository.mjs",
     "check:source": "node scripts/verify.mjs --source",
+    "check:types": "tsc -p tests/tsconfig.json",
     "test:browser": "node tests/browser-smoke.mjs",
     "test:firework": "node tests/firework-smoke.mjs",
     "test:ui": "node tests/ui-smoke.mjs",
@@ -92,5 +107,9 @@
   },
   "dependencies": {
     "mediabunny": "1.61.4"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1",
+    "typescript": "5.9.3"
   }
 }

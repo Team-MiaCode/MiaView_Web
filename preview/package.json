@@ -1,0 +1,64 @@
+{
+  "name": "miacode-web-preview",
+  "version": "0.2.0-dev",
+  "private": true,
+  "type": "module",
+  "description": "MiaView Web Preview",
+  "main": "./sdk/index.mjs",
+  "types": "./sdk/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./sdk/index.d.mts",
+      "import": "./sdk/index.mjs"
+    }
+  },
+  "files": [
+    "index.html",
+    "app.mjs",
+    "page.css",
+    "preview-window.html",
+    "sdk",
+    "renderer",
+    "ui",
+    "services",
+    "backend",
+    "README.md"
+  ],
+  "scripts": {
+    "build:pages": "node scripts/build-pages.mjs",
+    "dev": "node scripts/serve.mjs",
+    "test": "node --test tests/*.spec.mjs",
+    "check": "node scripts/verify.mjs",
+    "check:repo": "node scripts/check-repository.mjs",
+    "check:source": "node scripts/verify.mjs --source",
+    "check:types": "tsc -p tests/tsconfig.json",
+    "test:browser": "node tests/browser-smoke.mjs",
+    "test:firework": "node tests/firework-smoke.mjs",
+    "test:ui": "node tests/ui-smoke.mjs",
+    "build:native": "node native/build.mjs",
+    "sync:artifacts": "node native/artifacts.mjs",
+    "sync:ui": "node scripts/sync-ui.mjs",
+    "sync:fonts": "node scripts/sync-font.mjs",
+    "sync:labels": "python scripts/sync-labels.py",
+    "source:init": "node scripts/initialize-source.mjs",
+    "runtime:fetch": "node scripts/fetch-runtime.mjs",
+    "sync:media": "node scripts/sync-media.mjs",
+    "test:video-geometry": "node tests/video-geometry-smoke.mjs",
+    "test:preview-lifecycle": "node tests/preview-lifecycle-smoke.mjs",
+    "test:preview-benchmark": "node tests/preview-benchmark.mjs",
+    "test:pv-sync": "node tests/pv-sync-smoke.mjs",
+    "test:preview-resources": "node tests/preview-resources-smoke.mjs",
+    "test:analysis-worker": "node tests/analysis-worker-smoke.mjs",
+    "test:preview-parity": "node tests/preview-parity-smoke.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "mediabunny": "1.61.4"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1",
+    "typescript": "5.9.3"
+  }
+}

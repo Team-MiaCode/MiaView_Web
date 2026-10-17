@@ -1,0 +1,12 @@
+{
+  "score": 92,
+  "verdict": "pass",
+  "category_match": true,
+  "differences": [
+    "浏览器与 Qt 的滚动条绘制和按键文字布局存在差异。"
+  ],
+  "suggestions": [
+    "字段、命令与页面状态沿用 v2 的同名定义。"
+  ],
+  "reasoning": "原生参考与浏览器消费各自固定源码的 resources/shortcuts.json，展示 25 项可编辑定义；命令标识、标签、默认按键、列表滚动与恢复入口对应。评分：布局 34、字体 17、色彩 14、控件 17、图标 10。"
+}

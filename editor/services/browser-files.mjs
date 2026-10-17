@@ -2,7 +2,7 @@ import { relocatePath } from "./chart-resources.mjs";
 import { projectArchive } from "./zip-store.mjs";
 
 export class BrowserFiles {
-  constructor({ readDirectory, pickDirectory = globalThis.showDirectoryPicker?.bind(globalThis), pickSaveFile = globalThis.showSaveFilePicker?.bind(globalThis), download = downloadText } = {}) {
+  constructor({ readDirectory, pickDirectory = browserPicker("showDirectoryPicker"), pickSaveFile = browserPicker("showSaveFilePicker"), download = downloadText } = {}) {
     this.readDirectory = readDirectory;
     this.pickDirectory = pickDirectory;
     this.pickSaveFile = pickSaveFile;
@@ -12,7 +12,11 @@ export class BrowserFiles {
     if (!this.pickDirectory) return { files: await this.readDirectory(), handles: new Map() };
     let directoryHandle;
     try { directoryHandle = await this.pickDirectory({ id, mode }); }
-    catch (error) { if (error.name === "AbortError") return null; throw error; }
+    catch (error) {
+      if (error.name === "AbortError") return null;
+      if (error.name === "SecurityError") return { files: await this.readDirectory(), handles: new Map() };
+      throw error;
+    }
     return this.readFolder(directoryHandle);
   }
   async readFolder(directoryHandle) {
@@ -35,11 +39,13 @@ export class BrowserFiles {
     if ((saveAs || project.all && !binding?.directoryHandle) && project.files?.length && this.pickDirectory) {
       let directoryHandle;
       try { directoryHandle = await this.pickDirectory({ id: "miacode-project-save", mode: "readwrite" }); }
-      catch (error) { if (error.name === "AbortError") return null; throw error; }
-      const filePath = relocatePath(project.filePath, project.resourceRoot, directoryHandle.name);
-      const directory = await this.assetDirectory(directoryHandle, filePath);
-      const fileHandle = await directory.getFileHandle(filePath.split("/").at(-1), { create: true });
-      return { fileHandle, filePath, directoryHandle, resourceRoot: directoryHandle.name, copyResources: true };
+      catch (error) { if (error.name === "AbortError") return null; if (error.name !== "SecurityError") throw error; }
+      if (directoryHandle) {
+        const filePath = relocatePath(project.filePath, project.resourceRoot, directoryHandle.name);
+        const directory = await this.assetDirectory(directoryHandle, filePath);
+        const fileHandle = await directory.getFileHandle(filePath.split("/").at(-1), { create: true });
+        return { fileHandle, filePath, directoryHandle, resourceRoot: directoryHandle.name, copyResources: true };
+      }
     }
     let handle = saveAs ? null : binding?.fileHandle;
     if (handle?.queryPermission && await handle.queryPermission({ mode: "readwrite" }) !== "granted") {
@@ -49,7 +55,7 @@ export class BrowserFiles {
       try {
         handle = await this.pickSaveFile({ id: "miacode-chart", suggestedName: "maidata.txt",
           types: [{ description: "Simai 谱面", accept: { "text/plain": [".txt"] } }] });
-      } catch (error) { if (error.name === "AbortError") return null; throw error; }
+      } catch (error) { if (error.name === "AbortError") return null; if (error.name !== "SecurityError") throw error; }
     }
     return handle ? { ...(handle === binding?.fileHandle ? binding : {}), fileHandle: handle, filePath: handle === binding?.fileHandle ? binding.filePath : handle.name }
       : { filePath: binding?.filePath || "maidata.txt", download: true };
@@ -101,6 +107,13 @@ export class BrowserFiles {
     catch (error) { await stream.abort().catch(() => {}); throw error; }
     return target;
   }
+}
+
+function browserPicker(name) {
+  const picker = globalThis[name]?.bind(globalThis);
+  if (!picker || !globalThis.window) return picker;
+  try { return window.top.location.origin === window.location.origin ? picker : undefined; }
+  catch (error) { if (error.name === "SecurityError") return undefined; throw error; }
 }
 
 function downloadText(text, filename) {

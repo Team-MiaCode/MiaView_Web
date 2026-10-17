@@ -3,6 +3,8 @@
 | 网页入口 | 对应分支 | 测试内容 |
 | --- | --- | --- |
 | **[Feature 编辑器测试版](https://team-miacode.github.io/MiaView_Web/feature/)** | `feature/web-editor-migration` | 网页编辑器与阶段功能 |
+| [Feature 独立编辑器](https://team-miacode.github.io/MiaView_Web/feature/editor/) | `feature/web-editor-migration` | 独立编辑器与组件接入 |
+| [Feature 独立预览](https://team-miacode.github.io/MiaView_Web/feature/preview/) | `feature/web-editor-migration` | 文件夹预览与 SDK 接入 |
 | [Main 发布版](https://team-miacode.github.io/MiaView_Web/) | `main` | 已发布的谱面预览 |
 
 Feature 测试版通过“打开”选择谱面文件夹，载入其中的 `maidata.txt`、`track.*`、`bg.*` 和 PV。文件在浏览器中读取。各入口随对应分支的阶段提交更新。
@@ -11,7 +13,7 @@ MiaView_Web 提供 maimai 谱面编辑工作台与实时预览 SDK，支持 Sima
 
 本项目通过 `vendor/MiaCode` 子模块跟进 MiaCode `dev`，并固定确切提交。解析、分析和预览场景复用上游代码；浏览器宿主、音视频接入、JavaScript SDK 和网页界面由本仓维护。更新上游需要显式更新子模块并重建播放器。
 
-编辑器的阶段要求与验收记录见[迁移计划](docs/WEB_EDITOR_MIGRATION_PLAN_ZH.md)和[UI 验收计划](docs/WEB_EDITOR_UI_ACCEPTANCE_ZH.md)。`editor/` 包含独立编辑器模板的入口、界面、SDK、运行时适配器、构建脚本与源版本配置。
+编辑器的阶段要求与验收记录见[迁移计划](docs/WEB_EDITOR_MIGRATION_PLAN_ZH.md)和[UI 验收计划](docs/WEB_EDITOR_UI_ACCEPTANCE_ZH.md)。[editor/](editor/README.md) 提供独立编辑器页面和 `createEditor` SDK，[preview/](preview/README.md) 提供独立预览页面和 `createPreview` SDK。两个子项目包含自身源码、界面、服务、构建脚本与源版本配置，运行和构建以对应目录为根。
 
 ## 功能一览
 
@@ -47,6 +49,8 @@ Git 仓库和源码 ZIP 只包含源码，不包含运行所需的生成 JS / WA
 | [Feature 编辑器测试版](https://team-miacode.github.io/MiaView_Web/feature/) | 打开谱面文件夹并测试网页编辑器 | 否 |
 | CI 产物 `miaview-preview` | 嵌入其他网站，或配合源码进行本地测试 | 否 |
 | CI 产物 `miaview-pages` | 部署完整的静态预览网站 | 否 |
+| CI 产物 `miaview-editor` | 独立部署与嵌入编辑器 | 否 |
+| CI 产物 `miaview-preview-standalone` | 独立部署与嵌入预览 | 否 |
 | [从源码构建](#开发与构建) | 修改播放器、更新上游或获取没有现成产物的版本 | 是 |
 
 下载 CI 产物：

@@ -8,7 +8,7 @@ import { translate, formatMessage } from "./ui/components/translate.mjs";
 import { BrowserFiles } from "./services/browser-files.mjs";
 import { ProjectStore } from "./services/project-store.mjs";
 import { previewSettingsFromValues, previewValuesFromSettings } from "./services/preview-appearance.mjs";
-import { stageResource, relocatePath, resourceFile, resolveChartResource, inputPaths, hydrateProjectResources } from "./services/chart-resources.mjs";
+import { stageResource, relocatePath, resourceFile, resolveChartResource, resolveChartMedia, inputPaths, hydrateProjectResources } from "./services/chart-resources.mjs";
 import { decodeMaidata } from "./renderer/runtime.mjs";
 import { WorkbenchShortcuts } from "./services/shortcuts.mjs";
 import { PLAYBACK_RATES } from "./renderer/playback.mjs";
@@ -260,6 +260,7 @@ export function createWorkbench(container, options = {}) {
     });
   }
   function mountPreview() {
+    workbench.root.classList.add("preview-initializing");
     workbench.previewContainer.replaceChildren();
     preview = createPreview(workbench.previewContainer, {
       resolution: { width: 1080, height: 1080 }, layout: "fit", diagnostics: false,
@@ -316,7 +317,7 @@ export function createWorkbench(container, options = {}) {
       workbench.documentSession.previewSettings = state.settings;
       workbench.documentSession.previewValues = { ...viewState.preferences.previewValues, ...previewValuesFromSettings(state.settings) };
       return preview;
-    });
+    }).finally(() => workbench.root.classList.remove("preview-initializing"));
   }
   function applyPlaybackState(state) {
     workbench.previewTransport.update(state);
@@ -386,10 +387,7 @@ export function createWorkbench(container, options = {}) {
     }
     if (sequence !== loadSequence) return info;
     if (folderFiles.size && snapshot.hasDocument) {
-      const explicit = resolveChartResource(folderFiles, filePath, snapshot.metadataVideoPath);
-      const extension = explicit?.name.split(".").at(-1).toLowerCase();
-      const resolved = explicit && ["mp4", "webm"].includes(extension) ? { video: explicit }
-        : explicit && ["jpg", "jpeg", "png", "webp"].includes(extension) ? { video: undefined, cover: explicit } : {};
+      const resolved = resolveChartMedia(folderFiles, filePath, snapshot.metadataVideoPath);
       input = { ...input, ...resolved };
       try { await preview.setResources({ video: input.video || null, ...("cover" in resolved ? { cover: resolved.cover } : {}) }); }
       catch (error) { previewError = error.message; }
@@ -1190,6 +1188,8 @@ export function createWorkbench(container, options = {}) {
   }, { signal: abort.signal });
   void ready.catch(() => {});
   return { workbench, viewState, ready, load: open, command,
+    async getDocument() { await workbench.sourceEditor.pending; await editPending; return preview.getDocument(); },
+    async getDocumentSaveText(section = 0) { await workbench.sourceEditor.pending; await editPending; return preview.getDocumentSaveText(section); },
     get preview() { return preview; },
     destroy() { clearTimeout(introUpdateTimer);clearTimeout(analysisTimer);clearTimeout(editPreviewTimer); ++analysisSequence; void flushRecovery().then(() => projectStore.close()).catch(error => workbench.status(error.message)); exportJobs.destroy();background.destroy();userFonts?.destroy();void preferenceAssets.close().catch(error=>workbench.status(error.message));abort.abort(); cancelAnimationFrame(selectionFrame); canvasResize.disconnect(); preview?.destroy(); if (coverSource) URL.revokeObjectURL(coverSource); workbench.destroy(); viewState.destroy(); },
   };

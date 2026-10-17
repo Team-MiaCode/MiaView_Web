@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, mkdtempSync, mkdirSync, writeFileSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep, extname } from "node:path";
@@ -100,6 +100,21 @@ try {
   assert.ok((await page.locator("#media-status").textContent()).includes("PV：未选择"));
   assert.equal(await page.locator("#remove-pv").isDisabled(), true);
   assert.ok(methods.every(method => ["GET", "HEAD"].includes(method)), "Local media must not be uploaded");
+  if (existsSync(join(siteRoot, "editor/index.html"))) {
+    await page.goto(base + "editor/index.html");
+    await page.locator(".welcome-title").waitFor();
+    await page.evaluate(async () => { const editor = document.getElementById("workbench").editor; await editor.ready; await editor.command("file.demo"); });
+    assert.equal(new URL(await page.locator(".preview-container iframe").getAttribute("src")).pathname, `${prefix}editor/renderer/index.html`);
+    await page.goto(base + "preview/index.html");
+    await page.locator("#files").setInputFiles(folder);
+    await page.locator("#difficulty:not([disabled])").waitFor({ timeout: 90000 });
+    assert.equal(new URL(await page.locator("#preview iframe").getAttribute("src")).pathname, `${prefix}preview/renderer/index.html`);
+    await page.goto(base + "editor/examples/editor.html");
+    await page.getByRole("status").filter({ hasText: "编辑器就绪" }).waitFor({ timeout: 90000 });
+    await page.getByRole("button", { name: "加载示例", exact: true }).click();
+    await page.locator("#editor > div > iframe").contentFrame().locator(".source-input").waitFor();
+    assert.equal(new URL(await page.locator("#editor > div > iframe").getAttribute("src")).pathname, `${prefix}editor/renderer/editor.html`);
+  }
   assert.deepEqual(errors, []);
   assert.deepEqual(missing, [], "Static Pages resources must load without missing/backend routes");
   console.log("Project Pages paths, local PV/music, difficulty preservation and upload-free playback passed");
