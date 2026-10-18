@@ -63,6 +63,14 @@ test("performance changes retain an active intro audition and validate frame rat
   assert.equal(calls.length, 1);
 });
 
+test("Editor input context updates preserve audition while visual setting changes leave it", async () => {
+  const { controller, calls } = fixture({ intro: true });
+  await controller.execute("setSettings", { touchPadAuthoringContext: false });
+  assert.equal(calls.includes("introStopped"), false);
+  await controller.execute("setSettings", { tapFlowSpeed: 8 });
+  assert.equal(calls.filter(call => call === "introStopped").length, 1);
+});
+
 test("controller shares settings and seek events across UI and host commands", async () => {
   const { controller, events, calls } = fixture();
   await controller.execute("load", { maidata: { text: "&inote_5=1,E" } });

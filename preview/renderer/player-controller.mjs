@@ -35,7 +35,8 @@ export function createPlayerController(engine) {
     await engine.boot;
     if (engine.exportRunning() && !["getState","getExportStatus","cancelExport","destroy","getDocument","getDiagnostics","getExportCapabilities"].includes(type))
       throw new Error("视频导出任务占用此预览实例，请通过独立预览实例编辑谱面");
-    if(engine.introAuditionActive()&&!introSafeCommands.has(type))await engine.stopIntroAudition();
+    const inputContextOnly = type === "setSettings" && Object.keys(payload).every(key => key === "touchPadAuthoringContext");
+    if(engine.introAuditionActive()&&!introSafeCommands.has(type)&&!inputContextOnly)await engine.stopIntroAudition();
     if (!["load", "destroy", "documentCommand", "editorCommand", "getDocument", "getDocumentSaveText", "getAnalysis"].includes(type))
       await engine.flushPreview();
     if (type === "load") {

@@ -80,6 +80,7 @@ try {
   await command("page.export");
   await command("export.settings", { introEnabled: true, introPvPreview: true, introPvStartSeconds: .2, introAuditionLoop: true });
   await command("export.toggleIntroAudition");
+  await page.evaluate(() => document.getElementById("workbench").editor.preview.setSettings({ touchPadAuthoringContext: false }));
   await waitForAsync(page, async () => (await document.getElementById("workbench").editor.preview.getState()).introAudition?.elapsed > .3);
   const paused = await state(); await popup.getByRole("button", { name: "嵌回编辑器", exact: true }).click();
   await waitForAsync(page, () => !document.getElementById("workbench").editor.preview.windowRouter.presenting);

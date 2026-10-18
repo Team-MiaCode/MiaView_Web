@@ -77,7 +77,7 @@ class PreviewWindow {
     const result = await this.owner[method](...args);
     const popup = this.popup;
     if (this.presenting && popup) {
-      if (method === "setSettings") await this.prepare(popup.preview, result);
+      if (method === "setSettings" && Object.keys(args[0]).some(key => key !== "touchPadAuthoringContext")) await this.prepare(popup.preview, result);
       else await popup.preview[method](...args);
     }
     return this.presenting && method === "setLatency" ? popup.preview.getState() : result;

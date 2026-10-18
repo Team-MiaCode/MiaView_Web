@@ -30,7 +30,7 @@ try {
     await page.evaluate(async()=>{
       const editor=document.getElementById("workbench").editor; await editor.ready;
       window.shortcutTrace=[]; editor.preview.on("shortcutInput",event=>shortcutTrace.push(event));
-      await editor.load({maidata:"&title=快捷键\n&inote_5=(120){4}1,2,E\n"});
+      await editor.load({maidata:"&title=快捷键\n&inote_5=(120){4}1,2,3h[4:64],E\n"});
     });
   }
   await page.goto(`http://127.0.0.1:${server.address().port}/index.html`); await page.locator(".welcome-title").waitFor(); await load();
@@ -40,7 +40,7 @@ try {
   const selectAll=async()=>{ await chooseEditor();await editor.focus();await editor.press("Control+a"); };
   await selectAll(); await editor.press("Control+j");
   await page.waitForFunction(()=>document.querySelector(".source-input").value.includes("8,7"));
-  assert.equal(await text(),"(120){4}8,7,E");
+  assert.equal(await text(),"(120){4}8,7,6h[4:64],E");
   await editor.press("Control+z"); await page.waitForFunction(()=>document.querySelector(".source-input").value.includes("1,2"));
   await selectAll(); await editor.press("Control+b");
   await page.waitForFunction(()=>document.querySelector(".source-input").value.includes("1b,2b"));

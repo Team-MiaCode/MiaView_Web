@@ -30,7 +30,11 @@ try {
   for (const name of engines) {
     const browser = await launchPreviewBrowser(playwright, name);
     let page, activeCase;
-    const deadline = setTimeout(() => { console.error(`${name}: workbench deadline at ${JSON.stringify(activeCase)}`); void browser.close(); }, 180000);
+    let deadline;
+    const checkpoint = value => {
+      activeCase = value; clearTimeout(deadline);
+      deadline = setTimeout(() => { console.error(`${name}: workbench idle deadline at ${JSON.stringify(activeCase)}`); void browser.close(); }, 120000);
+    };
     try {
       const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });
       page = await context.newPage();
@@ -39,7 +43,7 @@ try {
       page.on("pageerror", error => errors.push(error.message));
       await page.goto(base + "/index.html");
       await page.locator(".welcome-title").waitFor();
-      activeCase = { engine: name, phase: "nativeReady" };
+      checkpoint({ engine: name, phase: "nativeReady" });
       await page.evaluate(() => document.getElementById("workbench").editor.ready);
       console.log(`${name}: native workbench initialized`);
       const webAudio = await page.evaluate(() => typeof (globalThis.AudioContext ?? globalThis.webkitAudioContext) === "function");
@@ -47,7 +51,7 @@ try {
       for (const [width, height] of sizes) {
         await page.setViewportSize({ width, height });
         for (const key of pages) {
-          activeCase = { engine: name, width, height, page: key };
+          checkpoint({ engine: name, width, height, page: key });
           await page.evaluate(key => document.getElementById("workbench").editor.viewState.openEditor(key), key);
           const geometry = await page.evaluate(() => {
             const root = document.getElementById("workbench");
@@ -123,7 +127,7 @@ try {
         }
       }
       await page.setViewportSize({ width: 1366, height: 768 });
-      activeCase = { engine: name, phase: "editorInput", width: 1366, height: 768 };
+      checkpoint({ engine: name, phase: "editorInput", width: 1366, height: 768 });
       if (webAudio) await page.evaluate(() => document.getElementById("workbench").editor.command("file.demo"));
       else await page.evaluate(() => {
         const editor = document.getElementById("workbench").editor;
@@ -294,7 +298,7 @@ try {
       assert.equal(await page.locator("[role=menu]").count(), 0);
       assert.equal(await page.locator(".menu-button:focus").textContent(), "文件");
       for (const scale of [0.8, 1, 1.25, 1.5, 2]) {
-        activeCase = { engine: name, phase: "inputAlignment", scale };
+        checkpoint({ engine: name, phase: "inputAlignment", scale });
         await page.setViewportSize({ width: Math.floor(1366 / scale), height: Math.floor(768 / scale) });
         await page.evaluate(() => document.getElementById("workbench").editor.viewState.setPreference("editorAutoWrap", true));
         await page.locator(".source-input").fill(`${"1h[4:1],2-8[4:1],".repeat(35)}\n${"|| 中文注释".repeat(35)}\nE`);
