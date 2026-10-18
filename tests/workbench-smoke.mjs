@@ -98,6 +98,7 @@ try {
             }
           }
           if (key === "cover") {
+            await page.evaluate(() => document.querySelector(".cover-editor").coverRenderer.ready);
             await page.locator('.settings-tabs button[data-page="layer"]').click();
             await assertControlBounds(page, `${name}/${width}/cover/layer`);
             await page.locator('.settings-tabs button[data-page="canvas"]').click();
