@@ -5,11 +5,12 @@ export async function launchPreviewBrowser(playwright, name, { hardware = false,
   const type = channel ? playwright.chromium : playwright[name];
   return type.launch({
     headless,
-    ...(hardware ? { args: ["--enable-gpu", ...(process.platform === "win32" ? ["--use-angle=d3d11"] : [])] } : {}),
+    args: [...(hardware ? ["--enable-gpu", ...(process.platform === "win32" ? ["--use-angle=d3d11"] : [])] : []),
+      ...(["chromium", "chrome", "msedge"].includes(name) ? ["--mute-audio"] : [])],
     ...(channel ? { channel } : {}),
     ...(name === "firefox" ? {
       // CI runners use Mesa software rendering for Qt's WebGL2 surface.
-      firefoxUserPrefs: { "webgl.force-enabled": true,
+      firefoxUserPrefs: { "webgl.force-enabled": true, "media.volume_scale": "0.0",
         ...(process.platform === "linux" ? { "dom.ipc.avoid-gtk": false, "gfx.x11-egl.force-enabled": false } : {}) },
       ...(process.platform === "linux" ? {
         env: { ...process.env, LIBGL_ALWAYS_SOFTWARE: "1" },
