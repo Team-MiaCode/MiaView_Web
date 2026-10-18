@@ -110,6 +110,7 @@ try {
   await command("preferences.performance", { videoDecodePrefersSoftware: false, canvasFrameRateMode: 3 });
   assert.equal((await state()).maxFps, "unlimited"); assert.equal((await state()).videoPresentation.decoder, "browser");
   const activeRenderer = page.frames().find(frame => frame.url().includes("/renderer/index.html"));
+  await waitForAsync(activeRenderer, () => decoders.every(decoder => decoder.state === "closed"), undefined, { timeout: 5000 });
   const remaining = await activeRenderer.evaluate(decoderSnapshot);
   results.decoderRelease = remaining;
   assert.equal(remaining.active, 0); assert.equal(remaining.softwareFrames, 0);

@@ -45,7 +45,7 @@ try {
         await page.evaluate(() => document.getElementById("workbench").editor.command("timeline.viewport"));
         await page.waitForFunction(({ width, height }) => {
           const scene = document.getElementById("workbench").editor.workbench.documentSession.timelineSceneState;
-          return scene.viewportSize.width === width && scene.viewportSize.height === height;
+          return scene?.viewportSize.width === width && scene.viewportSize.height === height;
         }, { width, height });
         await page.evaluate(() => document.fonts.ready);
         const scene = await page.evaluate(() => document.getElementById("workbench").editor.workbench.documentSession.timelineSceneState);

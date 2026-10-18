@@ -8,6 +8,7 @@ import { waitForAsync } from "./helpers/wait-async.mjs";
 
 const browsers = await import(process.env.MIACODE_PLAYWRIGHT_MODULE ? pathToFileURL(process.env.MIACODE_PLAYWRIGHT_MODULE).href : "playwright");
 const name = process.env.MIACODE_BROWSER || "chromium", output = resolve("artifacts/video-export-long", name);
+const format = process.env.MIACODE_EXPORT_FORMAT || "auto";
 mkdirSync(output, { recursive: true });
 const server = staticServer(process.cwd(), { performanceTerminal: false }); await listenForBrowser(server);
 const browser = await browsers[name].launch({ headless: true });
@@ -17,7 +18,7 @@ try {
   page.on("pageerror", error => errors.push(error.message));
   page.on("console", message => { if (message.type() === "log" && message.text().startsWith("Long export:")) console.log(message.text()); });
   await page.goto(`http://127.0.0.1:${server.address().port}/tests/host.html`);
-  await page.evaluate(async () => {
+  await page.evaluate(async format => {
     const { createPreview } = await import("/sdk/index.mjs");
     window.preview = createPreview(document.getElementById("one"), { resolution: { width: 128, height: 128 }, controls: false, diagnostics: false });
     await preview.ready;
@@ -38,8 +39,8 @@ try {
       const quarter = Math.floor(value.progress * 4);
       if (quarter !== milestone) { milestone = quarter; console.log(`Long export: ${value.frame}/${value.frameCount} frames`); }
     });
-    await preview.startExport({ width: 128, height: 128, fps: 30, introEnabled: false, clockCountEnabled: false, presetIndex: 0 });
-  });
+    await preview.startExport({ width: 128, height: 128, fps: 30, format, introEnabled: false, clockCountEnabled: false, presetIndex: 0 });
+  }, format);
   await waitForAsync(page, () => Boolean(window.exportResult || window.exportFailure), undefined, { timeout: 900000, polling: 1000 });
   const result = await page.evaluate(async () => {
     if (window.exportFailure) throw new Error(window.exportFailure.message);
@@ -47,10 +48,14 @@ try {
     const input = new media.Input({ source: new media.BlobSource(result.blob), formats: media.ALL_FORMATS });
     try {
       const video = await input.getPrimaryVideoTrack(), audio = await input.getPrimaryAudioTrack();
-      let frames = 0, firstTimestamp, lastTimestamp, gaps = 0;
+      const timeResolution = await video.getTimeResolution();
+      let frames = 0, firstTimestamp, lastTimestamp, gaps = 0, maximumTimestampError = 0;
       for await (const sample of new media.VideoSampleSink(video).samples()) {
         firstTimestamp ??= sample.timestamp;
-        if (lastTimestamp !== undefined && Math.abs(sample.timestamp - lastTimestamp - 1 / 30) > .0001) ++gaps;
+        const expectedTimestamp = Math.round(frames / 30 * timeResolution) / timeResolution;
+        const error = Math.abs(sample.timestamp - expectedTimestamp);
+        maximumTimestampError = Math.max(maximumTimestampError, error);
+        if (error > .000001 || lastTimestamp !== undefined && sample.timestamp <= lastTimestamp) ++gaps;
         lastTimestamp = sample.timestamp; ++frames; sample.close();
       }
       const windows = [[.2, 1.8], [5, 5.2], [91, 91.2], [181, 181.2]].map(([start, end]) => ({ start, end, energy: 0, count: 0 }));
@@ -65,7 +70,7 @@ try {
       }
       const { blob, ...metadata } = result;
       const encoded = await new Promise(resolve => { const reader = new FileReader(); reader.onload = () => resolve(reader.result.split(",")[1]); reader.readAsDataURL(blob); });
-      return { ...metadata, bytes: blob.size, frames, firstTimestamp, lastTimestamp, gaps, audioEnd, duration: await input.computeDuration(),
+      return { ...metadata, bytes: blob.size, frames, firstTimestamp, lastTimestamp, gaps, timeResolution, maximumTimestampError, audioEnd, duration: await input.computeDuration(),
         rms: windows.map(range => Math.sqrt(range.energy / range.count)), restored: await preview.getState(), encoded };
     } finally { input.dispose(); }
   });
