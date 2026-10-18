@@ -139,6 +139,7 @@ jobs:
       - name: Validate editor functions and creator workflow
         env:
           MIACODE_BROWSER: ${{ matrix.browser }}
+          DEBUG: pw:browser
         run: xvfb-run --auto-servernum npm run test:stage2
       - uses: actions/upload-artifact@v4
         if: always()

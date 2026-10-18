@@ -16,6 +16,25 @@ let page;
 try {
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 } }); page.setDefaultTimeout(90000);
   page.on("pageerror", error => errors.push(error.message));
+  await page.addInitScript(() => {
+    const AudioContextClass = window.AudioContext ?? window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    const resume = AudioContextClass.prototype.resume;
+    AudioContextClass.prototype.resume = function (...args) {
+      const trace = { startedAt: performance.now(), stateBefore: this.state, pending: true };
+      window.audioResumeTrace = { trace, context: this };
+      return resume.apply(this, args).then(value => {
+        Object.assign(trace, { pending: false, stateAfter: this.state }); return value;
+      }, error => { Object.assign(trace, { pending: false, error: String(error) }); throw error; });
+    };
+    window.videoEventTrace = [];
+    for (const type of ["seeking", "seeked", "playing", "pause", "error"]) document.addEventListener(type, event => {
+      if (!(event.target instanceof HTMLVideoElement)) return;
+      const video = event.target;
+      videoEventTrace.push({ type, time: video.currentTime, seeking: video.seeking, readyState: video.readyState });
+      if (videoEventTrace.length > 20) videoEventTrace.shift();
+    }, true);
+  });
   await page.goto(`http://127.0.0.1:${server.address().port}/index.html`); await page.locator(".welcome-title").waitFor();
   await page.evaluate(() => document.getElementById("workbench").editor.ready);
   const command = (id, args = {}) => page.evaluate(([id, args]) => document.getElementById("workbench").editor.command(id, args), [id, args]);
@@ -110,12 +129,21 @@ try {
   assert.equal(third.isClosed(), true);
   assert.deepEqual(errors, []); console.log("Detached controls, document ownership, edits, keyboard, responsive window and playback restoration passed");
 } catch (error) {
-  results.failure = await page?.evaluate(async () => {
+  results.failure = await page?.evaluate(() => {
     const editor = document.getElementById("workbench").editor, router = editor.preview.windowRouter;
-    return { status: editor.workbench.statusLabel.textContent, presenting: router.presenting, attaching: router.attaching,
+    const detail = { status: editor.workbench.statusLabel.textContent, presenting: router.presenting, attaching: router.attaching,
       popup: Boolean(router.popup), clock: router.popup?.clock, closing: window.closingPreview?.closingState,
-      activation: navigator.userActivation.hasBeenActive, state: await editor.preview.getState() };
-  }).catch(() => null);
+      activation: navigator.userActivation.hasBeenActive, visibility: document.visibilityState };
+    try {
+      const renderer = router.owner.iframe.contentWindow, video = renderer.document.getElementById("stage-video");
+      detail.owner = { visibility: renderer.document.visibilityState, play: renderer.document.getElementById("play").textContent,
+        time: renderer.document.getElementById("seek").value, audio: renderer.audioResumeTrace && {
+          ...renderer.audioResumeTrace.trace, state: renderer.audioResumeTrace.context.state },
+        video: { time: video.currentTime, paused: video.paused, seeking: video.seeking, readyState: video.readyState },
+        videoEvents: renderer.videoEventTrace };
+    } catch (error) { detail.ownerError = String(error); }
+    return detail;
+  }).catch(error => ({ diagnosticError: String(error) }));
   console.error(JSON.stringify({ phase: results.phase, failure: results.failure, errors }));
   throw error;
 } finally {
