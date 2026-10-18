@@ -19,7 +19,10 @@ try {
   await page.addInitScript(() => {
     for (const type of ["pointerdown", "wheel", "keydown"]) document.addEventListener(type, event => {
       const workbench = document.getElementById("workbench")?.editor?.workbench;
-      if (workbench && event.target.closest?.(".source-input")) window.lastPlaybackInteraction = workbench.timelineView.playbackSecond();
+      if (workbench && event.target.closest?.(".source-input")) {
+        const audio = workbench.previewContainer.querySelector("iframe").contentWindow.playbackAudio;
+        if (audio) window.lastPlaybackInteraction = { second: audio.currentSecond(), timelineSecond: workbench.timelineView.playbackSecond() };
+      }
     }, { capture: true });
     const resume = AudioContext.prototype.resume;
     AudioContext.prototype.resume = function () {
@@ -35,6 +38,20 @@ try {
     window.editor = document.getElementById("workbench").editor; await editor.ready;
     const chart = "(120){4}\n" + "1,2,3,4,\n".repeat(128) + "E";
     await editor.load({ maidata: `&title=Timeline follow\n&inote_5=${chart}\n&inote_6=${chart}`, difficulty: 5 });
+  });
+  await page.frameLocator(".preview-container iframe").locator("body").evaluate(async () => {
+    const { PreviewAudio } = await import("./runtime.mjs");
+    const currentSecond = PreviewAudio.prototype.currentSecond;
+    const pause = PreviewAudio.prototype.pause;
+    PreviewAudio.prototype.currentSecond = function (...args) {
+      window.playbackAudio = this;
+      return currentSecond.apply(this, args);
+    };
+    PreviewAudio.prototype.pause = function (...args) {
+      const result = pause.apply(this, args);
+      window.lastAudioPause = this.offset;
+      return result;
+    };
   });
   await page.evaluate(() => editor.preview.play());
   await waitForAsync(page, async () => (await editor.preview.getState()).currentTime > .3);
@@ -54,9 +71,15 @@ try {
     if (action === "wheel") { await source.hover(); await page.mouse.wheel(0, 100); }
     if (action === "shortcut") { await source.focus(); await page.keyboard.press("Control+Shift+x"); }
     await waitForAsync(page, async () => !(await editor.preview.getState()).playing, undefined, { timeout: 5000 });
-    const { state, interactionSecond } = await page.evaluate(async () => ({ state: await editor.preview.getState(), interactionSecond: window.lastPlaybackInteraction }));
-    assert.ok(Math.abs(state.currentTime - interactionSecond) < .15, `${action} in text area retains interaction time: ${state.currentTime} / ${interactionSecond}`);
-    results.push({ textInteraction: action, interactionSecond, time: state.currentTime, playing: state.playing });
+    const { state, interaction, pauseSecond } = await page.evaluate(async () => ({ state: await editor.preview.getState(), interaction: window.lastPlaybackInteraction,
+      pauseSecond: editor.workbench.previewContainer.querySelector("iframe").contentWindow.lastAudioPause }));
+    const interactionSecond = interaction.second;
+    assert.ok(state.currentTime >= interactionSecond, `${action} preserves progress made before the input event`);
+    assert.equal(state.currentTime, pauseSecond, `${action} retains the audio owner's pause position`);
+    await page.waitForTimeout(100);
+    assert.equal((await page.evaluate(() => editor.preview.getState())).currentTime, state.currentTime, `${action} remains paused`);
+    results.push({ textInteraction: action, interactionSecond, timelineSecond: interaction.timelineSecond, time: state.currentTime,
+      pauseLatencyMs: (state.currentTime - interactionSecond) * 1000, playing: state.playing });
   }
   await page.evaluate(() => Promise.all([editor.command("preview.toggle"), editor.command("preview.toggle")]));
   assert.equal((await page.evaluate(() => editor.preview.getState())).playing, false, "Two rapid toggles end paused");
