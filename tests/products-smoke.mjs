@@ -147,6 +147,7 @@ try {
       results.push({ browser: name, product: "preview", meanDifference });
       await page.evaluate(() => preview.destroy());
       await page.goto(`${previewSite}/index.html`);
+      await page.waitForFunction(() => !document.getElementById("files").disabled, undefined, { timeout: 90000 });
       for (const name of ["Standard", "Explicit", "Image"]) {
         await page.locator("#files").setInputFiles(resolve(fixtureRoot, name));
         await page.waitForFunction(name => document.getElementById("difficulty").disabled === false && document.getElementById("status").textContent === name, name);

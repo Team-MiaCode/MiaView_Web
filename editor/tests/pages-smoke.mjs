@@ -105,7 +105,16 @@ try {
     await page.locator(".welcome-title").waitFor();
     await page.evaluate(async () => { const editor = document.getElementById("workbench").editor; await editor.ready; await editor.command("file.demo"); });
     assert.equal(new URL(await page.locator(".preview-container iframe").getAttribute("src")).pathname, `${prefix}editor/renderer/index.html`);
-    await page.goto(base + "preview/index.html");
+    let releasePreviewModule;
+    const moduleGate = new Promise(resolve => { releasePreviewModule = resolve; });
+    const moduleUrl = base + "preview/app.mjs";
+    await page.route(moduleUrl, async route => { await moduleGate; await route.continue(); });
+    try {
+      await page.goto(base + "preview/index.html");
+      assert.equal(await page.locator("#files").isDisabled(), true, "folder input waits for its application module");
+      releasePreviewModule();
+      await page.waitForFunction(() => !document.getElementById("files").disabled, undefined, { timeout: 90000 });
+    } finally { releasePreviewModule(); await page.unrouteAll({ behavior: "wait" }); }
     await page.locator("#files").setInputFiles(folder);
     await page.locator("#difficulty:not([disabled])").waitFor({ timeout: 90000 });
     assert.equal(new URL(await page.locator("#preview iframe").getAttribute("src")).pathname, `${prefix}preview/renderer/index.html`);

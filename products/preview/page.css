@@ -6,6 +6,7 @@ header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding:
 h1 { margin: 0 8px 0 0; font-size: 16px; }
 select, .folder { max-width: 100%; border: 1px solid var(--border-control); border-radius: 5px; padding: 6px 10px; background: var(--background-control); color: inherit; font: inherit; }
 .folder { position: relative; cursor: pointer; }
+.folder:has(input:disabled) { cursor: wait; opacity: .65; }
 .folder input { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
 .folder:focus-within, select:focus-visible { outline: 2px solid var(--accent-primary); }
 #status { min-width: 0; overflow-wrap: anywhere; color: var(--text-secondary); }

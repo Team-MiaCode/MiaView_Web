@@ -42,4 +42,7 @@ element("difficulty").addEventListener("change", event => {
   void preview.selectDifficulty(Number(event.target.value)).catch(error => status(error.message));
 });
 window.addEventListener("pagehide", () => preview.destroy(), { once: true });
-void preview.ready.catch(error => status(error.message));
+void preview.ready.then(() => {
+  element("files").disabled = false;
+  status("选择包含 maidata.txt、音乐和素材的文件夹");
+}, error => status(error.message));
