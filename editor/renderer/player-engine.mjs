@@ -26,6 +26,8 @@ import { PreviewAnalysis } from "./analysis-client.mjs";
 export function createPlayerEngine(view) {
   const lifetime = new AbortController();
   let disposed = false, frameRequest;
+  let playbackRequest = 0;
+  let playStartAbort;
   let WIDTH = DEFAULT_RESOLUTION.width,
     HEIGHT = DEFAULT_RESOLUTION.height;
 
@@ -138,6 +140,7 @@ export function createPlayerEngine(view) {
     event.preventDefault(); event.stopImmediatePropagation();
     if (candidates.length !== 1) return;
     const id = candidates[0][0];
+    if (id === "preview.play_pause_global" && event.repeat) return;
     if (id === "preview.pause_display_hold") {
       if (heldShortcut) return;
       heldShortcut = { id, key: input.key };
@@ -419,6 +422,8 @@ export function createPlayerEngine(view) {
     return metric ? diagnostics.measure(metric, action) : action();
   }
   function pause() {
+    ++playbackRequest;
+    playStartAbort?.abort();
     if(introAudition){introAudition.pause();return;}
     if (!audio) return;
     diagnostics.flush();
@@ -437,26 +442,41 @@ export function createPlayerEngine(view) {
   async function play() {
     if(introAudition)return introAudition.play();
     if (!chart || audio.playing) return;
-    await audio.context.resume();
-    if (playback.rangePlaybackEnabled && (audio.offset < playback.exportStartSeconds || audio.offset >= playback.exportEndSeconds))
-      seek(playback.exportStartSeconds);
-    diagnostics.flush();
-    if (video.src && !hidePv && !performanceOptions.videoDecodePrefersSoftware) {
-      await seekVideo(video, audio.offset, abort.signal);
-      video.playbackRate = playback.rate;
-      video.pause();
+    const request = ++playbackRequest;
+    const controller = playStartAbort = new AbortController();
+    const signal = AbortSignal.any([abort.signal, controller.signal]);
+    let cancel;
+    const cancelled = new Promise(resolve => { cancel = () => resolve(false); });
+    signal.addEventListener("abort", cancel, { once: true });
+    try {
+      const resumed = await Promise.race([audio.context.resume().then(() => true), cancelled]);
+      if (!resumed || request !== playbackRequest || disposed) return;
+      if (playback.rangePlaybackEnabled && (audio.offset < playback.exportStartSeconds || audio.offset >= playback.exportEndSeconds))
+        seek(playback.exportStartSeconds);
+      diagnostics.flush();
+      if (video.src && !hidePv && !performanceOptions.videoDecodePrefersSoftware) {
+        await seekVideo(video, audio.offset, signal);
+        video.playbackRate = playback.rate;
+        video.pause();
+      }
+      if (video.src && !hidePv) {
+        await videoPresentation.ready(audio.offset, signal);
+        if (renderedSecond === audio.currentSecond()) await presentVideo(performance.now(), true);
+      }
+      if (request !== playbackRequest || disposed) return;
+      audio.start();
+      call("miacode_set_playing", null, ["number"], [1]);
+      playbackDiagnostics.setEnabled(diagnostics.enabled);
+      status("");
+      $("play").textContent = "暂停";
+      emit("playing", { elapsedMs: elapsed() });
+      updateTransport();
+    } catch (error) {
+      if (!signal.aborted) throw error;
+    } finally {
+      signal.removeEventListener("abort", cancel);
+      if (playStartAbort === controller) playStartAbort = null;
     }
-    if (video.src && !hidePv) {
-      await videoPresentation.ready(audio.offset, abort.signal);
-      if (renderedSecond === audio.currentSecond()) await presentVideo(performance.now(), true);
-    }
-    audio.start();
-    call("miacode_set_playing", null, ["number"], [1]);
-    playbackDiagnostics.setEnabled(diagnostics.enabled);
-    status("");
-    $("play").textContent = "暂停";
-    emit("playing", { elapsedMs: elapsed() });
-    updateTransport();
   }
   function positionVideo(second) {
     const target = Math.min(Math.max(0, second), Math.max(0, video.duration - .000001));
@@ -808,8 +828,9 @@ export function createPlayerEngine(view) {
     return result;
   }
   async function documentCommand(request) {
+    if (request.id === "document.selectDifficulty") pause();
     const wasPlaying = audio?.playing ?? false;
-    const second = request.id === "document.selectDifficulty" ? 0 : audio?.currentSecond() ?? 0;
+    const second = audio?.currentSecond() ?? 0;
     const result = JSON.parse(call("miacode_document_command", "string", ["string"], [JSON.stringify(request)]));
     if (result.error) throw new Error(result.error);
     previewDeferred = Boolean(result.previewDeferred);
@@ -830,6 +851,7 @@ export function createPlayerEngine(view) {
       emit("documentChanged", result.document); return result;
     }
     if (!latency.onPage) pause();
+    const request = playbackRequest;
     if (latency.onPage) latency = { ...latency, bpm: result.document.bpm, offsetSeconds: result.document.offsetSeconds };
     const parsed = latency.onPage ? latencyScene(latency) : result.preview;
     if (parsed.error) {
@@ -843,7 +865,10 @@ export function createPlayerEngine(view) {
       view.chart?.(parsed);
       audio.replaceTimeline(audioSettings.breakSlideTailCheerMuted ? parsed.sfxMutedTail : parsed.sfx, parsed.touchholdSegments);
       audio.duration = latency.onPage ? parsed.duration : Math.max(parsed.duration, audio.track?.duration ?? 0);
-      if (!latency.onPage) { seek(Math.min(second, audio.duration)); if (wasPlaying) await play(); }
+      if (!latency.onPage) {
+        seek(Math.min(request === playbackRequest ? second : audio.currentSecond(), audio.duration));
+        if (wasPlaying && request === playbackRequest) await play();
+      }
     }
     delete result.preview;
     for (const id of ["play", "restart", "seek"]) $(id).disabled = !chart;
@@ -911,6 +936,7 @@ export function createPlayerEngine(view) {
     }
     const playing = audio.playing, second = audio.currentSecond();
     pause();
+    const request = playbackRequest;
     audio.track = nextTrack;
     if ("audio" in changes) loadedAudioResource = changes.audio;
     loadedCover = nextCover;
@@ -940,7 +966,7 @@ export function createPlayerEngine(view) {
       const doc = JSON.parse(call("miacode_document", "string", [], []));
       if (doc.activeDifficultyId > 0) await documentCommand({ id: "document.selectDifficulty", args: { difficulty: doc.activeDifficultyId } });
     }
-    if (playing && chart) await play();
+    if (playing && chart && request === playbackRequest) await play();
     return previewState();
   }
 

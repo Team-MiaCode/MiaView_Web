@@ -42,6 +42,39 @@ function fixture({ intro = false } = {}) {
   return { controller, engine, events, calls };
 }
 
+test("pause responds without refreshing a pending edited chart", async () => {
+  const { controller, engine, calls } = fixture();
+  engine.flushPreview = async () => { throw new Error("Pause waited for chart refresh"); };
+  await controller.execute("pause");
+  assert.ok(calls.includes("pause"));
+});
+
+test("pause interrupts an asynchronous play command", async () => {
+  const { controller, engine, calls } = fixture();
+  let release;
+  engine.chart = () => ({ difficultyId: 5 });
+  engine.play = () => new Promise(resolve => { release = resolve; });
+  const playing = controller.execute("play");
+  await new Promise(resolve => setImmediate(resolve));
+  const paused = controller.execute("pause");
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    assert.ok(calls.includes("pause"));
+  } finally { release(); await Promise.all([playing, paused]); }
+});
+
+test("pause cancels a play request waiting for edited preview preparation", async () => {
+  const { controller, engine, calls } = fixture();
+  let release;
+  engine.chart = () => ({ difficultyId: 5 });
+  engine.flushPreview = () => new Promise(resolve => { release = resolve; });
+  const playing = controller.execute("play");
+  await new Promise(resolve => setImmediate(resolve));
+  const paused = controller.execute("pause");
+  release(); await Promise.all([playing, paused]);
+  assert.deepEqual(calls, ["pause"]);
+});
+
 test("Read-only analysis keeps the captured revision while preview commands flush current edits", async () => {
   const { controller, engine } = fixture();
   let resolveAnalysis, stateResolved = false, flushed = false;
@@ -106,8 +139,15 @@ test("invalid commands preserve the loaded chart and do not poison the queue", a
   await assert.rejects(controller.execute("selectDifficulty", { difficulty: 7 }), /not present/);
   await assert.rejects(controller.execute("unknown"), /Unsupported/);
   assert.equal(calls.length, before);
-  await Promise.all([controller.execute("restart"), controller.execute("pause")]);
+  await controller.execute("restart"); await controller.execute("pause");
   assert.deepEqual(calls.slice(-2), ["play", "pause"]);
+});
+
+test("pause cancels playback requests waiting in the command queue", async () => {
+  const { controller, engine, calls } = fixture();
+  engine.chart = () => ({ difficultyId: 5 });
+  await Promise.all([controller.execute("restart"), controller.execute("pause")]);
+  assert.deepEqual(calls, ["pause"]);
 });
 
 test("Export keeps its renderer snapshot stable and cancellation releases mutation commands",async()=>{

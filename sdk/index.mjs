@@ -83,6 +83,7 @@ class MiaCodePreview {
     this.destroyed = false;
     this.failed = null;
     this.queue = Promise.resolve();
+    this.playbackRequest = 0;
     this.abort = new AbortController();
     this.wrapper = document.createElement("div");
     Object.assign(this.wrapper.style, {
@@ -257,12 +258,15 @@ class MiaCodePreview {
     });
   }
   command(type, payload) {
-    const next = this.queue.then(async () => {
+    const playbackRequest = type === "pause" ? ++this.playbackRequest : this.playbackRequest;
+    const next = (type === "pause" ? Promise.resolve() : this.queue).then(async () => {
       await this.ready;
       if (this.failed) throw this.failed;
+      if ((type === "play" || type === "restart") && playbackRequest !== this.playbackRequest)
+        return this.request("getState");
       return this.request(type, payload);
     });
-    if (type !== "getAnalysis") this.queue = next.catch(() => {});
+    if (type !== "getAnalysis" && type !== "pause") this.queue = next.catch(() => {});
     return next;
   }
   load(chart) {

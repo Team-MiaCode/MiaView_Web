@@ -19,6 +19,7 @@ export function attachSdkBridge(engine, controller) {
   let sessionId = null,
     disposed = false,
     queue = Promise.resolve();
+  let playbackRequest = 0;
   const send = (type, payload, extra = {}) => {
     if (!sessionId || disposed) return;
     const identity = engine.identity();
@@ -55,12 +56,13 @@ export function attachSdkBridge(engine, controller) {
       if (message.type !== "initialize") return;
       sessionId = message.sessionId;
     }
-    const next = queue.then(async () => {
+    const request = message.type === "pause" ? ++playbackRequest : playbackRequest;
+    const next = (message.type === "pause" ? Promise.resolve() : queue).then(async () => {
       try {
         send("response", null, {
           requestId: message.requestId,
           ok: true,
-          value: await execute(message),
+          value: (message.type === "play" || message.type === "restart") && request !== playbackRequest ? engine.state() : await execute(message),
         });
       } catch (error) {
         if (disposed) return;
@@ -73,7 +75,7 @@ export function attachSdkBridge(engine, controller) {
         });
       }
     });
-    if (message.type !== "getAnalysis") queue = next;
+    if (message.type !== "getAnalysis" && message.type !== "pause") queue = next;
   };
   window.addEventListener("message", receive);
   window.addEventListener(

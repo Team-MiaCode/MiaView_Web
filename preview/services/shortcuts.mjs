@@ -71,6 +71,7 @@ export class WorkbenchShortcuts {
     event.preventDefault(); event.stopImmediatePropagation();
     if (candidates.length > 1) { this.error(new Error("组合键对应多个快捷键，请调整绑定")); return; }
     const id = candidates[0][0];
+    if (id === "preview.play_pause_global" && event.repeat) return;
     if (id === "preview.pause_display_hold") {
       if (this.held) return;
       this.held = true; this.holdKey = input.key; this.run(id,{ active: true });

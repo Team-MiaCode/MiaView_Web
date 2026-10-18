@@ -30,7 +30,12 @@ try {
   const sprite = first.noteSprites.find(note => note.spriteType === "tap" && note.center.x > first.timelineLeft && note.center.x < first.viewportSize.width);
   assert.ok(sprite);
   const bounds = await page.locator(".timeline-view").boundingBox();
+  const beforeBodyClick = await page.evaluate(() => document.getElementById("workbench").editor.preview.getState());
   await page.mouse.click(bounds.x + sprite.center.x, bounds.y + sprite.center.y);
+  await page.waitForFunction(() => !document.getElementById("workbench").editor.workbench.timelineView.interactionPending);
+  const afterBodyClick = await page.evaluate(() => document.getElementById("workbench").editor.preview.getState());
+  assert.equal(afterBodyClick.currentTime, beforeBodyClick.currentTime);
+  await page.mouse.click(bounds.x + sprite.center.x, bounds.y + first.timelineTop / 2);
   await page.waitForFunction(() => {
     const input = document.getElementById("workbench").editor.workbench.sourceEditor.input;
     return document.activeElement === input && /[1-8]/.test(input.value.slice(input.selectionStart, input.selectionStart + 1));

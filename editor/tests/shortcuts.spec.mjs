@@ -33,6 +33,16 @@ function shortcuts() {
     execute:()=>{},enabled:()=>true,changed:()=>{},error:error=>{throw error;}});
   return {manager,root,abort};
 }
+
+test("holding the play/pause shortcut issues one toggle per key press", () => {
+  const { manager, root, abort } = shortcuts(), calls = [];
+  manager.bindings = { "preview.play_pause_global": { canonicalText: "Ctrl+Shift+X", key: 88, modifiers: 0x6000000, wheelDirection: 0 } };
+  manager.execute = id => calls.push(id);
+  const event = { type: "keydown", key: "x", ctrlKey: true, shiftKey: true, target: root, preventDefault() {}, stopImmediatePropagation() {} };
+  manager.input(event); manager.input({ ...event, repeat: true });
+  assert.deepEqual(calls, ["preview.play_pause_global"]);
+  abort.abort();
+});
 test("Concurrent preference changes retain each shortcut and preserve reset order", async () => {
   const {manager,abort}=shortcuts(); await manager.configure();
   await Promise.all([manager.set("transform.mirror_lr","Alt+J"),manager.set("transform.rotate_180","Alt+L")]);

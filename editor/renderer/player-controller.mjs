@@ -29,7 +29,7 @@ export function createPlayerController(engine) {
   const requireChart = () => {
     if (!engine.chart()) throw new Error("Load a chart first");
   };
-  async function executeCommand(type, payload = {}) {
+  async function executeCommand(type, payload = {}, expectedPlayback = playbackRequest) {
     if (!commands.has(type) || type === "initialize")
       throw new Error(`Unsupported player command: ${type}`);
     await engine.boot;
@@ -37,8 +37,10 @@ export function createPlayerController(engine) {
       throw new Error("视频导出任务占用此预览实例，请通过独立预览实例编辑谱面");
     const inputContextOnly = type === "setSettings" && Object.keys(payload).every(key => key === "touchPadAuthoringContext");
     if(engine.introAuditionActive()&&!introSafeCommands.has(type)&&!inputContextOnly)await engine.stopIntroAudition();
+    if (type === "pause") { engine.pause(); return engine.state(); }
     if (!["load", "destroy", "documentCommand", "editorCommand", "getDocument", "getDocumentSaveText", "getAnalysis"].includes(type))
       await engine.flushPreview();
+    if ((type === "play" || type === "restart") && expectedPlayback !== playbackRequest) return engine.state();
     if (type === "load") {
       if (!payload.maidata) throw new Error("maidata is required");
       const difficulty = difficultyId(payload.difficulty);
@@ -142,10 +144,9 @@ export function createPlayerController(engine) {
     }
     requireChart();
     if (type === "play") await engine.play();
-    else if (type === "pause") engine.pause();
     else if (type === "restart") {
       await engine.seek(0);
-      await engine.play();
+      if (expectedPlayback === playbackRequest) await engine.play();
     } else if (type === "seek") {
       if (!Number.isFinite(payload.second) || payload.second < 0)
         throw new Error("Seek time must be finite and non-negative");
@@ -156,13 +157,16 @@ export function createPlayerController(engine) {
   }
 
   let queue = Promise.resolve();
+  let playbackRequest = 0;
   return {
     events(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
     execute(type, payload) {
-      const pending = queue.then(() => executeCommand(type, payload));
+      if (type === "pause") { ++playbackRequest; return executeCommand(type, payload); }
+      const request = playbackRequest;
+      const pending = queue.then(() => (type === "play" || type === "restart") && request !== playbackRequest ? engine.state() : executeCommand(type, payload, request));
       if (type !== "getAnalysis") queue = pending.catch(() => {});
       return pending;
     },

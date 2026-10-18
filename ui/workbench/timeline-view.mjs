@@ -28,14 +28,57 @@ export class TimelineView {
     });
     this.resize.observe(this.root);
     this.root.addEventListener("pointerdown", event => {
+      if (event.button !== 0 || !this.state) return;
       const bounds = this.root.getBoundingClientRect();
-      command("timeline.navigateAtPoint", { x: event.clientX - bounds.left, y: event.clientY - bounds.top, width: bounds.width, height: bounds.height,
-        horizontalScrollValue: this.scrollValue });
+      const x = event.clientX - bounds.left, y = event.clientY - bounds.top;
+      if (x < this.state.timelineLeft) return;
+      event.preventDefault(); this.root.focus();
+      if (y < this.state.timelineTop) {
+        this.queueInteraction("timeline.navigateAtPoint", { x, y, width: bounds.width, height: bounds.height, horizontalScrollValue: this.scrollValue });
+        return;
+      }
+      this.drag = { pointerId: event.pointerId, x: event.clientX, scroll: this.scrollValue, moved: false };
+      this.root.setPointerCapture(event.pointerId);
+      this.queueInteraction("timeline.pause");
     });
+    this.root.addEventListener("pointermove", event => {
+      if (!this.drag || this.drag.pointerId !== event.pointerId) return;
+      const delta = event.clientX - this.drag.x;
+      if (!this.drag.moved && Math.abs(delta) < 3) return;
+      this.drag.moved = true;
+      this.queueInteraction("timeline.drag", { horizontalScrollValue: this.drag.scroll - delta });
+    });
+    const finishDrag = event => {
+      if (!this.drag || this.drag.pointerId !== event.pointerId) return;
+      this.drag = null;
+      if (this.root.hasPointerCapture(event.pointerId)) this.root.releasePointerCapture(event.pointerId);
+      if (!this.interactionPending) { this.interacting = false; this.animate(); }
+    };
+    for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) this.root.addEventListener(type, finishDrag);
     this.root.addEventListener("wheel", event => {
+      if (!this.state) return;
       event.preventDefault();
-      command("timeline.scroll", { delta: event.deltaY || event.deltaX, horizontalScrollValue: this.scrollValue });
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? this.state.viewportSize.width : 1;
+      const delta = (event.deltaY || event.deltaX) * unit;
+      const scroll = this.interactionTarget?.args?.horizontalScrollValue ?? this.requestedScroll ?? this.scrollValue;
+      this.queueInteraction("timeline.scroll", { delta: 0, horizontalScrollValue: scroll + delta });
     }, { passive: false });
+  }
+  queueInteraction(id, args = {}) {
+    this.interactionTarget = { id, args };
+    if (args.horizontalScrollValue !== undefined) this.requestedScroll = args.horizontalScrollValue;
+    this.interacting = true; this.animate();
+    if (this.interactionPending) return;
+    this.interactionPending = (async () => {
+      while (this.interactionTarget) {
+        const target = this.interactionTarget; this.interactionTarget = null;
+        await this.command(target.id, target.args);
+      }
+    })().finally(() => {
+      this.interactionPending = null; this.requestedScroll = undefined;
+      if (!this.drag) { this.interacting = false; this.animate(); }
+    });
+    void this.interactionPending.catch(() => {});
   }
   setState(state) { if (this.state === state) return; this.state = state; this.draw(); }
   draw() {
@@ -127,11 +170,11 @@ export class TimelineView {
     const bottom = [...columns].reverse().map(([x, value]) => `${x + .5},${value.bottom}`).join(" L");
     return svg("path", { d: `M${top} L${bottom} Z`, fill: columns[0][1].color, "data-waveform": "true" });
   }
-  updatePlayhead(second, center = this.followProgressEnabled && this.clock?.playing) {
-    if (!this.state || !this.playhead) return;
+  updatePlayhead(second, center = this.followProgressEnabled && this.clock?.playing && !this.interacting) {
+    if (!this.state) return;
     const state = this.state;
     const x = timelinePlayheadX(state, second);
-    this.playhead.setAttribute("x1", x); this.playhead.setAttribute("x2", x);
+    if (this.playhead) { this.playhead.setAttribute("x1", x); this.playhead.setAttribute("x2", x); }
     if (center) {
       this.scrollValue = timelineCenteredScroll(state, second);
       for (const world of this.worlds) world.setAttribute("transform", `translate(${-this.scrollValue} 0)`);
@@ -150,11 +193,11 @@ export class TimelineView {
   setPlayback(state) {
     const moved = this.clock?.currentTime !== state.currentTime;
     this.clock = { ...this.clock, ...state, observedAt: performance.now() };
-    if (!state.playing) this.updatePlayhead(state.currentTime, this.followProgressEnabled && moved);
+    if (!state.playing) this.updatePlayhead(state.currentTime, this.followProgressEnabled && moved && !this.interacting);
     this.animate();
   }
   animate() {
-    if (!this.clock?.playing || !this.visible || this.root.ownerDocument.hidden) {
+    if (!this.clock?.playing || !this.visible || this.root.ownerDocument.hidden || this.interacting) {
       cancelAnimationFrame(this.animation); this.animation = null; return;
     }
     if (this.animation != null) return;

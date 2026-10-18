@@ -21,6 +21,7 @@ import { UserAppearance } from "./services/user-appearance.mjs";
 import { DEFAULT_PERFORMANCE, performanceSettings, frameRateForMode } from "./renderer/performance-settings.mjs";
 import { coverFileName } from "./services/cover-files.mjs";
 import { openCoverPresets } from "./ui/workbench/cover-presets.mjs";
+import { timelineSecondAtX } from "./ui/workbench/timeline-playback.mjs";
 
 const HUD_AREAS = ["chart_info", "timestamp", "center_display", "object_stats", "debug_info"];
 
@@ -49,6 +50,10 @@ export function createWorkbench(container, options = {}) {
   let analysisLanguage = viewState.preferences.languageToken || "zh";
   let authoringContext = false;
   let latencyPage = false, latencyPending = Promise.resolve();
+  let navigationPending = Promise.resolve();
+  let playbackPending = Promise.resolve();
+  let playbackTarget;
+  let navigationKey = viewState.activeEditorKey, navigationPanel = viewState.bottomPanel, navigationView = viewState.compactView;
   let previewValuesPending=Promise.resolve();
   let performancePending=Promise.resolve(), performanceOperation=performancePending, performanceCommands=Promise.resolve(), performanceKey;
   function performanceValues() {
@@ -77,7 +82,7 @@ export function createWorkbench(container, options = {}) {
       const documentReady = workbench.documentSession.hasDocument && !loadingDocument;
       if (id.startsWith("transform.") || id === "editor.overwrite_mode") return documentReady && viewState.activeEditorKey.startsWith("difficulty:");
       if (id.startsWith("timeline.")) return documentReady && (event.type !== "wheel" || workbench.timelineView.root.contains(event.target));
-      if (id.startsWith("preview.")) return documentReady && (id !== "preview.play_pause_global" || event.target?.ownerDocument !== document || document.activeElement !== workbench.sourceEditor.input);
+      if (id.startsWith("preview.")) return documentReady;
       return true;
     },
     changed: rows => {
@@ -326,6 +331,13 @@ export function createWorkbench(container, options = {}) {
       noteSkin: workbench.documentSession.previewSettings?.noteSkin });
     workbench.setLatency({ ...state, latency: state.latency || { onPage: latencyPage, subdivision: workbench.documentSession.subdivision ?? 4,
       sfxVolumePercent: workbench.documentSession.sfxVolumePercent ?? 60 } });
+  }
+  async function pausePlayback() {
+    if (!workbench.previewTransport.loaded) return;
+    playbackTarget = undefined; playbackPending = Promise.resolve();
+    const state = await preview.pause();
+    applyPlaybackState(state); workbench.timelineView.setPlayback(state);
+    return state;
   }
   function updateLatencyPage() {
     const doc = workbench.documentSession;
@@ -871,10 +883,16 @@ export function createWorkbench(container, options = {}) {
       else if (args.followPreviewEnabled) await updateTimelineFollow(workbench.previewTransport.state.currentTime);
       return refreshTimeline();
     }
-    if (id === "timeline.scroll") {
+    if (id === "timeline.pause") return pausePlayback();
+    if (id === "timeline.scroll" || id === "timeline.drag") {
+      await pausePlayback();
       const state = workbench.documentSession.timelineSceneState;
       timelineOptions.horizontalScrollValue = Math.max(0, Math.min(Math.max(0, (state?.contentWidth ?? 0) - (state?.viewportSize.width ?? 0)),
-        (args.horizontalScrollValue ?? timelineOptions.horizontalScrollValue) + args.delta));
+        (args.horizontalScrollValue ?? timelineOptions.horizontalScrollValue) + (args.delta ?? 0)));
+      if (state && timelineOptions.followProgressEnabled) {
+        const second = timelineSecondAtX(state, state.viewportSize.width / 2, timelineOptions.horizontalScrollValue);
+        await preview.seek(second);
+      }
       return refreshTimeline();
     }
     if (id === "timeline.zoom") {
@@ -883,6 +901,7 @@ export function createWorkbench(container, options = {}) {
       return refreshTimeline();
     }
     if (id === "timeline.navigateAtPoint") {
+      await pausePlayback();
       if (args.horizontalScrollValue !== undefined && args.horizontalScrollValue !== timelineOptions.horizontalScrollValue) {
         timelineOptions.horizontalScrollValue = args.horizontalScrollValue;
         await refreshTimeline();
@@ -897,10 +916,17 @@ export function createWorkbench(container, options = {}) {
       return refreshTimeline();
     }
     if (id === "preview.toggle") {
-      return (await preview.getState()).playing ? preview.pause() : preview.play();
+      playbackTarget = !(playbackTarget ?? workbench.previewTransport.state.playing);
+      const operation = playbackTarget
+        ? navigationPending.then(() => playbackPending === operation ? preview.play() : undefined)
+        : preview.pause();
+      playbackPending = operation;
+      const settled = () => { if (playbackPending === operation) playbackTarget = undefined; };
+      void operation.then(settled, settled);
+      return operation;
     }
     if (id === "preview.stop") {
-      await preview.pause();
+      await pausePlayback();
       if(workbench.documentSession.introAudition?.active)return;
       return preview.seek(0);
     }
@@ -922,7 +948,14 @@ export function createWorkbench(container, options = {}) {
       return preview.setPlayback({ rangePlaybackEnabled: args.enabled, exportStartSeconds: values.exportStartSeconds ?? 0, exportEndSeconds: values.exportEndSeconds || state.duration });
     }
     if (id === "edit.find" || id.startsWith("page.") || id.startsWith("view.")) return workbench.command(id, args);
-    if (id === "editor.close") { viewState.closeEditor(args.key); return; }
+    if (id === "editor.close") {
+      viewState.closeEditor(args.key);
+      await navigationPending;
+      const key = viewState.activeEditorKey;
+      if (key.startsWith("difficulty:") && Number(key.slice(11)) !== workbench.documentSession.activeDifficultyId)
+        await command("document.selectDifficulty", { difficulty: Number(key.slice(11)) });
+      return;
+    }
     if (id === "file.demo") { if (await confirmDocumentChange()) return open({ maidata: SAMPLE }); return; }
     if (id === "file.new") { if (await confirmDocumentChange()) return open({ maidata: "&title=新谱面\n&artist=\n&first=0\n&lv_5=\n&inote_5=(120){4}E\n" }); return; }
     if (id === "file.close") {
@@ -1020,10 +1053,10 @@ export function createWorkbench(container, options = {}) {
     if (id === "document.selectDifficulty") {
       await workbench.sourceEditor.pending;
       await editPending;
-      await preview.selectDifficulty(args.difficulty);
+      await pausePlayback();
+      if (args.difficulty !== workbench.documentSession.activeDifficultyId) await preview.selectDifficulty(args.difficulty);
       applyDocument(await preview.getDocument());
       viewState.openEditor(`difficulty:${args.difficulty}`);
-      timelineOptions.horizontalScrollValue = 0;
       applyPlaybackState(await preview.getState());
       await refreshTimeline();
       return;
@@ -1094,6 +1127,16 @@ export function createWorkbench(container, options = {}) {
     wholeBpm: workbench.documentSession.wholeBpm || "",
   } });
   workbench.sourceEditor.onError = error => workbench.status(error.message);
+  const pauseForTextInteraction = () => {
+    if (workbench.previewTransport.state.playing || playbackTarget === true) {
+      navigationPending = pausePlayback();
+      void navigationPending.catch(error => workbench.status(error.message));
+    }
+  };
+  for (const type of ["pointerdown", "wheel"]) workbench.sourceEditor.viewport.addEventListener(type, pauseForTextInteraction, { passive: true, signal: abort.signal });
+  workbench.sourceEditor.input.addEventListener("keydown", event => {
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"].includes(event.key)) pauseForTextInteraction();
+  }, { signal: abort.signal });
   workbench.sourceEditor.overwriteEnabled = () => Boolean(viewState.preferences.editorOverwriteMode);
   workbench.sourceEditor.onSelection = () => {
     if (selectionFrame) return;
@@ -1171,14 +1214,22 @@ export function createWorkbench(container, options = {}) {
     workbench.status("预览就绪"); return workbench;
   }).catch(error => { workbench.status(error.message); throw error; });
   viewState.addEventListener("change", () => {
-    if(viewState.activeEditorKey!=="export"&&(workbench.documentSession.introAudition?.active||introQueued)) {
+    const switched = navigationKey !== viewState.activeEditorKey || navigationPanel !== viewState.bottomPanel || navigationView !== viewState.compactView;
+    navigationKey = viewState.activeEditorKey; navigationPanel = viewState.bottomPanel; navigationView = viewState.compactView;
+    const stopIntro = viewState.activeEditorKey!=="export"&&(workbench.documentSession.introAudition?.active||introQueued);
+    if (stopIntro) {
       clearTimeout(introUpdateTimer);
-      void runIntro(()=>preview.setIntroAudition({enabled:false})).catch(error=>workbench.status(error.message));
+    }
+    if (stopIntro || switched && (workbench.previewTransport.state.playing || playbackTarget === true)) {
+      navigationPending = navigationPending.then(async () => {
+        await pausePlayback();
+        if (stopIntro) { await runIntro(()=>preview.setIntroAudition({enabled:false})); await pausePlayback(); }
+      });
+      void navigationPending.catch(error => workbench.status(error.message));
     }
     preview?.windowRouter.updateAppearance();
     void updatePerformance().catch(error => workbench.status(error.message));
-    updateLatencyPage();
-    updateAuthoringContext();
+    void navigationPending.then(() => { updateLatencyPage(); updateAuthoringContext(); }).catch(error => workbench.status(error.message));
     const language = viewState.preferences.languageToken || "zh";
     if (language !== analysisLanguage) { analysisLanguage = language; scheduleAnalysis(); }
     if (theme === viewState.activeThemeToken) return;

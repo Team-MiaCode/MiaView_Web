@@ -2,6 +2,16 @@
 
 记录日期：2026-10-16。工作分支：`feature/web-editor-migration`。命令与验收入口见 [工作台命令清单](WEB_EDITOR_COMMANDS_ZH.md)。
 
+## 2026-10-18 播放基础交互修复
+
+时间轴按连续时钟跟随播放，滚动计算独立于播放指示线的显示。顶部行号横条负责点击跳转，音符区域按住拖动拉取视口中心对应的时间；指针捕获覆盖越界释放和取消。滚轮与拖动请求按顺序合并至最新位置，音乐和预览同步至对应时间并暂停。
+
+编辑标签、难度和底部标签切换暂停播放，保留当前时间；关闭活动难度标签同步原生难度。文本区点击、滚轮和导航键暂停播放。`Ctrl+Shift+X` 在文本区生效，按键重复事件保持一次触发。暂停命令先应用播放状态，编辑预览刷新沿用暂停意图；异步播放准备接受暂停取消。
+
+`tests/timeline-playback-smoke.mjs` 覆盖从零播放、文本点击与滚轮、文本区暂停快捷键、连续播放切换、异步播放取消、八次编辑标签切换、关闭活动难度、音符区域点击、拖动、滚轮和顶部行号跳转，以及四档时间轴帧率、三种倍率和暂停后的视口。`tests/timeline-playback.spec.mjs`、`tests/player-controller.spec.mjs` 与 `tests/shortcuts.spec.mjs` 验证坐标往返、指示线省略、暂停优先和按键重复语义。浏览器验收采用静音配置。
+
+复验通过 Chromium/Firefox 播放交互、128 项 Node 用例、SDK 严格类型检查和 22 项独立组件用例。关联的时间轴、控制栏、快捷键、原生编辑命令与分离预览流程通过。记录位于 `artifacts/timeline-playback/<browser>/results.json` 和 `artifacts/products/results.json`。
+
 ## 阶段验收与提交审阅
 
 Release 构建、104 项 Node 用例及 SDK 严格类型检查通过。Chromium 的 32 项与 Firefox 的 19 项功能验收通过，清单覆盖目录导入、编辑保存、素材、分析、设置、封面、片头、单视频导出和分离窗口；逐项日志与源码指纹记录于 `artifacts/stage2/<browser>/results.json`。视频导出页面提供输出和片头两个标签。
