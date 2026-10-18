@@ -33,7 +33,7 @@ const server = createServer((request, response) => {
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 const base = `http://127.0.0.1:${server.address().port}${prefix}`;
 const browser = await chromium.launch({ executablePath: process.env.MIACODE_CHROMIUM,
-  headless: true, args: ["--no-sandbox", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
+  headless: true, args: ["--mute-audio", "--no-sandbox", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
 try {
   const page = await browser.newPage({ viewport: { width: 1200, height: 1080 } });
   const errors = [], methods = [], missing = [];

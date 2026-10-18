@@ -262,11 +262,29 @@ export class Workbench extends EventTarget {
     this.selectionLabel.hidden = !difficultyActive;
     this.formatStatus.hidden = !difficultyActive;
     this.metadataStatus.hidden = state.activeEditorKey !== "metadata";
+    const coverContext = JSON.stringify([this.documentSession.documentOpenGeneration, state.activeThemeToken, state.preferences.languageToken]);
+    if (this.coverPage && (this.coverContext !== coverContext || !state.openEditorTabs.includes("cover"))) {
+      this.coverPage.destroy(); this.coverPage.remove(); this.coverPage = null;
+      if (this.pageKey === "cover") this.pageKey = null;
+    }
     if (this.pageKey !== state.activeEditorKey) {
+      const previous = this.content.firstElementChild;
+      if (previous && previous === this.coverPage) {
+        previous.deactivate(); previous.hidden = true;
+      } else { previous?.destroy?.(); previous?.remove(); }
       this.pageKey = state.activeEditorKey;
-      const node = this.pageKey.startsWith("difficulty:") ? this.difficultyEditor : createPage(this.pageKey || "welcome", { viewState: state, documentSession: this.documentSession, command: (id, args) => this.command(id, args), nativeCover: this.nativeCover });
-      this.content.firstElementChild?.destroy?.();
-      this.content.replaceChildren(node);
+      if (this.pageKey === "cover") {
+        if (!this.coverPage) {
+          this.coverPage = createPage("cover", { viewState: state, documentSession: this.documentSession, command: (id, args) => this.command(id, args), nativeCover: this.nativeCover });
+          this.coverContext = coverContext;
+          this.content.append(this.coverPage);
+        } else this.coverPage.updateDocument(this.documentSession);
+        this.coverPage.hidden = false;
+      } else {
+        const node = this.pageKey.startsWith("difficulty:") ? this.difficultyEditor : createPage(this.pageKey || "welcome", { viewState: state, documentSession: this.documentSession, command: (id, args) => this.command(id, args), nativeCover: this.nativeCover });
+        // Keep the cover iframe connected so tab changes share its WASM heap.
+        this.content.insertBefore(node, this.coverPage || null);
+      }
     }
     for (const node of this.bottomTabs.children) {
       if (!node.dataset.panel) continue;
@@ -327,5 +345,5 @@ export class Workbench extends EventTarget {
     this.bottomKey = null;
     this.update();
   }
-  destroy() { this.content.firstElementChild?.destroy?.(); this.popups.destroy(); this.abort.abort(); this.editorTabs.destroy(); this.sourceEditor.destroy(); this.timelineView.destroy(); this.noteStatistics.destroy(); this.root.replaceChildren(); }
+  destroy() { for (const page of this.content.children) page.destroy?.(); this.coverPage = null; this.popups.destroy(); this.abort.abort(); this.editorTabs.destroy(); this.sourceEditor.destroy(); this.timelineView.destroy(); this.noteStatistics.destroy(); this.root.replaceChildren(); }
 }

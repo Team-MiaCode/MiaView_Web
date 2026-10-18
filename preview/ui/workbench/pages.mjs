@@ -74,6 +74,8 @@ export function createPage(key, { viewState, documentSession, command, nativeCov
     const editor = createCoverEditor({ viewState, documentSession, command, nativeCover });
     page.replaceChildren(editor);
     page.destroy = () => editor.destroy?.();
+    page.updateDocument = snapshot => editor.updateDocument?.(snapshot);
+    page.deactivate = () => editor.deactivate?.();
   } else if (key === "about") {
     page.classList.add("about-page");
     page.append(createAbout({ viewState, documentSession }));

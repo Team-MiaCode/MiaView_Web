@@ -830,7 +830,7 @@ export function createWorkbench(container, options = {}) {
       const [file] = await reader(".json"); return file ? JSON.parse(await file.text()) : null;
     }
     if (id === "cover.saveLayout" || id === "cover.managePresets" || id === "cover.export") {
-      const canvas = workbench.root.querySelector(".cover-editor")?.coverRenderer;
+      const canvas = workbench.root.querySelector(".cover-page:not([hidden]) .cover-editor")?.coverRenderer;
       if (!canvas) throw new Error("请打开封面编辑器");
       if (id === "cover.managePresets") return openCoverPresets(container, preferenceAssets, () => canvas.layoutFile());
       if (id === "cover.saveLayout") {

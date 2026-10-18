@@ -129,6 +129,7 @@ const browser = await chromium.launch({
   executablePath: process.env.MIACODE_CHROMIUM,
   headless: true,
   args: [
+    "--mute-audio",
     "--no-sandbox",
     "--enable-webgl",
     "--use-angle=swiftshader",
@@ -465,10 +466,11 @@ try {
   await page.evaluate(() =>
     first.setSettings({ outerBrightness: 0.6, innerBrightness: 0.2 }),
   );
+  const difficultySecond = (await page.evaluate(() => first.getState())).currentTime;
   await page.evaluate(() => first.selectDifficulty(3));
   state = await page.evaluate(() => first.getState());
   assert.equal(state.difficultyId, 3);
-  assert.equal(state.currentTime, 0);
+  assert.equal(state.currentTime, difficultySecond);
   assert.equal(state.playing, false);
   assert.equal(state.settings.noteSkin, "SD");
   assert.equal(state.settings.previewMode, "maimuri_dx_style");
@@ -541,7 +543,7 @@ try {
   await page.evaluate(() => second.seek(2));
   assert.equal(
     (await page.evaluate(() => first.getState())).currentTime,
-    0,
+    difficultySecond,
     "Instances must not share playhead",
   );
   assert.equal(

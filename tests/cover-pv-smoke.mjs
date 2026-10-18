@@ -135,7 +135,11 @@ try {
   if (software) {
     const released = await nativeFrame.evaluate(decoderSnapshot); assert.equal(released.active, 0); assert.equal(released.frames, 0);
   }
-  await command("page.metadata"); assert.equal(await page.locator(".cover-editor iframe").count(), 0);
+  await command("page.metadata");
+  await page.evaluate(() => document.querySelector(".cover-editor").coverRenderer.pending);
+  assert.equal((await page.evaluate(() => document.querySelector(".cover-editor").coverRenderer.preview.getCoverComposition())).chartFramePlaying, false);
+  await page.evaluate(() => document.getElementById("workbench").editor.viewState.closeEditor("cover"));
+  assert.equal(await page.locator(".cover-editor iframe").count(), 0);
   assert.deepEqual(errors, []);
   console.log("Cover PV source, exact frame pixels, fill/fit, brightness, playback, export and independent layer times passed");
 } catch (error) {

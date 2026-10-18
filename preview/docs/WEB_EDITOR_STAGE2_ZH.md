@@ -191,7 +191,9 @@ SDK 的 `audioContextOwner` 对分离窗口指定同源 opener，音频实例消
 
 `setCoverChart` 复用 Native 文档解析与 `PreviewFrameState`，载入封面所选难度及预览外观。每个谱面画面图层拥有独立的 `PreviewQuickSceneRoot` 与时间位置，音符、轨迹和判定效果采用现有渲染层。封面场景通过 v2 的 `CoverFramePlaybackController` 控制播放、暂停、单步定位与按住方向键定位；画布和图层面板使用同一组命令。`coverPlaybackChanged` 每 100 毫秒更新控件，渲染时间由原生经过时间驱动。导出图片时暂停图层播放，保留当前帧。
 
-`tests/cover-chart-frame-smoke.mjs` 在 Chromium 与 Firefox 中验证原生场景像素、指定帧时间、多图层位置、播放按钮、画布空格和方向键，以及页面切换时的实例释放。画布点击获取 iframe 内的键盘焦点，Qt 指针事件与快捷键共享同一预览实例。
+`tests/cover-chart-frame-smoke.mjs` 在 Chromium 与 Firefox 中验证原生场景像素、指定帧时间、多图层位置、播放按钮、画布空格和方向键，以及页面切换暂停、关闭标签页释放。画布点击获取 iframe 内的键盘焦点，Qt 指针事件与快捷键共享同一预览实例。
+
+工作台在同一文档、主题与语言下复用封面页及其 WASM 渲染实例；普通标签页切换保留画布连接，隐藏时暂停谱面帧。返回封面时同步文档标题、难度与设置。关闭封面标签页、切换文档或主题、销毁工作台时释放实例。封面回归覆盖连续 24 次切换及实例身份、文档更新、谱面帧暂停与资源释放。
 
 屏外 iframe 的 Qt 定时器在 Firefox 中存在暂停情形。SDK 在播放事件间隔超过 250 毫秒时读取原生状态；原生桥接按经过时间调用 `CoverFramePlaybackController::advanceForElapsed`，重置其计时参考，后续 Qt tick 接续剩余时间。暂停、配置与输出读取对应时刻的状态。验收隐藏 iframe 后通过工作台时间控件观察播放，覆盖宿主续时、暂停与键盘恢复；SDK 用例核对事件续期、暂停及销毁时的计时器释放。
 

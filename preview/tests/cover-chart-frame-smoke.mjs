@@ -98,6 +98,10 @@ try {
   await page.locator(`.cover-layer-row[data-key="${copy}"]`).waitFor();
   await page.screenshot({ path: join(output, "frames.png") });
   await coverCommand("cover.toggleActiveLayerPlayback"); await command("page.metadata");
+  await page.evaluate(() => document.querySelector(".cover-editor").coverRenderer.pending);
+  assert.equal((await state()).chartFramePlaying, false);
+  assert.equal(await page.locator(".cover-page").isVisible(), false);
+  await page.evaluate(() => document.getElementById("workbench").editor.viewState.closeEditor("cover"));
   assert.equal(await page.locator(".cover-editor iframe").count(), 0);
   assert.deepEqual(errors, []);
   console.log("Native cover chart pixels, independent frame positions, transport and canvas keyboard passed");

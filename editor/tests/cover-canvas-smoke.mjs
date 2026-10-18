@@ -205,6 +205,52 @@ try {
   assert.equal(intrinsic.previewHeight, 480);
   assert.equal(intrinsic.resolution.width, 720);
   assert.deepEqual(logs.filter(log => log.type === "pageerror"), []);
+  await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);
+  await page.waitForFunction(() => document.getElementById("workbench").editor);
+  await page.evaluate(() => document.getElementById("workbench").editor.ready);
+  await page.evaluate(() => document.getElementById("workbench").editor.viewState.openEditor("cover"));
+  await page.evaluate(() => document.querySelector(".cover-editor").coverRenderer.ready);
+  const retainedFrame = await page.locator("#cover-canvas iframe").elementHandle();
+  for (let index = 0; index < 24; index++) {
+    await page.evaluate(() => document.getElementById("workbench").editor.viewState.openEditor("metadata"));
+    assert.equal(await retainedFrame.evaluate(node => node.isConnected), true, "tab changes retain the native cover iframe");
+    assert.equal(await page.locator(".cover-page").isVisible(), false);
+    await page.evaluate(() => document.getElementById("workbench").editor.viewState.openEditor("cover"));
+    await page.evaluate(() => document.querySelector(".cover-editor").coverRenderer.ready);
+    assert.equal(await retainedFrame.evaluate(node => node === document.querySelector("#cover-canvas iframe")), true);
+  }
+  await page.evaluate(() => document.getElementById("workbench").editor.command("file.demo"));
+  await page.evaluate(() => document.getElementById("workbench").editor.viewState.openEditor("cover"));
+  await page.evaluate(() => document.querySelector(".cover-editor").coverRenderer.ready);
+  assert.equal(await retainedFrame.evaluate(node => node.isConnected), false, "opening a document releases its previous cover context");
+  const documentFrame = await page.locator("#cover-canvas iframe").elementHandle();
+  await page.evaluate(async () => {
+    const canvas = document.querySelector(".cover-editor").coverRenderer;
+    await canvas.command("cover.addChartFrameLayer");
+    await canvas.command("cover.toggleActiveLayerPlayback");
+    document.getElementById("workbench").editor.viewState.openEditor("metadata");
+    await canvas.pending;
+    if ((await canvas.preview.getCoverComposition()).chartFramePlaying) throw new Error("cover frames must pause on tab changes");
+  });
+  await page.evaluate(() => document.getElementById("workbench").editor.command("document.metadataTitle", { value: "Retained cover title" }));
+  await page.evaluate(() => document.getElementById("workbench").editor.viewState.openEditor("cover"));
+  const updated = await page.evaluate(async () => {
+    const canvas = document.querySelector(".cover-editor").coverRenderer;
+    await canvas.ready;
+    return canvas.preview.getCoverComposition();
+  });
+  assert.equal(updated.trackOverrides.title, "Retained cover title");
+  assert.ok(updated.layout.layers.some(layer => layer.kind === "chartFrame"));
+  assert.equal(updated.chartFramePlaying, false);
+  assert.equal(await documentFrame.evaluate(node => node === document.querySelector("#cover-canvas iframe")), true);
+  await page.evaluate(() => document.getElementById("workbench").editor.viewState.setPreference("themeModeToken", "light"));
+  await page.evaluate(() => document.querySelector(".cover-editor").coverRenderer.ready);
+  assert.equal(await documentFrame.evaluate(node => node.isConnected), false, "theme changes replace the cover context");
+  await page.evaluate(() => document.getElementById("workbench").editor.destroy());
+  assert.equal(await retainedFrame.evaluate(node => node.isConnected), false);
+  assert.equal(await page.locator("iframe").count(), 0);
+  assert.deepEqual(logs.filter(log => log.type === "pageerror"), []);
+  results.push({ retainedCoverTransitions: 24, destroyedFrames: 0 });
   console.log("Native cover geometry, output aspects, layer edits and preview return passed");
 } finally {
   writeFileSync(resolve(output, "logs.json"), JSON.stringify(logs, null, 2) + "\n");

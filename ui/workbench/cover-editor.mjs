@@ -14,7 +14,7 @@ export function createCoverEditor({ viewState, documentSession: doc, command, na
   const dispatch = command;
   let renderer, destroyed = false;
   const t = key => translate(key, viewState.preferences.languageToken || "zh");
-  const values = doc.coverValues ||= {};
+  let values = doc.coverValues ||= {};
   const layers = doc.coverLayers || [];
   const root = h("div", { className: "cover-editor" });
   const acceptComposition = (value, refresh = true) => {
@@ -30,6 +30,7 @@ export function createCoverEditor({ viewState, documentSession: doc, command, na
     const controls = createCoverEditor({ viewState, documentSession: doc, command, nativeCover: false });
     root.querySelector(".cover-layer-list").replaceWith(controls.querySelector(".cover-layer-list"));
     root.querySelector(".cover-layer-actions").replaceWith(controls.querySelector(".cover-layer-actions"));
+    root.querySelector(".export-difficulties").replaceWith(controls.querySelector(".export-difficulties"));
     root.querySelector(".cover-inspector").refresh();
     if (restoreLayerFocus) [...root.querySelectorAll(".cover-layer-row")].find(node => node.dataset.key === values.activeLayerKey)?.focus();
   };
@@ -235,6 +236,21 @@ export function createCoverEditor({ viewState, documentSession: doc, command, na
     renderer = new CoverCanvas(canvas, doc, value => acceptComposition(value), message => dispatch("cover.error", { message }), viewState.activeThemeToken, viewState.preferences, updatePlayback);
     renderer.ready.then(value => acceptComposition(value)).catch(() => {});
     root.coverRenderer = renderer;
+    root.updateDocument = snapshot => {
+      renderer.preferences = viewState.preferences;
+      doc = snapshot;
+      values = doc.coverValues ||= {};
+      renderer.document = doc;
+      renderer.ready = renderer.update().then(value => { acceptComposition(value); return value; });
+      renderer.ready.catch(error => { if (!destroyed) dispatch("cover.error", { message: error.message }); });
+    };
+    root.deactivate = () => {
+      void renderer.run(async () => {
+        await renderer.preview.coverCommand("cover.endActiveLayerKeySeek");
+        const state = await renderer.preview.getCoverComposition();
+        if (state.chartFramePlaying) acceptComposition(await renderer.preview.coverCommand("cover.toggleActiveLayerPlayback"));
+      }).catch(error => { if (!destroyed) dispatch("cover.error", { message: error.message }); });
+    };
     root.destroy = () => { destroyed = true; renderer.destroy(); };
   }
   setZoom(values.canvasZoom ?? 1);
