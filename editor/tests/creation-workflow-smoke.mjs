@@ -11,6 +11,7 @@ const output = resolve("artifacts/creation-workflow"); mkdirSync(output, { recur
 const server = staticServer(process.cwd(), { performanceTerminal: false }); await listenForBrowser(server);
 const browser = await chromium.launch({ headless: true });
 const original5 = "(120){4}1,2,3,4,E", original6 = "(180){8}5,6,7,8,E";
+const format = process.env.MIACODE_EXPORT_FORMAT || "auto";
 const edited5 = "(120){4}1,2h[4:1],3-5[4:1],4w8[4:1],A1,Ch[4:1],1b,2x,A1f,E";
 const edited6 = "(180){8}8,7,6,5,E", errors = [], results = {};
 let page;
@@ -69,18 +70,18 @@ try {
   await command("preview.seek", { second: .5 }); await page.getByRole("button", { name: "播放", exact: true }).click();
   await waitForAsync(page, async () => { const state = await document.getElementById("workbench").editor.preview.getState(); return !state.playing && Math.abs(state.currentTime - 1) < .02; });
   results.phase = "video";
-  await command("page.export"); await command("export.settings", { outputPath: "workflow.mp4", resolutionIndex: 0, fps: 30 });
+  await command("page.export"); await command("export.settings", { outputPath: "workflow.mp4", resolutionIndex: 0, fps: 30, format });
   const downloading = page.waitForEvent("download"); const exported = await command("export.video"); const download = await downloading;
   assert.equal(exported.frameCount, 60); assert.equal(exported.difficulty, 5); assert.equal(exported.filename, download.suggestedFilename());
   const file = join(output, download.suggestedFilename()); await download.saveAs(file); assert.ok(readFileSync(file).length > 1000);
-  const video = await page.evaluate(async () => {
+  const video = await page.evaluate(async filename => {
     const { Input, BlobSource, ALL_FORMATS, VideoSampleSink } = await import("/renderer/vendor/mediabunny/index.mjs");
-    const file = await fetch("/artifacts/creation-workflow/workflow.mp4").then(response => response.blob());
+    const file = await fetch(`/artifacts/creation-workflow/${encodeURIComponent(filename)}`).then(response => response.blob());
     const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
     try { let frames = 0; for await (const sample of new VideoSampleSink(await input.getPrimaryVideoTrack()).samples()) { ++frames; sample.close(); }
       return { frames, duration: await input.computeDuration(), audio: Boolean(await input.getPrimaryAudioTrack()) }; }
     finally { input.dispose(); }
-  });
+  }, exported.filename);
   assert.equal(video.frames, 60); assert.ok(Math.abs(video.duration - 2) < .06); assert.equal(video.audio, true);
   assert.equal((await documentState()).dirty, false); assert.deepEqual(errors, []); results.video = video;
   console.log("Folder import, per-difficulty history, partial/all save, media recovery, revision-bound analysis, range playback and decoded video workflow passed");

@@ -24,6 +24,7 @@ export function settingsTabs(sections, initial, select) {
     render(sections[next].key); bar.children[next].focus();
   });
   root.append(bar, h("hr", { className: "settings-rule" }), body);
+  root.refresh = () => render(active);
   render(active);
   return root;
 }

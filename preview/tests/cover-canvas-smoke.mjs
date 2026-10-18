@@ -24,8 +24,10 @@ try {
   await page.goto(`http://127.0.0.1:${server.address().port}/tests/ui-page.html?page=cover-card&native=1`);
   await page.locator(".cover-editor").waitFor();
   const menus = await page.locator(".cover-menu summary").elementHandles();
+  const inspectorTabs = await page.locator(".cover-inspector [role=tab]").elementHandles();
   const initial = await page.evaluate(() => document.querySelector(".cover-editor").coverRenderer.ready);
   for (const menu of menus) assert.equal(await menu.evaluate(node => node.isConnected), true, "Native composition initialization retains menu controls");
+  for (const tab of inspectorTabs) assert.equal(await tab.evaluate(node => node.isConnected), true, "Native composition initialization retains inspector tabs");
   assert.equal(initial.activeLayerKey, "card");
   assert.equal(initial.layout.layers.length, 3);
   assert.equal(initial.outputWidth, 1080);

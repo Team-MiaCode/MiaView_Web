@@ -30,7 +30,7 @@ export function createCoverEditor({ viewState, documentSession: doc, command, na
     const controls = createCoverEditor({ viewState, documentSession: doc, command, nativeCover: false });
     root.querySelector(".cover-layer-list").replaceWith(controls.querySelector(".cover-layer-list"));
     root.querySelector(".cover-layer-actions").replaceWith(controls.querySelector(".cover-layer-actions"));
-    root.querySelector(".cover-inspector").replaceWith(controls.querySelector(".cover-inspector"));
+    root.querySelector(".cover-inspector").refresh();
     if (restoreLayerFocus) [...root.querySelectorAll(".cover-layer-row")].find(node => node.dataset.key === values.activeLayerKey)?.focus();
   };
   if (nativeCover) command = (id, args = {}) => {
@@ -78,8 +78,10 @@ export function createCoverEditor({ viewState, documentSession: doc, command, na
   const choice = (key, label, options, fallback, action) => formRow(t(label), select(options, values[key] ?? fallback, value => put(key, typeof fallback === "number" ? Number(value) : value)), action);
   const slider = (key, label, fallback, min = 0, max = 100, factor = 1) => range(t(label), key, (values[key] ?? fallback) * factor, min, max, (_, args) => put(key, args.value / factor), 1, "%");
   const switchControl = (key, label, fallback) => toggle(t(label), values[key] ?? fallback, value => put(key, value));
-  const fonts = new Map([...(doc.userFonts || []), ...(doc.coverFiles || []).filter(asset => asset.kind === "font")].map(font => [font.path, font]));
-  const fontOptions = [["", t("card_font.default")], ...[...fonts.values()].map(font => [font.path, font.family])];
+  const fontOptions = () => {
+    const fonts = new Map([...(doc.userFonts || []), ...(doc.coverFiles || []).filter(asset => asset.kind === "font")].map(font => [font.path, font]));
+    return [["", t("card_font.default")], ...[...fonts.values()].map(font => [font.path, font.family])];
+  };
   const canvasForm = () => [
     choice("resolutionIndex", "cover.size", [...sizes.map(([width, height], index) => [index, `${width}×${height} (${width === height ? "1:1" : width * 3 === height * 4 ? "4:3" : "16:9"})`]),
       ...(values.resolutionIndex === -1 ? [[-1, `${values.outputWidth}×${values.outputHeight}`]] : [])], 3),
@@ -121,8 +123,8 @@ export function createCoverEditor({ viewState, documentSession: doc, command, na
       choice("cardMode", "cover.chart_type", [["auto", t("qml.automatic")], ["DX", "DX"], ["Standard", "SD"]], "auto"),
       choice("longTextMode", "cover.long_text_label", [["shrink", t("cover.shrink_to_fit")], ["ellipsis", t("cover.keep_size_ellipsis")]], "shrink"),
       h("div", { className: "action-row" }, switchControl("cardShadow", "cover.shadow", false), switchControl("levelTextRender", "cover.level_as_text", false))),
-      section(t("cover.font"), choice("cardFontDisplayPath", "cover.title_font", fontOptions, "", button(t("card_font.import"), () => command("cover.importCardDisplayFont"), { symbol: "folder-open", iconOnly: true, className: "chrome" })),
-        choice("cardFontBodyPath", "cover.body_font", fontOptions, "", button(t("card_font.import"), () => command("cover.importCardBodyFont"), { symbol: "folder-open", iconOnly: true, className: "chrome" }))));
+      section(t("cover.font"), choice("cardFontDisplayPath", "cover.title_font", fontOptions(), "", button(t("card_font.import"), () => command("cover.importCardDisplayFont"), { symbol: "folder-open", iconOnly: true, className: "chrome" })),
+        choice("cardFontBodyPath", "cover.body_font", fontOptions(), "", button(t("card_font.import"), () => command("cover.importCardBodyFont"), { symbol: "folder-open", iconOnly: true, className: "chrome" }))));
     return body;
   };
   const canvas = h(nativeCover ? "div" : "canvas", { id: "cover-canvas", "aria-label": t("cover.canvas") });
@@ -179,7 +181,7 @@ export function createCoverEditor({ viewState, documentSession: doc, command, na
       node.tabIndex = selected ? 0 : -1;
     }
     for (const node of layerActions.children) node.disabled = !activeLayer() || node.dataset.mutable === "true" && layer.key === "card";
-    inspector.querySelector('[data-page="layer"]').click();
+    layerList.closest(".cover-editor").querySelector('.cover-inspector [data-page="layer"]').click();
   }
   function layerDetail(layer) {
     const value = layer.kind === "text" ? layer.text?.replace(/\s+/g, " ") : layer.kind === "image" ? doc.coverFiles?.find(asset => asset.path === layer.imagePath)?.file.name || layer.imagePath?.split(/[\\/]/).at(-1)
