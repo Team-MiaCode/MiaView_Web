@@ -19,7 +19,7 @@ writeFileSync(resolve(output, "track.wav"), tone(12)); writeFileSync(resolve(out
 writeFileSync(resolve(output, "invalid.png"), "invalid image");
 const server = staticServer(process.cwd(), { performanceTerminal: false });
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, args: ["--mute-audio"] });
 try {
   const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
   const errors = []; page.on("pageerror", error => errors.push(error.message));
@@ -56,9 +56,29 @@ try {
   await command("timeline.viewport");
   assert.ok(await page.evaluate(() => document.getElementById("workbench").editor.workbench.documentSession.timelineSceneState.waveformBars.length > 0));
   await page.evaluate(async () => { const preview = document.getElementById("workbench").editor.preview; await preview.seek(1); await preview.play(); });
+  const beforeReplacement = await state(), replacementStarted = performance.now();
   const playing = await setResources({ video: "/tests/fixtures/bg-pattern.webm" });
-  assert.equal(playing.playing, true); assert.ok(playing.currentTime >= 1 && playing.currentTime < 2);
+  const replacementDurationMs = performance.now() - replacementStarted;
+  assert.equal(playing.playing, true);
+  assert.ok(playing.currentTime >= beforeReplacement.currentTime && playing.currentTime < playing.duration,
+    `Media replacement retains playing progress: ${JSON.stringify({ beforeReplacement, playing, replacementDurationMs })}`);
   assert.equal((await liveUrls()).length, 1);
+  let releaseVideo, videoRequested;
+  const videoGate = new Promise(resolve => { releaseVideo = resolve; });
+  const videoRequest = new Promise(resolve => { videoRequested = resolve; });
+  const videoRoute = "**/tests/fixtures/bg-pattern.webm";
+  await page.route(videoRoute, async route => { videoRequested(); await videoGate; await route.continue(); });
+  let pausedReplacement;
+  try {
+    const preparing = setResources({ video: "/tests/fixtures/bg-pattern.webm" });
+    await videoRequest;
+    const paused = await page.evaluate(() => document.getElementById("workbench").editor.preview.pause());
+    assert.equal(paused.playing, false, "pause completes while media preparation is pending");
+    releaseVideo();
+    pausedReplacement = await preparing;
+    assert.equal(pausedReplacement.playing, false);
+    assert.equal(pausedReplacement.currentTime, paused.currentTime, "media completion retains the requested pause position");
+  } finally { releaseVideo(); await page.unroute(videoRoute); }
   const oldVideo = await video.evaluate(node => node.src);
   const invalid = await page.evaluate(async () => {
     try { await document.getElementById("workbench").editor.preview.setResources({ audio: "/artifacts/resources-core/long.wav", cover: "/artifacts/resources-core/invalid.png", video: "/tests/fixtures/bg-pattern.webm" }); }
@@ -79,7 +99,7 @@ try {
   const saved = await page.evaluate(() => document.getElementById("workbench").editor.preview.getDocumentSaveText());
   assert.match(saved.sourceText, /&video=assets\/pv\.webm/);
   assert.deepEqual(errors, []);
-  writeFileSync(resolve(output, "results.json"), JSON.stringify({ before, loaded, playing, removed, invalid, errors }, null, 2) + "\n");
+  writeFileSync(resolve(output, "results.json"), JSON.stringify({ before, loaded, playing, beforeReplacement, replacementDurationMs, pausedReplacement, removed, invalid, errors }, null, 2) + "\n");
   console.log("Real media decoding, waveform replacement, document/save-point retention, playback, rejected batches, PV URL cleanup and video metadata passed");
 } finally {
   await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
