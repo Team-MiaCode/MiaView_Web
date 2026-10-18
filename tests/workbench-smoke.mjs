@@ -240,9 +240,18 @@ try {
       assert.equal(await page.locator(".find-replace-bar").isVisible(), true);
       assert.equal(await page.locator(".find-replace-bar input:focus").getAttribute("placeholder"), "查找");
       for (const [width, height] of sizes) {
+        checkpoint({ engine: name, phase: "findResize", width, height });
         await page.setViewportSize({ width, height });
-        // Measure the displayed frame after resize observers apply text geometry.
-        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        // Wait for source geometry after resize observers apply the new viewport.
+        await page.waitForFunction(() => {
+          const viewport = document.querySelector(".source-viewport").getBoundingClientRect();
+          const input = document.querySelector(".source-input").getBoundingClientRect();
+          const paint = document.querySelector(".source-paint").getBoundingClientRect();
+          const ruler = document.querySelector(".source-overview-ruler");
+          const right = ruler.hidden ? viewport.right : ruler.getBoundingClientRect().left;
+          return Math.abs(input.top - viewport.top) <= 1 && Math.abs(input.bottom - viewport.bottom) <= 1
+            && Math.abs(input.right - right) <= 1 && Math.abs(input.left - paint.left) <= 1 && Math.abs(input.top - paint.top) <= 1;
+        }, undefined, { polling: 50, timeout: 10000 });
         await assertControlBounds(page, `${name}/${width}/find-replace`);
         const inputHeight = await page.locator(".source-input").evaluate(node => node.clientHeight);
         assert.ok(inputHeight >= 30, `${name}/${width}/${height} find editor viewport ${inputHeight}`);
