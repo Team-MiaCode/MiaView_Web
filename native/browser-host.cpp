@@ -1,13 +1,11 @@
 #include <QGuiApplication>
 #include <QQuickWindow>
 #include <QSurfaceFormat>
-#include <QDirIterator>
-#include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QHash>
-#include <QDir>
 #include <QElapsedTimer>
 #include <emscripten/emscripten.h>
 #include "firework-layer.h"
@@ -91,15 +89,6 @@ void refresh(bool forceHud = true) {
         hud->setFrameState(&state);
     }
 }
-void mountAssets() {
-    QDirIterator files(":/assets", QDir::Files, QDirIterator::Subdirectories);
-    while (files.hasNext()) {
-        const QString resource = files.next();
-        const QString path = resource.mid(1);
-        QDir().mkpath(QFileInfo(path).path());
-        QFile::copy(resource, path);
-    }
-}
 }
 
 extern "C" {
@@ -149,7 +138,7 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_set_settings(double outer, double inner
         return json({{"error", "预览设置无效"}});
     if (!dx && !sdSkinLoaded) {
         const auto loaded = miacode::preview::runtime::PreviewSceneAssetLoader::load(
-            "/assets/skin/skinSD", PreviewOutlineVariant::Line);
+            ":/assets/skin/skinSD", PreviewOutlineVariant::Line);
         if (loaded.skinAssets.tapImage.isNull()) return json({{"error", "SD 皮肤加载失败，请刷新后重试"}});
         sdSkin = loaded.skinAssets;
         sdSkinLoaded = true;
@@ -301,9 +290,10 @@ int main(int argc, char** argv) {
     surface.setStencilBufferSize(8);
     QSurfaceFormat::setDefaultFormat(surface);
     QGuiApplication app(argc, argv);
-    mountAssets();
-    miacode::assets::setAssetRoot(QStringLiteral("/assets"));
-    const auto loaded = miacode::preview::runtime::PreviewSceneAssetLoader::load("/assets/skin/skinDX", PreviewOutlineVariant::Line);
+    // Upstream Qt loaders accept QRC paths; read the embedded assets in place
+    // instead of copying the entire bundle into the browser's virtual filesystem.
+    miacode::assets::setAssetRoot(QStringLiteral(":/assets"));
+    const auto loaded = miacode::preview::runtime::PreviewSceneAssetLoader::load(":/assets/skin/skinDX", PreviewOutlineVariant::Line);
     state.assets = loaded.assetState;
     state.skin = loaded.skinAssets;
     dxSkin = state.skin;

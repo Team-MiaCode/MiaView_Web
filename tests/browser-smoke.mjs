@@ -146,6 +146,21 @@ try {
   page.on("console", (message) => consoleLogs.push(message.text()));
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("request", (request) => requests.push(request.url()));
+  await page.addInitScript(() => {
+    // Observe the real native filesystem without changing the shipped module.
+    // The script's load event runs before the renderer's module script boots Qt.
+    document.addEventListener("load", (event) => {
+      if (!(event.target instanceof HTMLScriptElement)
+          || !new URL(event.target.src).pathname.endsWith("/qtloader.js")) return;
+      const load = window.qtLoad;
+      window.qtLoad = async function (...args) {
+        const instance = await load.apply(this, args);
+        if (!instance.FS) throw new Error("Native filesystem probe requires exported FS");
+        window.nativeAssetsCopied = () => instance.FS.analyzePath("/assets").exists;
+        return instance;
+      };
+    }, true);
+  });
   await page.goto(base + "/tests/host.html");
   await page.evaluate(
     async ({ rendererUrl, chart, base, byteSize, sha256 }) => {
@@ -196,6 +211,10 @@ try {
     },
   );
   const firstFrame = page.frameLocator("#one iframe");
+  const nativeAssetsCopied = () => firstFrame.locator("body").evaluate(
+    () => window.nativeAssetsCopied(),
+  );
+  assert.equal(await nativeAssetsCopied(), false, "DX startup must not copy QRC assets into MEMFS");
   assert.deepEqual(
     await firstFrame
       .locator("#viewport canvas")
@@ -343,6 +362,7 @@ try {
   assert.equal(state.settings.tapFlowSpeed, 8.25);
   assert.equal(state.settings.touchFlowSpeed, 9.25);
   assert.equal(state.settings.noteSkin, "SD");
+  assert.equal(await nativeAssetsCopied(), false, "Lazy SD loading must also read QRC directly");
   assert.equal(state.settings.showJudgeEffects, true);
   assert.equal(state.settings.previewMode, "maimuri_dx_style");
   // Component UI and host API must share the same state and event boundary.
