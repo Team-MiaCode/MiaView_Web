@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { staticServer } from "../dev/server.mjs";
 import { launchPreviewBrowser } from "./preview-browser.mjs";
+import { verifyEditorPlaybackControls } from "./helpers/editor-playback-controls.mjs";
 
 const playwright = await import(process.env.MIACODE_PLAYWRIGHT_MODULE ? pathToFileURL(process.env.MIACODE_PLAYWRIGHT_MODULE).href : "playwright");
 const sourceText = "&title=Product parity\n&lv_5=12\n&inote_5=(120){4}1,2,3,4,5,6,7,8,E";
@@ -116,6 +117,10 @@ try {
           new Promise((_, reject) => setTimeout(() => reject(new Error("Hidden compact preview seek stalled")), 5000)),
         ]));
         assert.equal((await page.evaluate(() => editors[1].getState())).currentTime, .5);
+        const compact = page.locator("#two > div > iframe").contentFrame();
+        await compact.locator(".source-input").click();
+        await verifyEditorPlaybackControls(page, 1, compact.locator(".preview-container iframe").contentFrame().locator("body"));
+        console.log(`${name}/${product}: SDK pause, stop and pending playback cancellation passed`);
         const workbenchFrame = page.locator("#one > div > iframe").contentFrame();
         for (const [width, height] of [[1366, 768], [800, 500], [360, 640], [1200, 240]]) {
           await page.locator("#one").evaluate((node, size) => Object.assign(node.style, { width: `${size[0]}px`, height: `${size[1]}px` }), [width, height]);

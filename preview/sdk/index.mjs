@@ -15,6 +15,7 @@ import {
   normalizeSkinFiles,
   difficultyId,
   previewTheme,
+  isImmediateCommand,
 } from "./protocol.mjs";
 export { previewResolution, DEFAULT_RESOLUTION } from "./resolution.mjs";
 export { previewMaxFps, DEFAULT_MAX_FPS } from "./frame-rate.mjs";
@@ -259,14 +260,15 @@ class MiaCodePreview {
   }
   command(type, payload) {
     const playbackRequest = type === "pause" ? ++this.playbackRequest : this.playbackRequest;
-    const next = (type === "pause" ? Promise.resolve() : this.queue).then(async () => {
+    const immediate = isImmediateCommand(type, payload);
+    const next = (immediate ? Promise.resolve() : this.queue).then(async () => {
       await this.ready;
       if (this.failed) throw this.failed;
       if ((type === "play" || type === "restart") && playbackRequest !== this.playbackRequest)
         return this.request("getState");
       return this.request(type, payload);
     });
-    if (type !== "getAnalysis" && type !== "pause") this.queue = next.catch(() => {});
+    if (type !== "getAnalysis" && !immediate) this.queue = next.catch(() => {});
     return next;
   }
   load(chart) {

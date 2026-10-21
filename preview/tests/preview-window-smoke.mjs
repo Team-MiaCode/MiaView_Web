@@ -16,7 +16,7 @@ let page;
 try {
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 } }); page.setDefaultTimeout(90000);
   page.on("pageerror", error => errors.push(error.message));
-  await page.addInitScript(() => {
+  await page.context().addInitScript(() => {
     window.shortcutTrace = [];
     for (const type of ["keydown", "keyup", "focus", "blur"]) window.addEventListener(type, event => {
       shortcutTrace.push({ type, key: event.key, ctrl: event.ctrlKey, shift: event.shiftKey,

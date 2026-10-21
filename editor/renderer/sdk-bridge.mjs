@@ -3,6 +3,7 @@ import {
   FRAME_SOURCE,
   trustedRequest,
   httpUrl,
+  isImmediateCommand,
 } from "./protocol.mjs";
 
 export function attachSdkBridge(engine, controller) {
@@ -57,7 +58,8 @@ export function attachSdkBridge(engine, controller) {
       sessionId = message.sessionId;
     }
     const request = message.type === "pause" ? ++playbackRequest : playbackRequest;
-    const next = (message.type === "pause" ? Promise.resolve() : queue).then(async () => {
+    const immediate = isImmediateCommand(message.type, message.payload);
+    const next = (immediate ? Promise.resolve() : queue).then(async () => {
       try {
         send("response", null, {
           requestId: message.requestId,
@@ -75,7 +77,7 @@ export function attachSdkBridge(engine, controller) {
         });
       }
     });
-    if (message.type !== "getAnalysis" && message.type !== "pause") queue = next;
+    if (message.type !== "getAnalysis" && !immediate) queue = next;
   };
   window.addEventListener("message", receive);
   window.addEventListener(

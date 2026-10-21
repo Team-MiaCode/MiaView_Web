@@ -22,9 +22,9 @@ export class BrowserVideoFrames {
     this.seeking = () => { if (video.seeking && !this.pendingSeek) this.beginSeek(); };
     this.seeked = () => {
       try {
-        this.capture();
+        const captured = this.capture();
         // The first frame callback can precede the seek-completed event.
-        if (this.frameDuringSeek) this.finishSeek();
+        if (!video.seeking && (captured || this.frameDuringSeek)) this.finishSeek();
       }
       catch (error) { this.fail(error); }
     };

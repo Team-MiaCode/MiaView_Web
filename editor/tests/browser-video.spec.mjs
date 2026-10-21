@@ -4,11 +4,11 @@ import { BrowserVideoFrames } from "../renderer/browser-video.mjs";
 
 test("browser PV keeps three immutable timestamps and releases images, waits and callbacks", async t => {
   const callbacks = new Map(), images = [], previous = globalThis.VideoFrame;
-  let presenting = false;
+  let presenting = false, decoded = false;
   globalThis.VideoFrame = class {
     constructor(video) {
-      if (!presenting) throw new DOMException("Decoded image pending", "InvalidStateError");
-      this.index = video.currentFrame; this.timestamp = video.currentTime * 1e6; images.push(this);
+      if (!presenting && !decoded) throw new DOMException("Decoded image pending", "InvalidStateError");
+      this.index = video.currentFrame; this.timestamp = (video.frameTimestamp ?? video.currentTime) * 1e6; images.push(this);
     }
     close() { assert.ok(!this.closed); this.closed = true; }
   };
@@ -59,6 +59,13 @@ test("browser PV keeps three immutable timestamps and releases images, waits and
   await frames.ready(new AbortController().signal);
   assert.equal(frames.waiters.size, 0);
   frameVisible = true; present(120, 2);
+  frames.beginSeek();
+  const sameFrame = frames.ready(new AbortController().signal);
+  video.currentTime = 2.02; video.frameTimestamp = 2; decoded = true;
+  video.dispatchEvent(new Event("seeked"));
+  await sameFrame;
+  assert.equal(frames.at(2.02).timestamp, 2); assert.equal(frames.pendingSeek, false);
+  decoded = false; delete video.frameTimestamp;
   video.seeking = true; video.dispatchEvent(new Event("seeking"));
   const controller = new AbortController(), aborted = assert.rejects(frames.ready(controller.signal), /cancelled/);
   controller.abort(new Error("cancelled")); await aborted; assert.equal(frames.waiters.size, 0);

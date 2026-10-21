@@ -1,6 +1,10 @@
 export const SDK_PROTOCOL = 1;
 export const HOST_SOURCE = "MiaCodePreviewHost";
 export const FRAME_SOURCE = "MiaCodePreview";
+const immediateWorkbenchCommands = new Set(["preview.toggle", "preview.stop", "timeline.pause"]);
+export function isImmediateCommand(type, payload) {
+  return type === "pause" || type === "workbenchCommand" && immediateWorkbenchCommands.has(payload?.id);
+}
 export const commands = new Set([
   "initialize",
   "load",

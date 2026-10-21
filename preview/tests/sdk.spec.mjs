@@ -85,6 +85,24 @@ test("Iframe permissions are applied before the renderer enters the document", a
   const preview = createPreview(container, { allow, sandbox, rendererUrl: "https://renderer.example/index.html" });
   await preview.ready; assert.equal(appended, true); preview.destroy();
 });
+
+test("editor pause reaches the renderer while a workbench request is pending", async () => {
+  const { container, messages } = dom({ respond: false });
+  const preview = createPreview(container, { rendererUrl: "https://renderer.example/index.html" });
+  await preview.ready;
+  const seeking = preview.command("workbenchCommand", { id: "preview.seek", args: { second: .75 } });
+  const seekRejected = assert.rejects(seeking, /destroyed/);
+  await new Promise(resolve => setImmediate(resolve));
+  const pausing = preview.command("workbenchCommand", { id: "timeline.pause", args: {} });
+  const pauseRejected = assert.rejects(pausing, /destroyed/);
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(messages.filter(message => message.type === "workbenchCommand").map(message => message.payload.id),
+      ["preview.seek", "timeline.pause"]);
+  } finally {
+    preview.destroy(); await Promise.all([seekRejected, pauseRejected]);
+  }
+});
 test("An analysis request preserves its snapshot while later commands continue", async () => {
   const f = dom({ respond: false });
   const preview = createPreview(f.container, { rendererUrl: "https://renderer.example/index.html" });
