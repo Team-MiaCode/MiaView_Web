@@ -48,8 +48,27 @@ try {
   const doc = () => page.evaluate(() => document.getElementById("workbench").editor.preview.getDocument());
   if (software) await command("preferences.performance", { videoDecodePrefersSoftware: true });
   const opened = async () => {
+    if (!results.initialLayout) await page.evaluate(() => {
+      const router = document.getElementById("workbench").editor.preview.windowRouter, fit = router.fit.bind(router);
+      router.fit = async () => {
+        if (!window.initialLayoutStarted) {
+          window.initialLayoutStarted = true;
+          await new Promise(resolve => { window.releaseInitialLayout = resolve; });
+        }
+        return fit();
+      };
+    });
     const event = page.waitForEvent("popup"); await page.getByRole("button", { name: "分离预览", exact: true }).click();
     const popup = await event; popup.on("pageerror", error => errors.push(error.message));
+    if (!results.initialLayout) {
+      await waitForAsync(page, () => Boolean(window.releaseInitialLayout));
+      try {
+        assert.equal(await page.evaluate(() => Boolean(document.getElementById("workbench").editor.preview.windowRouter.presenting)), false,
+          "Complete initial sizing before publishing the active playback window");
+        assert.equal(await popup.getByRole("button", { name: "播放", exact: true }).isDisabled(), true);
+      } finally { await page.evaluate(() => window.releaseInitialLayout()); }
+      results.initialLayout = true;
+    }
     try { await waitForAsync(page, () => document.getElementById("workbench").editor.preview.windowRouter.presenting); }
     catch (error) {
       results.opening = await page.evaluate(() => ({ status: document.getElementById("workbench").editor.workbench.statusLabel.textContent,

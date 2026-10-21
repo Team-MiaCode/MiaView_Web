@@ -134,6 +134,7 @@ class PreviewWindow {
       const execute = (id, args) => Promise.resolve(this.options.command(id, args)).catch(this.options.error);
       popup.menus = new PopupHost(root, execute);
       popup.transport = new PreviewTransport(execute, (...args) => popup.menus.showMenu(...args), this.options.viewState);
+      popup.transport.setDocument({ hasDocument: false });
       popup.transport.setDetached(true);
       popup.statistics = new NoteStatistics(() => this.options.viewState.preferences.languageToken || "zh");
       document.getElementById("preview-window-controls").append(popup.transport.root);
@@ -182,12 +183,12 @@ class PreviewWindow {
       await popup.preview.setMediaSettings({ hidePv: snapshot.media.hidePv });
       await popup.preview.setInputShortcuts(this.inputShortcuts || {});
       await this.restore(popup.preview, snapshot);
-      this.presenting = true; this.paintDocument(); this.options.changed(true);
-      this.emit("timeupdate", await popup.preview.getState());
-      if (snapshot.introAudition?.active) this.emit("introAuditionChanged", await popup.preview.getState().then(state => state.introAudition));
       const resized = () => { void this.fit().catch(this.options.error); };
       popup.resize = new window.ResizeObserver(resized); popup.resize.observe(document.getElementById("preview-window-stage"));
       this.updateAppearance(); await this.fit(); window.focus();
+      this.presenting = true; this.paintDocument(); this.options.changed(true);
+      this.emit("timeupdate", await popup.preview.getState());
+      if (snapshot.introAudition?.active) this.emit("introAuditionChanged", await popup.preview.getState().then(state => state.introAudition));
     } catch (error) {
       if (this.popup === popup) { this.closePopup(popup); this.popup = null; this.presenting = false; this.options.changed(false); }
       if (popup.snapshot && !this.destroyed) await this.restore(this.owner, popup.snapshot);
