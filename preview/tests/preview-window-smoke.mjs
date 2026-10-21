@@ -106,7 +106,7 @@ try {
   assert.equal((await doc()).documentOpenGeneration, before.documentOpenGeneration);
   assert.equal((await state()).playback.rate, .5); assert.ok(Math.abs((await state()).currentTime - paused.currentTime) < .1);
   const restoredIntro = (await state()).introAudition;
-  assert.equal(restoredIntro.playing, true); assert.equal(restoredIntro.introAuditionLoop, true);
+  assert.equal(restoredIntro.playing, false); assert.equal(restoredIntro.introAuditionLoop, true);
   assert.ok(restoredIntro.elapsed >= paused.introAudition.elapsed - .1);
   await page.evaluate(() => document.getElementById("workbench").editor.preview.setIntroAudition({ enabled: false }));
   results.phase = "window-close";
@@ -115,12 +115,20 @@ try {
   await page.evaluate(() => { window.closingPreview = document.getElementById("workbench").editor.preview.windowRouter.popup; });
   results.closing = await page.evaluate(() => ({ ...document.getElementById("workbench").editor.preview.windowRouter.popup.clock }));
   await second.close({ runBeforeUnload: true });
-  await waitForAsync(page, async () => !document.getElementById("workbench").editor.preview.windowRouter.presenting && (await document.getElementById("workbench").editor.preview.getState()).playing);
+  await waitForAsync(page, async () => {
+    const preview = document.getElementById("workbench").editor.preview, router = preview.windowRouter;
+    return !router.presenting && !router.attaching && !(await preview.getState()).playing;
+  });
   assert.equal(await page.evaluate(() => window.closingPreview.closingState.clock.playing), true);
   results.restored = await state(); assert.ok(results.restored.currentTime >= running.currentTime - .1);
   await page.evaluate(() => document.getElementById("workbench").editor.preview.pause());
   results.phase = "document-close";
-  const third = await opened(); await command("preview.toggle");
+  await command("preview.toggle");
+  const beforeDetach = await state(); assert.equal(beforeDetach.playing, true);
+  const third = await opened(), afterDetach = await state();
+  assert.equal(afterDetach.playing, false, "detaching pauses playback");
+  assert.ok(afterDetach.currentTime >= beforeDetach.currentTime);
+  await command("preview.toggle");
   const closing = command("file.close");
   await page.getByRole("button", { name: "放弃修改", exact: true }).click(); await closing;
   assert.equal((await doc()).hasDocument, false);

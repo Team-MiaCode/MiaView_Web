@@ -56,6 +56,13 @@ try {
   const frame=page.frames().find(frame=>frame.url().includes("/renderer/index.html"));
   const firstVoice=await frame.evaluate(()=>sourceProbe.map(item=>({offset:item.offset,rate:item.rate,gain:item.target?.gain?.value,stopped:item.stopped,ended:item.ended})));
   assert.equal(firstVoice.length,1);assert.equal(firstVoice[0].offset,.7);assert.equal(firstVoice[0].rate,1);assert.ok(firstVoice[0].gain>0);
+  await command("preview.toggle");
+  const pausedIntro=await state();assert.equal(pausedIntro.introAudition.playing,false);
+  assert.ok(pausedIntro.introAudition.elapsed>=first.introAudition.elapsed);
+  await command("preview.toggle");
+  const resumedIntro=await state();assert.equal(resumedIntro.introAudition.playing,true);
+  assert.ok(resumedIntro.introAudition.elapsed>=pausedIntro.introAudition.elapsed);
+  assert.ok(Math.abs(await frame.evaluate(()=>sourceProbe.at(-1).offset)-(.7+pausedIntro.introAudition.elapsed))<.000001);
   await page.locator(".preview-container").screenshot({path:join(output,"playing.png")});
   await waitForAsync(page,async()=>{const state=await document.getElementById("workbench").editor.preview.getState();return state.introAudition?.active&&!state.introAudition.playing;},null,{timeout:20000,polling:500});
   assert.equal((await state()).introAudition.elapsed,0);assert.equal(await page.locator("[data-intro-audition]").getAttribute("aria-pressed"),"false");

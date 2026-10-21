@@ -1178,10 +1178,10 @@ export function createPlayerEngine(view) {
         introOptions=settings;introAudition.configure(plan,settings);
       }
       if("introAuditionLoop" in input)introAudition.introAuditionLoop=input.introAuditionLoop;
-      if("elapsed" in input && introAudition.playing)introAudition.pause();
-      if(playing&&!introAudition.playing)await introAudition.play((input.elapsed??0)%introAudition.plan.introAuditionSeconds);
+      if("elapsed" in input)introAudition.pause(input.elapsed%introAudition.plan.introAuditionSeconds);
+      if(playing&&!introAudition.playing)await introAudition.play();
       else if(!playing&&introAudition.playing)introAudition.pause();
-      else introAudition.publish();
+      else if(!("elapsed" in input))introAudition.publish();
       return introAudition.state();
     }catch(error){await stopIntroAudition();throw error;}
   }

@@ -159,7 +159,7 @@ PV 的填充、适应、方形适应及内圈适应模式从原生 `PreviewScene
 
 ## 片头试听
 
-`setIntroAudition` 在当前预览实例内使用相同的原生片头场景与音轨规划。试听消费 `IntroConfig` 的片段长度、PV 起点、音乐包络和样式。播放期间保留谱面位置与倍率，音乐以正常倍率试听；结束与暂停停留在片头静帧，循环从选定起点续接。修改起点刷新对应声音源，窗口缩放保留试听状态。离开导出页、切换文档或执行编辑事务时恢复谱面预览。
+`setIntroAudition` 在当前预览实例内使用相同的原生片头场景与音轨规划。试听消费 `IntroConfig` 的片段长度、PV 起点、音乐包络和样式。播放期间保留谱面位置与倍率，音乐以正常倍率试听；暂停保留经过时间并呈现静帧，继续播放从暂停处接续；结束回到片头静帧，循环从选定起点续接。修改起点刷新对应声音源，窗口缩放保留试听状态。离开导出页、切换文档或执行编辑事务时恢复谱面预览。
 
 试听增益消费上游 `IntroRegion.cpp` 的 smoothstep 与 1/32 量化规则；文件导出的淡入淡出消费 `BassExportAudioBackend.cpp` 的 16 段 smoothstep 包络节点，PCM 分块边界沿用同一包络。`tests/intro-audition.spec.mjs` 验证增益、循环、静帧与声音源释放；`tests/intro-audition-core-smoke.mjs` 验证实际试听按钮、音乐源起点与倍率、自动结束、循环、起点修改、自由比例窗口缩放和预览状态恢复。
 
@@ -169,7 +169,7 @@ PV 的填充、适应、方形适应及内圈适应模式从原生 `PreviewScene
 
 SDK 的 `audioContextOwner` 对分离窗口指定同源 opener，音频实例消费发起窗口的文档权限，实例释放时关闭所属音频上下文。浏览器对 AudioContext 的文档关系与启动权限采用 [Web Audio 规范](https://webaudio.github.io/web-audio-api/#AudioContext) 的规则。窗口退出前捕获播放状态，pagehide 负责释放实例与恢复主预览。
 
-`tests/preview-window-smoke.mjs` 验证音乐、封面和 PV 传入、播放控制、快捷键、编辑同步、窗口尺寸、文档代数、片头试听及关闭后的播放恢复。窗口关闭沿浏览器的 beforeunload 与 pagehide 生命周期执行；关闭工程同步释放分离窗口。`tests/intro-audition.spec.mjs` 包含试听经过时间对应的声音起点、剩余时长和画面帧。
+`tests/preview-window-smoke.mjs` 验证音乐、封面和 PV 传入、播放控制、快捷键、编辑同步、窗口尺寸、文档代数、片头试听，以及分离、嵌回和关闭后的暂停位置。分离操作与窗口载入并行提交暂停；嵌回读取暂停后的快照；关闭窗口保留退出时的进度并停在暂停态。片头试听保留经过时间、循环设置和暂停状态。窗口关闭沿浏览器的 beforeunload 与 pagehide 生命周期执行；关闭工程同步释放分离窗口。`tests/intro-audition.spec.mjs` 包含试听经过时间对应的声音起点、剩余时长和画面帧。
 
 ## 封面图层事务
 

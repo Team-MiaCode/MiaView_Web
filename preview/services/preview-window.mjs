@@ -122,10 +122,13 @@ class PreviewWindow {
     if (!window) throw new Error("浏览器需要允许打开预览窗口");
     const popup = this.popup = { window, abort: new AbortController(), fonts: new Set(), appearance: new Set() };
     try {
-      await new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error("预览窗口载入超时")), 15000);
-        window.addEventListener("load", () => { clearTimeout(timer); resolve(); }, { once: true });
-      });
+      const [snapshot] = await Promise.all([
+        this.owner.pause().then(state => { popup.snapshot = state; return state; }),
+        new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error("预览窗口载入超时")), 15000);
+          window.addEventListener("load", () => { clearTimeout(timer); resolve(); }, { once: true });
+        }),
+      ]);
       if (window.closed || this.destroyed) throw new DOMException("预览窗口关闭", "AbortError");
       const document = window.document, root = document.getElementById("preview-window");
       const execute = (id, args) => Promise.resolve(this.options.command(id, args)).catch(this.options.error);
@@ -152,8 +155,6 @@ class PreviewWindow {
           this.options.changed(false);
         }
       }, { once: true });
-      const snapshot = popup.snapshot = await this.owner.getState();
-      await this.owner.pause();
       if (snapshot.introAudition?.active) { await this.owner.setIntroAudition({ enabled: false }); await this.owner.pause(); }
       popup.preview = window.miacodePreviewWindow.createPreview(document.getElementById("preview-window-stage"), { ...this.options.preview,
         resolution: this.options.resolution, controls: false, layout: "fit", diagnostics: false, audioContextOwner: "opener", theme: this.options.viewState.activeThemeToken });
@@ -197,8 +198,9 @@ class PreviewWindow {
     if (state.latency?.onPage) await preview.setLatency(state.latency);
     await preview.setPlayback(state.playback);
     await preview.seek(state.currentTime);
-    if (state.introAudition?.active) await preview.setIntroAudition({ ...this.options.introSettings(), playing: state.introAudition.playing, elapsed: state.introAudition.elapsed });
-    else if (state.playing) await preview.play();
+    if (state.introAudition?.active) await preview.setIntroAudition({ ...this.options.introSettings(),
+      introPvStartSeconds: state.introAudition.introPvStartSeconds, introAuditionLoop: state.introAudition.introAuditionLoop,
+      playing: false, elapsed: state.introAudition.elapsed });
   }
   updateAppearance() {
     const popup = this.popup; if (!popup || popup.window.closed) return;
@@ -225,11 +227,11 @@ class PreviewWindow {
       if (closed) popup.preview.destroy();
       await this.pending;
       let state;
-      if (!closed && !popup.window.closed) { state = await popup.preview.getState(); await popup.preview.pause(); }
+      if (!closed && !popup.window.closed) state = await popup.preview.pause();
       else {
         const clock = popup.closingState?.clock || popup.clock || {};
         state = { ...clock, playback: clock.playback || (await this.owner.getState()).playback, introAudition: popup.closingState?.intro || popup.intro };
-        if (clock.playing) state.currentTime = Math.min(clock.duration, clock.currentTime + (performance.now() - clock.observedAt) / 1000 * clock.rate);
+        if (clock.playing && !state.introAudition?.active) state.currentTime = Math.min(clock.duration, clock.currentTime + (performance.now() - clock.observedAt) / 1000 * clock.rate);
       }
       this.presenting = false; this.popup = null; this.closePopup(popup);
       await this.restore(this.owner, state); this.options.changed(false);

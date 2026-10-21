@@ -22,6 +22,7 @@ export class IntroAudition {
   publish() {this.lastPublish=this.context.currentTime;this.changed(this.state());}
   position() {return this.playing?Math.max(0,this.context.currentTime-this.startedAt):this.elapsed;}
   stopSources() {
+    this.cancelPlay?.();this.cancelPlay=null;
     ++this.mediaGeneration;
     if(this.source){this.source.onended=null;this.source.stop();this.source.disconnect();this.source=null;}
     if(this.gain){this.gain.disconnect();this.gain=null;}
@@ -43,18 +44,27 @@ export class IntroAudition {
       if(this.video.currentTime<this.video.duration-.02)void this.video.play().catch(error=>{if(this.playing&&generation===this.mediaGeneration)this.failed(error);});
     }
   }
-  async play(elapsed=0) {
+  async play(elapsed=this.elapsed) {
     if(this.playing)return;
-    await this.context.resume();this.stopSources();this.elapsed=elapsed;this.startedAt=this.context.currentTime-elapsed;
-    this.playing=true;this.lastFrame=-1;this.still(false);this.startSources();this.tick();this.publish();
+    elapsed%=this.plan.introAuditionSeconds;
+    this.cancelPlay?.();
+    let cancel;
+    const cancelled=new Promise(resolve=>{cancel=()=>resolve(false);});this.cancelPlay=cancel;
+    try {
+      const resumed=await Promise.race([this.context.resume().then(()=>true),cancelled]);
+      if(!resumed||this.cancelPlay!==cancel)return;
+      this.cancelPlay=null;
+      this.stopSources();this.elapsed=elapsed;this.startedAt=this.context.currentTime-elapsed;
+      this.playing=true;this.lastFrame=-1;this.still(false);this.startSources();this.tick();this.publish();
+    } finally {if(this.cancelPlay===cancel)this.cancelPlay=null;}
   }
-  pause() {
-    this.stopSources();this.playing=false;this.elapsed=0;this.lastFrame=-1;this.still(true);this.tick();this.publish();
+  pause(elapsed=this.position()) {
+    this.stopSources();this.playing=false;this.elapsed=Math.max(0,Math.min(this.plan.introAuditionSeconds,elapsed));this.lastFrame=-1;this.still(true);this.tick();this.publish();
   }
   tick() {
     let elapsed=this.position();
     if(this.playing&&elapsed>=this.plan.introAuditionSeconds) {
-      if(!this.introAuditionLoop){this.pause();return;}
+      if(!this.introAuditionLoop){this.pause(0);return;}
       this.stopSources();this.startedAt=this.context.currentTime;this.elapsed=elapsed=0;this.lastFrame=-1;this.startSources();this.publish();
     }
     if(this.gain){const gain=introTrackGain(this.plan,elapsed);if(gain!==this.lastGain){this.gain.gain.value=gain;this.lastGain=gain;}}
