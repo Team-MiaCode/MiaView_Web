@@ -26,6 +26,16 @@ for (const [name, field] of [["Standard", ""], ["Explicit", "assets/clip.webm"],
 const productRoot = resolve(process.env.MIACODE_PRODUCTS_ROOT || ".");
 const servers = [], results = [];
 const renderReferences = new Map();
+async function frameDiagnostics(page) {
+  return Promise.all(page.frames().map(async frame => ({ url: frame.url(),
+    detail: await frame.evaluate(() => ({ visibility: document.visibilityState, focused: document.hasFocus(),
+      status: [...document.querySelectorAll("#status,.status-label")].map(node => node.textContent),
+      bounds: [...document.querySelectorAll("iframe,.preview-host,#stage,#qt-screen,canvas")].map(node => {
+        const rect = node.getBoundingClientRect();
+        return { tag: node.tagName, id: node.id, display: getComputedStyle(node).display,
+          x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      }) })).catch(error => ({ error: String(error) })) })));
+}
 const renderSettings = { noteSkin: "DX", previewMode: "native", showTimestamp: false, showDebugInfo: false,
   showChartInfoHud: false, showObjectStatsHud: false, centerDisplay: 0 };
 async function compareRender(page, reference, captured) {
@@ -57,8 +67,14 @@ try {
         page.setDefaultTimeout(120000);
         const errors = [], missing = [];
         page.on("pageerror", error => errors.push(error.message));
+        const messages = [];
+        page.on("console", message => { if (message.type() === "error") messages.push(message.text()); });
         page.on("response", response => { if (response.status() >= 400) missing.push(response.url()); });
         await page.goto(`${host}/tests/host.html`);
+        const startupDiagnostics = setTimeout(() => {
+          void frameDiagnostics(page).then(frames => console.error(JSON.stringify({ browser: name, product,
+            slowInitialization: frames, errors, messages, missing }))).catch(error => console.error(String(error)));
+        }, 15000);
         const initial = await page.evaluate(async ({ origin, sourceText }) => {
           const { createEditor } = await import(`${origin}/sdk/editor.mjs`);
           Object.assign(document.getElementById("one").style, { width: "1366px", height: "768px" });
@@ -71,7 +87,10 @@ try {
             ...(index === 1 ? { video: `${origin}/tests/fixtures/bg-pattern.webm` } : {}) })));
           await editors[0].command("document.metadataTitle", { value: "Edited title" });
           return { documents, saved: await editors[0].getDocumentSaveText(), second: await editors[1].getDocument(), events: documentEvents.length };
-        }, { origin, sourceText });
+        }, { origin, sourceText }).catch(async error => {
+          console.error(JSON.stringify({ browser: name, product, initialization: await frameDiagnostics(page), errors, messages, missing }));
+          throw error;
+        }).finally(() => clearTimeout(startupDiagnostics));
         assert.equal(initial.documents[0].title, "Product parity");
         assert.equal(initial.second.title, "Product parity");
         assert.ok(initial.saved.sourceText.includes("&title=Edited title"));

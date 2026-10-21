@@ -6,7 +6,10 @@ test("closing an intro window preserves its song position and returns a paused a
   const restored = {};
   const owner = { on() {},
     async setPlayback(value) { restored.playback = value; },
-    async seek(value) { restored.second = value; },
+    async seek(value) {
+      assert.equal(restored.detached, false, "Show the embedded renderer before awaiting its video frame");
+      restored.second = value;
+    },
     async setIntroAudition(value) { restored.intro = value; },
     async play() { throw new Error("Window transitions must return paused"); } };
   const preview = createWorkbenchPreview(owner, { changed: value => { restored.detached = value; },

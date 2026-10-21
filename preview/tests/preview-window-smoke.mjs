@@ -17,6 +17,12 @@ try {
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 } }); page.setDefaultTimeout(90000);
   page.on("pageerror", error => errors.push(error.message));
   await page.addInitScript(() => {
+    window.shortcutTrace = [];
+    for (const type of ["keydown", "keyup", "focus", "blur"]) window.addEventListener(type, event => {
+      shortcutTrace.push({ type, key: event.key, ctrl: event.ctrlKey, shift: event.shiftKey,
+        target: event.target?.tagName, active: document.activeElement?.tagName, time: performance.now() });
+      if (shortcutTrace.length > 30) shortcutTrace.shift();
+    }, true);
     const AudioContextClass = window.AudioContext ?? window.webkitAudioContext;
     if (!AudioContextClass) return;
     const resume = AudioContextClass.prototype.resume;
@@ -70,6 +76,7 @@ try {
   assert.equal((await state()).videoPresentation.decoder, software ? "software" : "browser");
   assert.equal(await popup.locator("#preview-window-attach").count(), 1);
   results.phase = "play-button";
+  console.log("Preview window: play button");
   await popup.getByRole("button", { name: "播放", exact: true }).click();
   await waitForAsync(page, async () => (await document.getElementById("workbench").editor.preview.getState()).playing);
   assert.equal(await page.evaluate(async () => (await document.getElementById("workbench").editor.preview.windowRouter.owner.getState()).playing), false);
@@ -80,6 +87,7 @@ try {
   await page.evaluate(() => document.getElementById("workbench").editor.preview.pause());
   await popup.frameLocator("iframe").locator(".qt-window").first().click();
   results.phase = "canvas-keyboard";
+  console.log("Preview window: canvas keyboard");
   await popup.keyboard.press("Control+Shift+X");
   await waitForAsync(page, async () => (await document.getElementById("workbench").editor.preview.getState()).playing);
   await popup.keyboard.press("Control+Shift+X");
@@ -110,6 +118,7 @@ try {
   assert.ok(restoredIntro.elapsed >= paused.introAudition.elapsed - .1);
   await page.evaluate(() => document.getElementById("workbench").editor.preview.setIntroAudition({ enabled: false }));
   results.phase = "window-close";
+  console.log("Preview window: window close");
   const second = await opened(); await command("preview.toggle");
   const running = await state(); assert.equal(running.playing, true);
   await page.evaluate(() => { window.closingPreview = document.getElementById("workbench").editor.preview.windowRouter.popup; });
@@ -123,17 +132,19 @@ try {
   results.restored = await state(); assert.ok(results.restored.currentTime >= running.currentTime - .1);
   await page.evaluate(() => document.getElementById("workbench").editor.preview.pause());
   results.phase = "document-close";
+  console.log("Preview window: document close");
   await command("preview.toggle");
   const beforeDetach = await state(); assert.equal(beforeDetach.playing, true);
   const third = await opened(), afterDetach = await state();
   assert.equal(afterDetach.playing, false, "detaching pauses playback");
   assert.ok(afterDetach.currentTime >= beforeDetach.currentTime);
   await command("preview.toggle");
+  const thirdClosed = third.waitForEvent("close");
   const closing = command("file.close");
   await page.getByRole("button", { name: "放弃修改", exact: true }).click(); await closing;
   assert.equal((await doc()).hasDocument, false);
   assert.equal(await page.evaluate(() => document.getElementById("workbench").editor.preview.windowRouter.popup), null);
-  await third.waitForEvent("close").catch(error => { if (!third.isClosed()) throw error; });
+  await thirdClosed;
   assert.equal(third.isClosed(), true);
   assert.deepEqual(errors, []); console.log("Detached controls, document ownership, edits, keyboard, responsive window and playback restoration passed");
 } catch (error) {
@@ -149,6 +160,13 @@ try {
           ...renderer.audioResumeTrace.trace, state: renderer.audioResumeTrace.context.state },
         video: { time: video.currentTime, paused: video.paused, seeking: video.seeking, readyState: video.readyState },
         videoEvents: renderer.videoEventTrace };
+      const active = router.popup?.preview.iframe.contentWindow, activeVideo = active?.document.getElementById("stage-video");
+      if (active) detail.popupRenderer = { visibility: active.document.visibilityState, focused: active.document.hasFocus(),
+        active: active.document.activeElement?.tagName, keys: active.shortcutTrace,
+        popupKeys: router.popup.window.shortcutTrace,
+        audio: active.audioResumeTrace && { ...active.audioResumeTrace.trace, state: active.audioResumeTrace.context.state },
+        video: { time: activeVideo.currentTime, paused: activeVideo.paused, seeking: activeVideo.seeking, readyState: activeVideo.readyState },
+        videoEvents: active.videoEventTrace };
     } catch (error) { detail.ownerError = String(error); }
     return detail;
   }).catch(error => ({ diagnosticError: String(error) }));

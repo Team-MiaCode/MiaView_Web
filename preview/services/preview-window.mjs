@@ -234,7 +234,8 @@ class PreviewWindow {
         if (clock.playing && !state.introAudition?.active) state.currentTime = Math.min(clock.duration, clock.currentTime + (performance.now() - clock.observedAt) / 1000 * clock.rate);
       }
       this.presenting = false; this.popup = null; this.closePopup(popup);
-      await this.restore(this.owner, state); this.options.changed(false);
+      this.options.changed(false);
+      await this.restore(this.owner, state);
     } finally { this.attaching = false; }
   }
   closePopup(popup) {
