@@ -28,6 +28,7 @@ export function createPlayerEngine(view) {
   let disposed = false, frameRequest;
   let playbackRequest = 0;
   let playStartAbort;
+  let seekPresentationAbort;
   let WIDTH = DEFAULT_RESOLUTION.width,
     HEIGHT = DEFAULT_RESOLUTION.height;
 
@@ -424,6 +425,7 @@ export function createPlayerEngine(view) {
   function pause() {
     ++playbackRequest;
     playStartAbort?.abort();
+    seekPresentationAbort?.abort();
     if(introAudition){introAudition.pause();return;}
     if (!audio) return;
     diagnostics.flush();
@@ -1288,8 +1290,16 @@ export function createPlayerEngine(view) {
     seek: async second => {
       seek(second);
       if (video.src && !hidePv) {
-        await videoPresentation.ready(audio.offset, abort.signal);
-        if (renderedSecond === audio.currentSecond()) await presentVideo(performance.now(), true);
+        const controller = seekPresentationAbort = new AbortController();
+        const signal = AbortSignal.any([abort.signal, controller.signal]);
+        try {
+          await videoPresentation.ready(audio.offset, signal);
+          if (renderedSecond === audio.currentSecond()) await presentVideo(performance.now(), true);
+        } catch (error) {
+          if (!signal.aborted) throw error;
+        } finally {
+          if (seekPresentationAbort === controller) seekPresentationAbort = null;
+        }
       }
     },
     fail,

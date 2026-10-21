@@ -71,7 +71,8 @@ export class BrowserVideoFrames {
     if (this.failure) throw this.failure;
     if (!this.pendingSeek && !this.video.seeking && this.frames.length) return;
     const document = this.video.ownerDocument;
-    if (document?.hidden) return;
+    const frame = document?.defaultView?.frameElement;
+    if (document?.hidden || frame?.checkVisibility({ visibilityProperty: true }) === false) return;
     await new Promise((resolve, reject) => {
       const waiter = { finish: error => {
         this.waiters.delete(waiter); signal.removeEventListener("abort", abort);

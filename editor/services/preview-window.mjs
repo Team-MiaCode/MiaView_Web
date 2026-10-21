@@ -131,6 +131,7 @@ class PreviewWindow {
       ]);
       if (window.closed || this.destroyed) throw new DOMException("预览窗口关闭", "AbortError");
       const document = window.document, root = document.getElementById("preview-window");
+      root.inert = true;
       const execute = (id, args) => Promise.resolve(this.options.command(id, args)).catch(this.options.error);
       popup.menus = new PopupHost(root, execute);
       popup.transport = new PreviewTransport(execute, (...args) => popup.menus.showMenu(...args), this.options.viewState);
@@ -187,6 +188,8 @@ class PreviewWindow {
       popup.resize = new window.ResizeObserver(resized); popup.resize.observe(document.getElementById("preview-window-stage"));
       this.updateAppearance(); await this.fit(); window.focus();
       this.presenting = true; this.paintDocument(); this.options.changed(true);
+      root.inert = false;
+      popup.preview.iframe.focus({ preventScroll: true });
       this.emit("timeupdate", await popup.preview.getState());
       if (snapshot.introAudition?.active) this.emit("introAuditionChanged", await popup.preview.getState().then(state => state.introAudition));
     } catch (error) {

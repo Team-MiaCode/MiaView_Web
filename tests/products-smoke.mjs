@@ -111,6 +111,11 @@ try {
         assert.equal(initial.second.title, "Product parity");
         assert.ok(initial.saved.sourceText.includes("&title=Edited title"));
         assert.ok(initial.events > 0);
+        await page.evaluate(() => Promise.race([
+          editors[1].command("preview.seek", { second: .5 }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Hidden compact preview seek stalled")), 5000)),
+        ]));
+        assert.equal((await page.evaluate(() => editors[1].getState())).currentTime, .5);
         const workbenchFrame = page.locator("#one > div > iframe").contentFrame();
         for (const [width, height] of [[1366, 768], [800, 500], [360, 640], [1200, 240]]) {
           await page.locator("#one").evaluate((node, size) => Object.assign(node.style, { width: `${size[0]}px`, height: `${size[1]}px` }), [width, height]);

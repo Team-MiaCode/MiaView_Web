@@ -65,7 +65,8 @@ try {
       try {
         assert.equal(await page.evaluate(() => Boolean(document.getElementById("workbench").editor.preview.windowRouter.presenting)), false,
           "Complete initial sizing before publishing the active playback window");
-        assert.equal(await popup.getByRole("button", { name: "播放", exact: true }).isDisabled(), true);
+        assert.equal(await popup.locator('.preview-transport button[aria-label="播放"]').isDisabled(), true);
+        assert.equal(await popup.locator("#preview-window").evaluate(root => root.inert), true);
       } finally { await page.evaluate(() => window.releaseInitialLayout()); }
       results.initialLayout = true;
     }
@@ -75,6 +76,7 @@ try {
         popup: Boolean(document.getElementById("workbench").editor.preview.windowRouter.popup) }));
       await popup.screenshot({ path: join(output, "opening.png") }); throw error;
     }
+    assert.equal(await popup.locator("#preview-window").evaluate(root => root.inert), false);
     return popup;
   };
   await command("file.demo"); await command("preview.seek", { second: .4 });
@@ -94,6 +96,11 @@ try {
   assert.deepEqual((await state()).media, {hidePv:false,audioAvailable:true,coverAvailable:true,videoAvailable:true});
   assert.equal((await state()).videoPresentation.decoder, software ? "software" : "browser");
   assert.equal(await popup.locator("#preview-window-attach").count(), 1);
+  results.phase = "initial-keyboard";
+  await popup.keyboard.press("Control+Shift+X");
+  await waitForAsync(page, async () => (await document.getElementById("workbench").editor.preview.getState()).playing);
+  await popup.keyboard.press("Control+Shift+X");
+  await waitForAsync(page, async () => !(await document.getElementById("workbench").editor.preview.getState()).playing);
   results.phase = "play-button";
   console.log("Preview window: play button");
   await popup.getByRole("button", { name: "播放", exact: true }).click();

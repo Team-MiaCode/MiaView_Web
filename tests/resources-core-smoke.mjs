@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { staticServer } from "../scripts/serve.mjs";
+import { waitForAsync } from "./helpers/wait-async.mjs";
 
 const { chromium } = await import(process.env.MIACODE_PLAYWRIGHT_MODULE ? pathToFileURL(process.env.MIACODE_PLAYWRIGHT_MODULE).href : "playwright");
 const output = resolve("artifacts/resources-core"); mkdirSync(output, { recursive: true });
@@ -53,6 +54,34 @@ try {
   assert.equal(loaded.media.coverAvailable, true); assert.equal(loaded.media.videoAvailable, true);
   assert.equal(await video.evaluate(node => node.readyState >= 2 && node.videoWidth > 0 && node.muted), true);
   assert.equal((await liveUrls()).length, 1);
+  const renderer = page.frames().find(frame => frame.url().includes("/renderer/index.html"));
+  await renderer.evaluate(async () => {
+    const { BrowserVideoFrames } = await import("./browser-video.mjs");
+    window.restoreVideoReady = BrowserVideoFrames.prototype.ready;
+    BrowserVideoFrames.prototype.ready = function (signal) {
+      window.waitingVideoPresentation = true;
+      return new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+    };
+  });
+  let pausedFrameSeek, frameWaitTimeout;
+  try {
+    const seeking = page.evaluate(() => document.getElementById("workbench").editor.preview.seek(.75));
+    void seeking.catch(() => {});
+    await waitForAsync(renderer, () => window.waitingVideoPresentation, undefined, { timeout: 5000 });
+    pausedFrameSeek = await page.evaluate(() => document.getElementById("workbench").editor.preview.pause());
+    await Promise.race([seeking, new Promise((_, reject) => {
+      frameWaitTimeout = setTimeout(() => reject(new Error("Pause must release pending video presentation")), 5000);
+    })]);
+    assert.equal(pausedFrameSeek.playing, false); assert.equal(pausedFrameSeek.currentTime, .75);
+    assert.equal((await state()).currentTime, .75);
+  } finally {
+    clearTimeout(frameWaitTimeout);
+    await renderer.evaluate(async () => {
+      const { BrowserVideoFrames } = await import("./browser-video.mjs");
+      BrowserVideoFrames.prototype.ready = window.restoreVideoReady;
+      delete window.restoreVideoReady; delete window.waitingVideoPresentation;
+    });
+  }
   await command("timeline.viewport");
   assert.ok(await page.evaluate(() => document.getElementById("workbench").editor.workbench.documentSession.timelineSceneState.waveformBars.length > 0));
   await page.evaluate(async () => { const preview = document.getElementById("workbench").editor.preview; await preview.seek(1); await preview.play(); });
@@ -99,7 +128,7 @@ try {
   const saved = await page.evaluate(() => document.getElementById("workbench").editor.preview.getDocumentSaveText());
   assert.match(saved.sourceText, /&video=assets\/pv\.webm/);
   assert.deepEqual(errors, []);
-  writeFileSync(resolve(output, "results.json"), JSON.stringify({ before, loaded, playing, beforeReplacement, replacementDurationMs, pausedReplacement, removed, invalid, errors }, null, 2) + "\n");
+  writeFileSync(resolve(output, "results.json"), JSON.stringify({ before, loaded, playing, beforeReplacement, replacementDurationMs, pausedReplacement, pausedFrameSeek, removed, invalid, errors }, null, 2) + "\n");
   console.log("Real media decoding, waveform replacement, document/save-point retention, playback, rejected batches, PV URL cleanup and video metadata passed");
 } finally {
   await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve));

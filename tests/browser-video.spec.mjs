@@ -14,6 +14,8 @@ test("browser PV keeps three immutable timestamps and releases images, waits and
   };
   t.after(() => { if (previous) globalThis.VideoFrame = previous; else delete globalThis.VideoFrame; });
   const video = new EventTarget(), document = new EventTarget(); document.hidden = false;
+  let frameVisible = true;
+  document.defaultView = { frameElement: { checkVisibility: () => frameVisible } };
   Object.assign(video, { ownerDocument: document, readyState: 2, currentTime: 0, currentFrame: 0, seeking: false,
     requestVideoFrameCallback(callback) { const id = ++this.serial; callbacks.set(id, callback); return id; },
     cancelVideoFrameCallback(id) { callbacks.delete(id); }, serial: 0 });
@@ -53,6 +55,10 @@ test("browser PV keeps three immutable timestamps and releases images, waits and
   assert.equal(frames.waiters.size, 0); assert.equal(frames.at(2), null);
   await frames.ready(new AbortController().signal);
   document.hidden = false; present(120, 2); assert.equal(frames.at(2).image.index, 120);
+  frames.beginSeek(); frameVisible = false;
+  await frames.ready(new AbortController().signal);
+  assert.equal(frames.waiters.size, 0);
+  frameVisible = true; present(120, 2);
   video.seeking = true; video.dispatchEvent(new Event("seeking"));
   const controller = new AbortController(), aborted = assert.rejects(frames.ready(controller.signal), /cancelled/);
   controller.abort(new Error("cancelled")); await aborted; assert.equal(frames.waiters.size, 0);
