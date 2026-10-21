@@ -12,9 +12,10 @@ export class BrowserVideoFrames {
     this.onFrame = () => {
       if (this.failure) return;
       try {
-        this.capture();
-        if (video.seeking) this.frameDuringSeek = true;
-        else this.finishSeek();
+        if (this.capture()) {
+          if (video.seeking) this.frameDuringSeek = true;
+          else this.finishSeek();
+        }
       } catch (error) { this.fail(error); return; }
       this.callback = video.requestVideoFrameCallback(this.onFrame);
     };
@@ -41,12 +42,20 @@ export class BrowserVideoFrames {
     for (const waiter of this.waiters) waiter.finish();
   }
   capture() {
-    if (this.video.readyState < 2) return;
-    const image = new VideoFrame(this.video), timestamp = image.timestamp / 1e6;
-    if (this.frames.at(-1)?.timestamp === timestamp) { image.close(); return; }
+    if (this.video.readyState < 2) return false;
+    let image;
+    try { image = new VideoFrame(this.video); }
+    catch (error) {
+      // Loaded data and seek completion can precede a decoded image's availability.
+      if (error.name === "InvalidStateError") return false;
+      throw error;
+    }
+    const timestamp = image.timestamp / 1e6;
+    if (this.frames.at(-1)?.timestamp === timestamp) { image.close(); return true; }
     this.frames.push({ image, timestamp });
     if (this.frames.length > 3) this.frames.shift().image.close();
     this.changed();
+    return true;
   }
   at(second, rate = 1) {
     if (this.video.seeking || this.pendingSeek || !this.frames.length) return null;

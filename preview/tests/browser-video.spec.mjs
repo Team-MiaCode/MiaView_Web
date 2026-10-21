@@ -4,8 +4,12 @@ import { BrowserVideoFrames } from "../renderer/browser-video.mjs";
 
 test("browser PV keeps three immutable timestamps and releases images, waits and callbacks", async t => {
   const callbacks = new Map(), images = [], previous = globalThis.VideoFrame;
+  let presenting = false;
   globalThis.VideoFrame = class {
-    constructor(video) { this.index = video.currentFrame; this.timestamp = video.currentTime * 1e6; images.push(this); }
+    constructor(video) {
+      if (!presenting) throw new DOMException("Decoded image pending", "InvalidStateError");
+      this.index = video.currentFrame; this.timestamp = video.currentTime * 1e6; images.push(this);
+    }
     close() { assert.ok(!this.closed); this.closed = true; }
   };
   t.after(() => { if (previous) globalThis.VideoFrame = previous; else delete globalThis.VideoFrame; });
@@ -16,10 +20,15 @@ test("browser PV keeps three immutable timestamps and releases images, waits and
   const present = (index, timestamp) => {
     video.currentFrame = index; video.currentTime = timestamp;
     const [id, callback] = callbacks.entries().next().value; callbacks.delete(id);
-    callback(0, { mediaTime: timestamp + 1 });
+    presenting = true;
+    try { callback(0, { mediaTime: timestamp + 1 }); }
+    finally { presenting = false; }
   };
   let changes = 0; const errors = [];
   const frames = new BrowserVideoFrames(video, () => ++changes, error => errors.push(error));
+  const initial = frames.ready(new AbortController().signal);
+  assert.equal(frames.frames.length, 0);
+  present(0, 0); await initial;
   present(1, 1 / 60); present(3, 3 / 60);
   assert.equal(frames.at(1.5 / 60).image.index, 1); assert.equal(frames.at(1.5 / 60).timestamp, 1 / 60);
   assert.equal(frames.at(2.75 / 60).image.index, 3);
@@ -31,7 +40,7 @@ test("browser PV keeps three immutable timestamps and releases images, waits and
   const ready = frames.ready(new AbortController().signal);
   assert.equal(frames.at(2), null);
   video.seeking = false; video.currentFrame = 120; video.currentTime = 2; video.dispatchEvent(new Event("seeked"));
-  assert.equal(frames.at(2), null); present(120, 2); await ready;
+  assert.equal(frames.at(2), null); assert.deepEqual(errors, []); present(120, 2); await ready;
   assert.equal(frames.at(2).image.index, 120); assert.equal(frames.waiters.size, 0);
   video.seeking = true; frames.beginSeek();
   const earlyFrame = frames.ready(new AbortController().signal);
