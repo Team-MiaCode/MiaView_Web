@@ -330,7 +330,11 @@ jobs:
 
   deploy-pages:
     needs: [prepare-pages, ui-acceptance, functional-acceptance]
-    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/web-editor-migration')
+    if: >-
+      always() && !cancelled() && github.event_name != 'pull_request' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/web-editor-migration') &&
+      needs.prepare-pages.result == 'success' && needs.ui-acceptance.result == 'success' &&
+      needs.functional-acceptance.result == 'success'
     runs-on: ubuntu-24.04
     permissions:
       pages: write
