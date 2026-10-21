@@ -14,6 +14,11 @@
           <option value="1080x1080">1080×1080</option>
         </select>
       </label>
+      <label>难度
+        <select id="difficulty" disabled>
+          <option value="">请先上传谱面</option>
+        </select>
+      </label>
       <label>最大帧率
         <select id="max-fps">
           <option value="30">30 FPS</option>
@@ -45,7 +50,7 @@
         <input id="files" type="file" multiple webkitdirectory aria-label="上传谱面文件夹" />
       </label>
     </form>
-    <p class="hint">配置修改后自动重建组件。文件夹上传完成后，自动通过 HTTP URL 加载。</p>
+    <p class="hint">配置修改后自动重建组件并保留难度。文件夹上传完成后，可选择谱面难度；PV 仅自动识别 bg.mp4、bg.webm、pv.mp4、pv.webm。</p>
     <div id="workspace">
       <main>
         <div id="preview"></div>

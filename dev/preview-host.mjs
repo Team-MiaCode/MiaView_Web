@@ -38,6 +38,15 @@ export function createDevPreviewHost({ status, onMount }) {
     const info = await instance.load(chart);
     if (instance !== preview) return;
     status(`已加载：${info.title || "未命名谱面"}，点击播放器内的播放按钮开始`);
+    return info;
   }
-  return { mount, load, destroy, get preview() { return preview; }, get active() { return active; } };
+  async function selectDifficulty(difficulty) {
+    const instance = preview;
+    status("正在切换难度…");
+    const info = await instance.selectDifficulty(difficulty);
+    if (instance !== preview) return;
+    status(`已加载：${info.title || "未命名谱面"}，点击播放器内的播放按钮开始`);
+    return info;
+  }
+  return { mount, load, selectDifficulty, destroy, get preview() { return preview; }, get active() { return active; } };
 }

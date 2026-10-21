@@ -13,7 +13,9 @@ export async function uploadChartFolder(selectedFiles, status) {
     maidata,
     audio: find(/\.(mp3|wav|ogg|flac|m4a)$/i),
     cover: find(/\.(png|jpe?g|webp)$/i),
-    video: find(/\.(mp4|webm)$/i),
+    // Keep MiaCode's bg/pv naming and WebM support, never arbitrary exports.
+    video: find(/^bg\.mp4$/i) ?? find(/^bg\.webm$/i)
+      ?? find(/^pv\.mp4$/i) ?? find(/^pv\.webm$/i),
   };
   status("正在上传到 Dev 后台，生成 HTTP URL…（上传完成后开始下载测试）");
   const resources = Object.entries(selected).filter(([, file]) => file);
