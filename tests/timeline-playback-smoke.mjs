@@ -19,7 +19,7 @@ try {
   await page.addInitScript(() => {
     for (const type of ["pointerdown", "wheel", "keydown"]) document.addEventListener(type, event => {
       const workbench = document.getElementById("workbench")?.editor?.workbench;
-      if (workbench && event.target.closest?.(".source-input")) {
+      if (workbench && event.target.closest?.(".source-input,.timeline-view")) {
         const audio = workbench.previewContainer.querySelector("iframe").contentWindow.playbackAudio;
         if (audio) window.lastPlaybackInteraction = { second: audio.currentSecond(), timelineSecond: workbench.timelineView.playbackSecond() };
       }
@@ -124,12 +124,17 @@ try {
   };
   await start();
   let point = await bodyPoint();
-  const beforeClick = await page.evaluate(() => editor.preview.getState());
   await page.mouse.click(point.x + 80, point.y);
   await waitForAsync(page, () => !editor.workbench.timelineView.interactionPending);
   let afterInteraction = await page.evaluate(() => editor.preview.getState());
   assert.equal(afterInteraction.playing, false);
-  assert.ok(Math.abs(afterInteraction.currentTime - beforeClick.currentTime) < .3, "Body click retains time");
+  const clickSecond = await page.evaluate(() => lastPlaybackInteraction.second);
+  assert.ok(afterInteraction.currentTime >= clickSecond, "Body click preserves progress made before pointer press");
+  assert.ok(Math.abs(afterInteraction.currentTime - clickSecond) < .3, `Body click retains time: ${clickSecond} / ${afterInteraction.currentTime}`);
+  assert.equal(afterInteraction.currentTime, await page.evaluate(() => editor.workbench.previewContainer.querySelector("iframe").contentWindow.lastAudioPause));
+  await page.waitForTimeout(100);
+  assert.equal((await page.evaluate(() => editor.preview.getState())).currentTime, afterInteraction.currentTime, "Body click remains paused");
+  results.push({ bodyClick: { pressed: clickSecond, paused: afterInteraction.currentTime } });
   await start(); point = await bodyPoint();
   await page.mouse.move(point.x, point.y); await page.mouse.down();
   await waitForAsync(page, async () => !(await editor.preview.getState()).playing);

@@ -71,11 +71,14 @@ try {
         page.on("console", message => { if (message.type() === "error") messages.push(message.text()); });
         page.on("response", response => { if (response.status() >= 400) missing.push(response.url()); });
         await page.goto(`${host}/tests/host.html`);
+        let releaseRenderer;
+        const rendererGate = new Promise(resolve => { releaseRenderer = resolve; });
+        await page.route("**/miacode-preview.js*", async route => { await rendererGate; await route.continue(); });
         const startupDiagnostics = setTimeout(() => {
           void frameDiagnostics(page).then(frames => console.error(JSON.stringify({ browser: name, product,
             slowInitialization: frames, errors, messages, missing }))).catch(error => console.error(String(error)));
         }, 15000);
-        const initial = await page.evaluate(async ({ origin, sourceText }) => {
+        const initializing = page.evaluate(async ({ origin, sourceText }) => {
           const { createEditor } = await import(`${origin}/sdk/editor.mjs`);
           Object.assign(document.getElementById("one").style, { width: "1366px", height: "768px" });
           Object.assign(document.getElementById("two").style, { width: "360px", height: "240px" });
@@ -91,6 +94,19 @@ try {
           console.error(JSON.stringify({ browser: name, product, initialization: await frameDiagnostics(page), errors, messages, missing }));
           throw error;
         }).finally(() => clearTimeout(startupDiagnostics));
+        void initializing.catch(() => {});
+        try {
+          const small = page.locator("#two > div > iframe").contentFrame().locator(".preview-container iframe");
+          await small.waitFor({ state: "attached" });
+          const height = await small.evaluate(async node => {
+            await node.ownerDocument.fonts.ready;
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            return node.getBoundingClientRect().height;
+          });
+          assert.ok(height >= 64, `${name}/${product}: initial 360x240 preview height ${height}`);
+          console.log(`${name}/${product}: initial 360x240 preview height ${height}`);
+        } finally { releaseRenderer(); }
+        const initial = await initializing;
         assert.equal(initial.documents[0].title, "Product parity");
         assert.equal(initial.second.title, "Product parity");
         assert.ok(initial.saved.sourceText.includes("&title=Edited title"));
