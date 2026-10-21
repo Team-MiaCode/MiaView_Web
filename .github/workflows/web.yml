@@ -3,6 +3,12 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      main_run_id:
+        description: Main workflow run providing its validated Pages artifact
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -201,7 +207,10 @@ jobs:
 
   build-alternate-pages:
     needs: source-checks
-    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/web-editor-migration')
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/web-editor-migration') &&
+      !(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feature/web-editor-migration' && inputs.main_run_id != '')
     runs-on: ubuntu-24.04
     outputs:
       source_sha: ${{ steps.source.outputs.sha }}
@@ -243,9 +252,54 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  reuse-main-pages:
+    needs: source-checks
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feature/web-editor-migration' && inputs.main_run_id != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - id: source
+        uses: actions/github-script@v7
+        env:
+          MAIN_RUN_ID: ${{ inputs.main_run_id }}
+        with:
+          script: |
+            const run_id = Number(process.env.MAIN_RUN_ID);
+            if (!Number.isSafeInteger(run_id) || run_id <= 0) throw new Error('Invalid main workflow run');
+            const request = { ...context.repo, run_id };
+            const { data: run } = await github.rest.actions.getWorkflowRun(request);
+            if (run.head_branch !== 'main' || !['push', 'workflow_dispatch'].includes(run.event) ||
+                run.head_repository?.full_name !== context.payload.repository.full_name)
+              throw new Error('Pages artifact must originate from this repository main branch');
+            const { data: { jobs } } = await github.rest.actions.listJobsForWorkflowRun({ ...request, filter: 'latest', per_page: 100 });
+            for (const name of ['source-checks', 'build-preview'])
+              if (!jobs.some(job => job.name === name && job.conclusion === 'success'))
+                throw new Error('Main validation must succeed before publication: ' + name);
+            core.setOutput('sha', run.head_sha);
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.main_run_id }}
+          name: miaview-pages
+          path: artifacts/pages
+      - uses: actions/upload-artifact@v4
+        with:
+          name: miaview-alternate-pages
+          path: artifacts/pages
+          if-no-files-found: error
+          retention-days: 14
+
   prepare-pages:
-    needs: [build-preview, build-alternate-pages]
-    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/web-editor-migration')
+    needs: [build-preview, build-alternate-pages, reuse-main-pages]
+    if: >-
+      always() && !cancelled() && github.event_name != 'pull_request' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/web-editor-migration') &&
+      needs.build-preview.result == 'success' &&
+      (needs.build-alternate-pages.result == 'success' || needs.reuse-main-pages.result == 'success')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -262,7 +316,7 @@ jobs:
           path: artifacts/alternate
       - name: Compose main and feature sites
         env:
-          MAIN_SHA: ${{ github.ref == 'refs/heads/main' && needs.build-preview.outputs.source_sha || needs.build-alternate-pages.outputs.source_sha }}
+          MAIN_SHA: ${{ github.ref == 'refs/heads/main' && needs.build-preview.outputs.source_sha || needs.reuse-main-pages.outputs.source_sha || needs.build-alternate-pages.outputs.source_sha }}
           FEATURE_SHA: ${{ github.ref == 'refs/heads/main' && needs.build-alternate-pages.outputs.source_sha || needs.build-preview.outputs.source_sha }}
         run: |
           if [ "$GITHUB_REF" = refs/heads/main ]; then
