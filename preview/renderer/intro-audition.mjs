@@ -20,7 +20,7 @@ export class IntroAudition {
   state() {return {active:true,playing:this.playing,introAuditionLoop:this.introAuditionLoop,elapsed:this.position(),
     duration:this.plan.introAuditionSeconds,introPvStartSeconds:this.settings.introPvStartSeconds??0};}
   publish() {this.lastPublish=this.context.currentTime;this.changed(this.state());}
-  position() {return this.playing?Math.max(0,this.context.currentTime-this.startedAt):this.elapsed;}
+  position() {return this.playing?this.elapsed+Math.max(0,this.context.currentTime-this.startedAt):this.elapsed;}
   stopSources() {
     this.cancelPlay?.();this.cancelPlay=null;
     ++this.mediaGeneration;
@@ -54,7 +54,7 @@ export class IntroAudition {
       const resumed=await Promise.race([this.context.resume().then(()=>true),cancelled]);
       if(!resumed||this.cancelPlay!==cancel)return;
       this.cancelPlay=null;
-      this.stopSources();this.elapsed=elapsed;this.startedAt=this.context.currentTime-elapsed;
+      this.stopSources();this.elapsed=elapsed;this.startedAt=this.context.currentTime;
       this.playing=true;this.lastFrame=-1;this.still(false);this.startSources();this.tick();this.publish();
     } finally {if(this.cancelPlay===cancel)this.cancelPlay=null;}
   }

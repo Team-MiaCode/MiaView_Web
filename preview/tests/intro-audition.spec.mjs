@@ -60,3 +60,17 @@ test("pausing an intro settles a pending audio start before its context resumes"
   assert.equal(audition.state().playing, false); assert.equal(sources, 0);
   audition.destroy();
 });
+
+test("resuming an intro preserves its fractional position at the audio clock anchor", async () => {
+  const context = { currentTime: 10, resume: async () => {} };
+  const audition = new IntroAudition({ context, track: null, video: { src: "", style: {}, pause() {} },
+    hidePv: () => false, frame: () => ({}), still() {}, changed() {}, failed: error => { throw error; } });
+  audition.configure(plan, {});
+  const elapsed = .6;
+  audition.pause(elapsed);
+  await audition.play();
+  assert.equal(audition.state().elapsed, elapsed);
+  context.currentTime += .25;
+  assert.equal(audition.state().elapsed, elapsed + .25);
+  audition.destroy();
+});
