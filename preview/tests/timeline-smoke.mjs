@@ -30,11 +30,16 @@ try {
   const sprite = first.noteSprites.find(note => note.spriteType === "tap" && note.center.x > first.timelineLeft && note.center.x < first.viewportSize.width);
   assert.ok(sprite);
   const bounds = await page.locator(".timeline-view").boundingBox();
-  const beforeBodyClick = await page.evaluate(() => document.getElementById("workbench").editor.preview.getState());
+  const beforeBodyCenter = await page.evaluate(async () => {
+    const view = document.getElementById("workbench").editor.workbench.timelineView;
+    const { timelineSecondAtX } = await import("./ui/workbench/timeline-playback.mjs");
+    return timelineSecondAtX(view.state, view.state.viewportSize.width / 2, view.scrollValue);
+  });
   await page.mouse.click(bounds.x + sprite.center.x, bounds.y + sprite.center.y);
   await page.waitForFunction(() => !document.getElementById("workbench").editor.workbench.timelineView.interactionPending);
   const afterBodyClick = await page.evaluate(() => document.getElementById("workbench").editor.preview.getState());
-  assert.equal(afterBodyClick.currentTime, beforeBodyClick.currentTime);
+  assert.equal(afterBodyClick.currentTime, beforeBodyCenter);
+  assert.equal(afterBodyClick.playing, false);
   await page.mouse.click(bounds.x + sprite.center.x, bounds.y + first.timelineTop / 2);
   await page.waitForFunction(() => {
     const input = document.getElementById("workbench").editor.workbench.sourceEditor.input;
