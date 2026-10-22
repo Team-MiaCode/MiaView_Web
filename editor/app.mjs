@@ -21,7 +21,8 @@ import { UserAppearance } from "./services/user-appearance.mjs";
 import { DEFAULT_PERFORMANCE, performanceSettings, frameRateForMode } from "./renderer/performance-settings.mjs";
 import { coverFileName } from "./services/cover-files.mjs";
 import { openCoverPresets } from "./ui/workbench/cover-presets.mjs";
-import { timelineSecondAtX } from "./ui/workbench/timeline-playback.mjs";
+import { timelineSecondAtX, timelineCenteredScroll, timelineZoomedScroll } from "./ui/workbench/timeline-playback.mjs";
+import { TIMELINE_ZOOM_PRESETS } from "./ui/workbench/timeline-controls.mjs";
 
 const HUD_AREAS = ["chart_info", "timestamp", "center_display", "object_stats", "debug_info"];
 
@@ -154,7 +155,7 @@ export function createWorkbench(container, options = {}) {
     const record = recordProject(snapshot);
     recoveryTimer = setTimeout(() => { recoveryTimer = null; void projectStore.put(record).catch(error => workbench.status(error.message)); }, 2000);
   }
-  const timelineOptions = { zoomScale: .5, horizontalScrollValue: 0, cursorSeconds: 0, waveformBrightness: .5, measureLineBrightness: 1,
+  const timelineOptions = { zoomScale: .5, horizontalScrollValue: 0, cursorSeconds: 0, playbackEntrySeconds: 0, waveformBrightness: .5, measureLineBrightness: 1,
     followPreviewEnabled: false, followProgressEnabled: true };
   workbench.timelineControls.update(timelineOptions);
   async function updateTimelineFollow(second) {
@@ -302,7 +303,7 @@ export function createWorkbench(container, options = {}) {
     preview.on("timeupdate", state => {
       applyPlaybackState(state);
       workbench.timelineView.setPlayback(state);
-      if (!state.playing && workbench.timelineView.scrollValue !== undefined)
+      if (!state.playing && !workbench.timelineView.interacting && workbench.timelineView.scrollValue !== undefined)
         timelineOptions.horizontalScrollValue = workbench.timelineView.scrollValue;
       void updateTimelineFollow(state.currentTime).catch(error => workbench.status(error.message));
     });
@@ -325,6 +326,10 @@ export function createWorkbench(container, options = {}) {
     }).finally(() => workbench.root.classList.remove("preview-initializing"));
   }
   function applyPlaybackState(state) {
+    if (state.playing && !workbench.previewTransport.state.playing) {
+      timelineOptions.playbackEntrySeconds = workbench.previewTransport.state.currentTime;
+      void refreshTimeline().catch(error => workbench.status(error.message));
+    }
     workbench.previewTransport.update(state);
     Object.assign(workbench.documentSession, { statistics: state.statistics, statisticsAvailable: state.statisticsAvailable });
     workbench.noteStatistics.update(state.statistics || [], { dataAvailable: state.statisticsAvailable,
@@ -428,7 +433,7 @@ export function createWorkbench(container, options = {}) {
     scheduleAnalysis();
     viewState.openEditor(snapshot.activeDifficultyId ? `difficulty:${snapshot.activeDifficultyId}` : "metadata");
     applyPlaybackState(playback);
-    timelineOptions.horizontalScrollValue = 0;
+    timelineOptions.horizontalScrollValue = 0; timelineOptions.cursorSeconds = 0; timelineOptions.playbackEntrySeconds = 0;
     await refreshTimeline();
     await flushRecovery(snapshot);
     await refreshRecent();
@@ -876,7 +881,12 @@ export function createWorkbench(container, options = {}) {
       return refreshTimeline();
     }
     if (id === "timeline.settings") {
+      const scene = workbench.documentSession.timelineSceneState;
+      const center = scene && timelineSecondAtX(scene, scene.viewportSize.width / 2, workbench.timelineView.scrollValue);
       Object.assign(timelineOptions, args);
+      if (scene && args.zoomScale !== undefined) {
+        timelineOptions.horizontalScrollValue = timelineZoomedScroll(scene, center, timelineOptions.zoomScale);
+      }
       if (Object.hasOwn(args, "followProgressEnabled")) workbench.timelineView.followProgressEnabled = args.followProgressEnabled;
       workbench.timelineControls.update(timelineOptions);
       if (args.followPreviewEnabled === false) workbench.sourceEditor.setFollowState({ active: false });
@@ -884,35 +894,53 @@ export function createWorkbench(container, options = {}) {
       return refreshTimeline();
     }
     if (id === "timeline.pause") return pausePlayback();
-    if (id === "timeline.scroll" || id === "timeline.drag") {
-      await pausePlayback();
+    if (id === "timeline.dragBegin") {
+      const wasPlaying = workbench.previewTransport.state.playing;
+      const paused = await pausePlayback();
+      if (!paused) return;
+      const scene = workbench.documentSession.timelineSceneState;
+      if (wasPlaying && scene && timelineOptions.followProgressEnabled) {
+        timelineOptions.horizontalScrollValue = timelineCenteredScroll(scene, paused.currentTime);
+        workbench.timelineView.setScroll(timelineOptions.horizontalScrollValue);
+      }
+      if (scene && timelineOptions.followProgressEnabled) {
+        const second = timelineSecondAtX(scene, scene.viewportSize.width / 2, workbench.timelineView.scrollValue);
+        if (Math.abs(second - paused.currentTime) * scene.pixelsPerSecond > .5) await preview.seek(second);
+      }
+      return refreshTimeline();
+    }
+    if (id === "timeline.scroll" || id === "timeline.drag" || id === "timeline.dragEnd") {
+      if (id === "timeline.scroll") await pausePlayback();
       const state = workbench.documentSession.timelineSceneState;
       timelineOptions.horizontalScrollValue = Math.max(0, Math.min(Math.max(0, (state?.contentWidth ?? 0) - (state?.viewportSize.width ?? 0)),
         (args.horizontalScrollValue ?? timelineOptions.horizontalScrollValue) + (args.delta ?? 0)));
-      if (state && timelineOptions.followProgressEnabled) {
+      if (state && (timelineOptions.followProgressEnabled || id === "timeline.dragEnd")) {
         const second = timelineSecondAtX(state, state.viewportSize.width / 2, timelineOptions.horizontalScrollValue);
         await preview.seek(second);
       }
       return refreshTimeline();
     }
     if (id === "timeline.zoom") {
-      timelineOptions.zoomScale = Math.max(.25, Math.min(8, timelineOptions.zoomScale * Math.exp(-args.delta / 600)));
-      workbench.timelineControls.update(timelineOptions);
-      return refreshTimeline();
+      const index = TIMELINE_ZOOM_PRESETS.findLastIndex(value => value <= timelineOptions.zoomScale);
+      const next = Math.max(0, Math.min(TIMELINE_ZOOM_PRESETS.length - 1, index + (args.delta < 0 ? 1 : -1)));
+      return command("timeline.settings", { zoomScale: TIMELINE_ZOOM_PRESETS[next] });
     }
     if (id === "timeline.navigateAtPoint") {
+      const scene = workbench.documentSession.timelineSceneState;
+      const second = args.second ?? timelineSecondAtX(scene, args.x, args.horizontalScrollValue);
       await pausePlayback();
       if (args.horizontalScrollValue !== undefined && args.horizontalScrollValue !== timelineOptions.horizontalScrollValue) {
         timelineOptions.horizontalScrollValue = args.horizontalScrollValue;
         await refreshTimeline();
       }
-      const target = await preview.navigateTimeline(args);
-      await preview.seek(target.second);
-      if (target.resolved && !latencyPage) {
+      const target = await preview.navigateTimeline({ ...args, y: 0 });
+      await preview.seek(second);
+      if (!latencyPage) {
         viewState.openEditor(`difficulty:${workbench.documentSession.activeDifficultyId}`);
-        workbench.sourceEditor.jumpToPosition(target.position);
+        workbench.sourceEditor.jumpToPosition(target.resolved ? target.position : 0);
       }
-      timelineOptions.cursorSeconds = target.second;
+      timelineOptions.cursorSeconds = target.resolved ? target.second : 0;
+      timelineOptions.horizontalScrollValue = timelineCenteredScroll(scene, workbench.previewTransport.state.currentTime);
       return refreshTimeline();
     }
     if (id === "preview.toggle") {

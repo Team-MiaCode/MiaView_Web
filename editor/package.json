@@ -97,6 +97,7 @@
     "test:preview-lifecycle": "node tests/preview-lifecycle-smoke.mjs",
     "test:preview-benchmark": "node tests/preview-benchmark.mjs",
     "test:timeline-playback": "node tests/timeline-playback-smoke.mjs",
+    "test:timeline-interaction": "node tests/timeline-interaction-smoke.mjs",
     "test:pv-sync": "node tests/pv-sync-smoke.mjs",
     "test:preview-resources": "node tests/preview-resources-smoke.mjs",
     "test:analysis-worker": "node tests/analysis-worker-smoke.mjs",

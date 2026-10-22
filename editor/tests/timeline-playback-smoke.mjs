@@ -129,7 +129,13 @@ try {
   let afterInteraction = await page.evaluate(() => editor.preview.getState());
   assert.equal(afterInteraction.playing, false);
   const clickSecond = await page.evaluate(() => lastPlaybackInteraction.second);
-  assert.ok(afterInteraction.currentTime >= clickSecond, "Body click preserves progress made before pointer press");
+  const clickCenter = await page.evaluate(async () => {
+    const view = editor.workbench.timelineView;
+    const { timelineSecondAtX } = await import("./ui/workbench/timeline-playback.mjs");
+    return timelineSecondAtX(view.state, view.state.viewportSize.width / 2, view.scrollValue);
+  });
+  assert.equal(afterInteraction.currentTime, clickCenter, "Body click commits the viewport center");
+  assert.ok(afterInteraction.currentTime >= clickSecond - 1e-9, `Body click retains the paused clock through the coordinate round trip: ${clickSecond} -> ${afterInteraction.currentTime}`);
   assert.ok(Math.abs(afterInteraction.currentTime - clickSecond) < .3, `Body click retains time: ${clickSecond} / ${afterInteraction.currentTime}`);
   assert.equal(afterInteraction.currentTime, await page.evaluate(() => editor.workbench.previewContainer.querySelector("iframe").contentWindow.lastAudioPause));
   await page.waitForTimeout(100);
@@ -138,6 +144,7 @@ try {
   await start(); point = await bodyPoint();
   await page.mouse.move(point.x, point.y); await page.mouse.down();
   await waitForAsync(page, async () => !(await editor.preview.getState()).playing);
+  await waitForAsync(page, () => editor.workbench.timelineView.drag?.ready);
   const dragStart = await page.evaluate(() => ({ second: editor.workbench.timelineView.playbackSecond(), scroll: editor.workbench.timelineView.drag.scroll,
     state: editor.workbench.timelineView.state }));
   await page.mouse.move(point.x - 180, point.y, { steps: 8 }); await page.mouse.up();

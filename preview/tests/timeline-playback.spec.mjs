@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { timelinePlayheadX, timelineCenteredScroll, timelineSecondAtX } from "../ui/workbench/timeline-playback.mjs";
+import { timelinePlayheadX, timelineCenteredScroll, timelineSecondAtX, timelineZoomedScroll } from "../ui/workbench/timeline-playback.mjs";
 import { TimelineView } from "../ui/workbench/timeline-view.mjs";
 
 const state = { timelineLeft: 40, leadingCenteringPadding: 310.5, displayStartSeconds: -2,
@@ -31,4 +31,13 @@ test("dragging uses the exact viewport center time and clamps to the chart bound
   assert.ok(Math.abs(timelineSecondAtX(state, state.viewportSize.width / 2, scroll) - second) < 1e-12);
   assert.equal(timelineSecondAtX(state, -10000, 0), 0);
   assert.equal(timelineSecondAtX(state, 100000, 0), 100);
+});
+
+test("zoom centers account for the native lead-in padding at the new pixel scale", () => {
+  const scene = { ...state, viewportSize: { width: 624 }, timelineLeft: 32, displayStartSeconds: -.5,
+    pixelsPerSecond: 120, leadingCenteringPadding: 220 };
+  assert.equal(timelineZoomedScroll(scene, 40.625, 1.5), 7312.5);
+  const oddScroll = timelineZoomedScroll(state, 13.123, 1);
+  assert.ok(Math.abs(timelineSecondAtX({ ...state, pixelsPerSecond: 120, leadingCenteringPadding: 70 },
+    state.viewportSize.width / 2, oddScroll) - 13.123) < 1e-12);
 });

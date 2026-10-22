@@ -1,8 +1,9 @@
 import { PreviewFrameLimiter } from "../../renderer/frame-rate.mjs";
 import { frameRateForMode } from "../../renderer/performance-settings.mjs";
-import { timelinePlayheadX, timelineCenteredScroll } from "./timeline-playback.mjs";
+import { timelinePlayheadX, timelineCenteredScroll, timelineSecondAtX } from "./timeline-playback.mjs";
 
 const namespace = "http://www.w3.org/2000/svg";
+const pointerPixel = value => Math.trunc(value + (value < 0 ? -.5 : .5));
 function svg(tag, attributes, text) {
   const node = document.createElementNS(namespace, tag);
   for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
@@ -33,30 +34,34 @@ export class TimelineView {
       const x = event.clientX - bounds.left, y = event.clientY - bounds.top;
       if (x < this.state.timelineLeft) return;
       event.preventDefault(); this.root.focus();
-      if (y < this.state.timelineTop) {
-        this.queueInteraction("timeline.navigateAtPoint", { x, y, width: bounds.width, height: bounds.height, horizontalScrollValue: this.scrollValue });
+      if (y < this.state.timelineTop || event.ctrlKey || event.metaKey) {
+        this.queueInteraction("timeline.navigateAtPoint", { x, y: 0, second: timelineSecondAtX(this.state, x, this.scrollValue), horizontalScrollValue: this.scrollValue });
         return;
       }
-      this.drag = { pointerId: event.pointerId, x: event.clientX, scroll: this.scrollValue, moved: false };
+      const drag = this.drag = { pointerId: event.pointerId, x: pointerPixel(x), currentX: pointerPixel(x), ready: false };
       this.root.setPointerCapture(event.pointerId);
-      this.queueInteraction("timeline.pause");
+      this.updateDragIndicator();
+      void this.queueInteraction("timeline.dragBegin").then(() => {
+        drag.scroll = this.scrollValue; drag.ready = true;
+        this.moveDrag(drag);
+        if (drag.released) this.finishDrag(drag);
+      }).catch(() => { this.drag = null; this.interacting = false; this.updateDragIndicator(); this.animate(); });
     });
     this.root.addEventListener("pointermove", event => {
       if (!this.drag || this.drag.pointerId !== event.pointerId) return;
-      const delta = event.clientX - this.drag.x;
-      if (!this.drag.moved && Math.abs(delta) < 3) return;
-      this.drag.moved = true;
-      this.queueInteraction("timeline.drag", { horizontalScrollValue: this.drag.scroll - delta });
+      this.drag.currentX = pointerPixel(event.clientX - this.root.getBoundingClientRect().left);
+      if (this.drag.ready) this.moveDrag(this.drag);
     });
     const finishDrag = event => {
       if (!this.drag || this.drag.pointerId !== event.pointerId) return;
-      this.drag = null;
+      const drag = this.drag;
+      drag.released = true;
       if (this.root.hasPointerCapture(event.pointerId)) this.root.releasePointerCapture(event.pointerId);
-      if (!this.interactionPending) { this.interacting = false; this.animate(); }
+      if (drag.ready) this.finishDrag(drag);
     };
     for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) this.root.addEventListener(type, finishDrag);
     this.root.addEventListener("wheel", event => {
-      if (!this.state) return;
+      if (!this.state || event.defaultPrevented) return;
       event.preventDefault();
       const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? this.state.viewportSize.width : 1;
       const delta = (event.deltaY || event.deltaX) * unit;
@@ -64,11 +69,30 @@ export class TimelineView {
       this.queueInteraction("timeline.scroll", { delta: 0, horizontalScrollValue: scroll + delta });
     }, { passive: false });
   }
+  setScroll(value) {
+    this.scrollValue = Math.max(0, Math.min(Math.max(0, this.state.contentWidth - this.state.viewportSize.width), value));
+    for (const world of this.worlds) world.setAttribute("transform", `translate(${-this.scrollValue} 0)`);
+  }
+  moveDrag(drag) {
+    this.setScroll(drag.scroll - (drag.currentX - drag.x));
+    this.queueInteraction("timeline.drag", { horizontalScrollValue: this.scrollValue });
+  }
+  finishDrag(drag) {
+    if (this.drag !== drag) return;
+    this.drag = null;
+    this.updateDragIndicator();
+    this.queueInteraction("timeline.dragEnd", { horizontalScrollValue: this.scrollValue });
+  }
+  updateDragIndicator() {
+    const active = Boolean(this.drag && this.followProgressEnabled);
+    if (this.playhead) this.playhead.style.display = active ? "none" : "";
+    if (this.dragCenter) this.dragCenter.style.display = active ? "" : "none";
+  }
   queueInteraction(id, args = {}) {
     this.interactionTarget = { id, args };
-    if (args.horizontalScrollValue !== undefined) this.requestedScroll = args.horizontalScrollValue;
+    if (args.horizontalScrollValue !== undefined && id !== "timeline.navigateAtPoint") this.requestedScroll = args.horizontalScrollValue;
     this.interacting = true; this.animate();
-    if (this.interactionPending) return;
+    if (this.interactionPending) return this.interactionPending;
     this.interactionPending = (async () => {
       while (this.interactionTarget) {
         const target = this.interactionTarget; this.interactionTarget = null;
@@ -79,6 +103,7 @@ export class TimelineView {
       if (!this.drag) { this.interacting = false; this.animate(); }
     });
     void this.interactionPending.catch(() => {});
+    return this.interactionPending;
   }
   setState(state) { if (this.state === state) return; this.state = state; this.draw(); }
   draw() {
@@ -152,7 +177,12 @@ export class TimelineView {
       }
     }
     nodes.push(worldGroup("body", ...overlays));
+    this.dragCenter = svg("line", { x1: width / 2, x2: width / 2, y1: state.timelineTop, y2: state.timelineTop + state.timelineHeight,
+      stroke: state.playheadLine.color, "stroke-width": 2, "data-overlay": "dragCenterLine" });
+    nodes.push(this.dragCenter);
     this.root.replaceChildren(...nodes);
+    this.setScroll(this.requestedScroll ?? state.horizontalScrollValue);
+    this.updateDragIndicator();
     if (this.clock) this.updatePlayhead(this.playbackSecond());
   }
   waveform(bars) {
