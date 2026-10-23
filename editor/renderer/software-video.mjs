@@ -20,7 +20,8 @@ export class SoftwareVideoFrames {
   }
   constructor(input) {
     this.input = input; this.canvas = document.createElement("canvas");
-    this.context = this.canvas.getContext("2d"); this.pending = Promise.resolve();
+    // Keep software frames in CPU memory before the presentation surface uploads them.
+    this.context = this.canvas.getContext("2d", { willReadFrequently: true }); this.pending = Promise.resolve();
   }
   at(second) {
     const task = this.pending.then(() => this.read(second));
