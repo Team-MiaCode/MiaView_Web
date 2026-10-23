@@ -5,11 +5,12 @@ import { pathToFileURL } from "node:url";
 import { staticServer } from "../scripts/serve.mjs";
 import { listenForBrowser } from "./helpers/browser-server.mjs";
 import { waitForAsync } from "./helpers/wait-async.mjs";
+import { launchPreviewBrowser } from "./preview-browser.mjs";
 
-const { chromium } = await import(process.env.MIACODE_PLAYWRIGHT_MODULE ? pathToFileURL(process.env.MIACODE_PLAYWRIGHT_MODULE).href : "playwright");
+const playwright = await import(process.env.MIACODE_PLAYWRIGHT_MODULE ? pathToFileURL(process.env.MIACODE_PLAYWRIGHT_MODULE).href : "playwright");
 const output = resolve("artifacts/creation-workflow"); mkdirSync(output, { recursive: true });
 const server = staticServer(process.cwd(), { performanceTerminal: false }); await listenForBrowser(server);
-const browser = await chromium.launch({ headless: true });
+const browser = await launchPreviewBrowser(playwright, "chromium");
 const original5 = "(120){4}1,2,3,4,E", original6 = "(180){8}5,6,7,8,E";
 const format = process.env.MIACODE_EXPORT_FORMAT || "auto";
 const edited5 = "(120){4}1,2h[4:1],3-5[4:1],4w8[4:1],A1,Ch[4:1],1b,2x,A1f,E";
@@ -70,7 +71,7 @@ try {
   await command("preview.seek", { second: .5 }); await page.getByRole("button", { name: "播放", exact: true }).click();
   await waitForAsync(page, async () => { const state = await document.getElementById("workbench").editor.preview.getState(); return !state.playing && Math.abs(state.currentTime - 1) < .02; });
   results.phase = "video";
-  await command("page.export"); await command("export.settings", { outputPath: "workflow.mp4", resolutionIndex: 0, fps: 30, format });
+  await command("page.export"); await command("export.settings", { outputPath: "workflow.mp4", resolutionIndex: 0, fps: 30, format, exportStartSeconds: .5, exportEndSeconds: 1 });
   const downloading = page.waitForEvent("download"); const exported = await command("export.video"); const download = await downloading;
   assert.equal(exported.frameCount, 60); assert.equal(exported.difficulty, 5); assert.equal(exported.filename, download.suggestedFilename());
   const file = join(output, download.suggestedFilename()); await download.saveAs(file); assert.ok(readFileSync(file).length > 1000);
