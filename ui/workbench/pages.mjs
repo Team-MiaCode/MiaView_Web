@@ -24,8 +24,8 @@ export function createPage(key, { viewState, documentSession, command, nativeCov
     page.append(h("div", { className: "welcome-column" },
       h("h1", { className: "welcome-title" }, "MiaCode"),
       h("div", { className: "action-row welcome-actions" },
-        button("新建", () => action("file.new"), { className: "primary" }),
-        button("打开", () => action("file.open"), { title: "打开谱面文件夹", "aria-label": "打开谱面文件夹" })),
+        button("新建", () => action("file.new"), { className: "welcome-new" }),
+        button("打开", () => action("file.open"), { className: "welcome-open", title: "打开谱面文件夹", "aria-label": "打开谱面文件夹" })),
       h("hr"), h("h2", {}, "最近打开"),
       h("div", { className: "recent-documents" }, recent.length
         ? recent.slice(0, 8).map(item => h("div", { className: "recent-document" },
@@ -69,6 +69,7 @@ export function createPage(key, { viewState, documentSession, command, nativeCov
     page.replaceChildren(createVideoExport({ viewState, documentSession, command }));
     page.updateProgress=session=>page.firstElementChild.updateProgress(session);
     page.updateAudition=state=>page.firstElementChild.updateAudition(state);
+    page.updatePreview=state=>page.firstElementChild.updatePreview(state);
   } else if (key === "cover") {
     page.classList.add("cover-page");
     const editor = createCoverEditor({ viewState, documentSession, command, nativeCover });

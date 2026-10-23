@@ -23,6 +23,7 @@ import { coverFileName } from "./services/cover-files.mjs";
 import { openCoverPresets } from "./ui/workbench/cover-presets.mjs";
 import { timelineSecondAtX, timelineCenteredScroll, timelineZoomedScroll } from "./ui/workbench/timeline-playback.mjs";
 import { TIMELINE_ZOOM_PRESETS } from "./ui/workbench/timeline-controls.mjs";
+import { exportPreferences } from "./services/export-preferences.mjs";
 
 const HUD_AREAS = ["chart_info", "timestamp", "center_display", "object_stats", "debug_info"];
 
@@ -97,7 +98,49 @@ export function createWorkbench(container, options = {}) {
   let fileService;
   let exportFileHandle,introBackground,exportRequestActive=false;
   let coverOutputHandle, coverExportActive = false;
-  let introPending=Promise.resolve(),introQueued=0,introUpdateTimer;
+  let introPending=Promise.resolve(),introQueued=0;
+  let exportPageActive = false, exportSyncSequence = 0;
+  workbench.documentSession.exportValues = { ...viewState.preferences.exportValues };
+  function saveExportPreferences() {
+    viewState.setPreference("exportValues", exportPreferences(workbench.documentSession.exportValues || {}));
+  }
+  async function syncExportPreview() {
+    if (!exportPageActive || !workbench.documentSession.hasDocument) return;
+    const sequence = ++exportSyncSequence, generation = workbench.documentSession.documentOpenGeneration;
+    return runIntro(async () => {
+      if (!exportPageActive || sequence !== exportSyncSequence || generation !== workbench.documentSession.documentOpenGeneration) return;
+      const values = workbench.documentSession.exportValues;
+      const state = await preview.setExportPreview({ ...values, ...introSettings(),
+        showChartInfoHud: values.showChartInfoHud ?? false, showObjectStatsHud: values.showObjectStatsHud ?? false });
+      if (!exportPageActive || generation !== workbench.documentSession.documentOpenGeneration) {
+        await preview.setExportPreview({ enabled: false }); return;
+      }
+      if (sequence !== exportSyncSequence) return;
+      workbench.documentSession.duration = state.duration;
+      workbench.documentSession.exportPreviewMinimum = state.minimum;
+      values.introPvStartSeconds = state.exportPreview.introPvStartSeconds;
+      values.exportStartSeconds = state.playback.exportStartSeconds;
+      values.exportEndSeconds = state.playback.exportEndSeconds;
+      applyPlaybackState(state);
+      return state;
+    });
+  }
+  async function updateExportPage(active) {
+    await pausePlayback();
+    if (active) {
+      const values = workbench.documentSession.exportValues;
+      const charts = workbench.documentSession.charts || [];
+      values.selectedDifficultyId = [workbench.documentSession.activeDifficultyId, values.selectedDifficultyId, charts[0]?.id]
+        .find(id => charts.some(chart => chart.id === id));
+      await syncExportPreview();
+      refreshExport();
+    } else {
+      const state = await runIntro(() => preview.setExportPreview({ enabled: false }));
+      workbench.documentSession.duration = state.duration;
+      applyPlaybackState(state);
+      canvasSize = ""; await fitCanvas(); await refreshTimeline();
+    }
+  }
   function runIntro(action) {
     ++introQueued;
     const result=introPending.then(action);
@@ -107,17 +150,6 @@ export function createWorkbench(container, options = {}) {
   }
   function introSettings() {return {...Object.fromEntries(Object.entries(workbench.documentSession.exportValues||{}).filter(([key])=>key.startsWith("intro"))),
     introBackground:workbench.documentSession.exportValues?.introBackgroundModeIndex===1?introBackground:undefined};}
-  function updateIntroSettings() {
-    clearTimeout(introUpdateTimer);
-    introUpdateTimer=setTimeout(()=>{
-      void runIntro(async()=>{
-        const state=await preview.getState();
-        if(!state.introAudition?.active)return;
-        const values=introSettings();
-        return preview.setIntroAudition(viewState.activeEditorKey==="export"&&values.introEnabled&&values.introPvPreview?values:{enabled:false});
-      }).catch(error=>workbench.status(error.message));
-    },150);
-  }
   const exportJobs=new VideoExportJobs({root:container,previewOptions:options.preview,assets:preferenceAssets,fonts:()=>preferenceAssets.fonts(),
     changed:state=>{workbench.setExportStatus(state);workbench.status(state.message);},
     deliver:async(video,filename)=>{
@@ -138,6 +170,7 @@ export function createWorkbench(container, options = {}) {
     return { ...project, sourceText: snapshot.sourceText, chartText, dirty: snapshot.sourceText !== project.savedSourceText || project.mediaDirty || chartText !== snapshot.chartText,
       inputPaths: inputPaths(project.input), savedInputPaths: inputPaths(project.savedInput),
       activeDifficultyId: snapshot.activeDifficultyId, title: snapshot.title, updatedAt: Date.now(),
+      audioSettings: workbench.documentSession.audio?.settings,
       coverExport: { coverValues: workbench.documentSession.coverValues, coverLayers: workbench.documentSession.coverLayers, coverFiles: workbench.documentSession.coverFiles },
       editorState: { activeEditorKey: viewState.activeEditorKey, openEditorTabs: [...viewState.openEditorTabs] } };
   }
@@ -189,6 +222,7 @@ export function createWorkbench(container, options = {}) {
   const canvasResize = new ResizeObserver(() => { void fitCanvas().catch(error => workbench.status(error.message)); });
   async function fitCanvas() {
     if (!preview) return;
+    if (exportPageActive) return;
     const bounds = workbench.previewContainer.getBoundingClientRect();
     if (!bounds.width || !bounds.height) return;
     const scale = Math.min(1080 / bounds.height, 4096 / Math.max(bounds.width, bounds.height));
@@ -198,10 +232,13 @@ export function createWorkbench(container, options = {}) {
     const key = `${size.width}x${size.height}`;
     if (key === canvasSize) return;
     canvasSize = key;
+    const state = await preview.getState();
+    if (exportPageActive || key !== canvasSize) return;
     await preview.setCanvasSize(size);
-    if(workbench.documentSession.introAudition?.active)return;
-    const values = previewSettingsFromValues(viewState.preferences.previewValues || {});
-    if (Object.keys(values).length) { await userAppearance.restore(values); await preview.setSettings(values); }
+    if (exportPageActive || key !== canvasSize) return;
+    if (state.introAudition?.active) return;
+    await userAppearance.restore(state.settings);
+    await preview.setSettings(state.settings);
   }
   const reader = async (accept, multiple = false, directory = false) => {
     const input = document.createElement("input");
@@ -273,7 +310,7 @@ export function createWorkbench(container, options = {}) {
       theme: viewState.activeThemeToken, ...options.preview, controls: false,
     });
     preview = createWorkbenchPreview(preview, { root: workbench.root, viewState, assets: preferenceAssets, resolution: initialResolution, preview: options.preview,
-      command, introSettings, error: error => workbench.status(error.message),
+      command, introSettings, exportSettings: () => ({ ...workbench.documentSession.exportValues, ...introSettings() }), error: error => workbench.status(error.message),
       shortcut: (event, root) => shortcuts.input(event, root, id => id.startsWith("preview.")),
       releaseShortcuts: () => shortcuts.releaseHeld(),
       changed: detached => {
@@ -292,6 +329,11 @@ export function createWorkbench(container, options = {}) {
     preview.on("progress", event => workbench.status(event.stage));
     preview.on("shortcutInput", event => shortcuts.remoteInput(event,preview.iframe));
     preview.on("introAuditionChanged",state=>workbench.setIntroAudition(state));
+    preview.on("exportPreviewChanged", state => {
+      workbench.previewTransport.update(state);
+      workbench.documentSession.introAuditionPlaying = state.auditionPlaying;
+      workbench.content.firstElementChild?.updatePreview?.(state);
+    });
     preview.on("error", event => workbench.status(event.message));
     preview.on("touchPadAuthoring", event => {
       const doc = workbench.documentSession;
@@ -331,6 +373,8 @@ export function createWorkbench(container, options = {}) {
       void refreshTimeline().catch(error => workbench.status(error.message));
     }
     workbench.previewTransport.update(state);
+    workbench.documentSession.positionSeconds = state.currentTime;
+    if (exportPageActive) workbench.content.firstElementChild?.updatePreview?.(state);
     Object.assign(workbench.documentSession, { statistics: state.statistics, statisticsAvailable: state.statisticsAvailable });
     workbench.noteStatistics.update(state.statistics || [], { dataAvailable: state.statisticsAvailable,
       noteSkin: workbench.documentSession.previewSettings?.noteSkin });
@@ -419,12 +463,15 @@ export function createWorkbench(container, options = {}) {
     nextProject.resourceRoot ??= filePath.includes("/") ? filePath.split("/")[0] : "";
     nextProject.savedInput ??= { ...nextProject.input }; nextProject.savedFiles ??= [...nextProject.files];
     nextProject.resourceChanges ??= [];
+    const storedAudio = savedProject?.audioSettings ?? viewState.preferences.audioSoftwareDefault ?? viewState.preferences.audioSettings;
+    if (storedAudio) await preview.audioCommand("audio.restoreSettings", { settings: storedAudio });
     const playback = await preview.getState();
     if (sequence !== loadSequence) return info;
     project = nextProject; loadingDocument = false; workbench.sourceEditor.input.readOnly = false;
     coverOutputHandle = null;
     workbench.sourceEditor.setFollowState({ active: false });
     workbench.setDocument({ ...info, ...snapshot, previewError, folderFiles,
+      exportValues: { ...viewState.preferences.exportValues },
       coverValues: { ...nextProject.coverExport?.coverValues }, coverLayers: nextProject.coverExport?.coverLayers,
       coverFiles: nextProject.coverExport?.coverFiles || [], coverDirty: false,
       audio: playback.audio,
@@ -556,36 +603,46 @@ export function createWorkbench(container, options = {}) {
     }
     if(id==="preview.detach")return preview.windowRouter.toggle();
     if(id==="export.settings") {
+      await navigationPending;
       Object.assign(workbench.documentSession.exportValues||={},args);
       if("outputPath" in args)exportFileHandle=null;
-      if(workbench.documentSession.introAudition?.active&&Object.keys(args).some(key=>key.startsWith("intro")))updateIntroSettings();
-      return;
+      saveExportPreferences();
+      if (exportPageActive && Object.keys(args).length === 1 && "introAuditionLoop" in args) return preview.setExportPreview(args);
+      const state = await syncExportPreview();
+      if ("selectedDifficultyId" in args) refreshExport();
+      if ("introPvStartSeconds" in args && state?.minimum < 0) await preview.seek(state.minimum);
+      return state;
     }
     if(id==="export.toggleIntroAudition")return runIntro(async()=>{
       if(viewState.activeEditorKey!=="export")return preview.setIntroAudition({enabled:false});
       const state=await preview.getState(),values=introSettings();
-      const result=await preview.setIntroAudition({...values,playing:!state.introAudition?.playing});
+      const result=await preview.setIntroAudition({...values,playing:!(state.exportPreview?.auditionPlaying ?? state.introAudition?.playing)});
       if(viewState.activeEditorKey!=="export")await preview.setIntroAudition({enabled:false});
       return result;
     });
+    if (id === "export.introScrubbing") return preview.setExportPreview({ cardDimmed: args.active });
     if(id==="export.setExportRangeSeconds") {
+      await navigationPending;
       const values=workbench.documentSession.exportValues||={};values.exportStartSeconds=args.start;values.exportEndSeconds=args.end;
-      if(workbench.previewTransport.state.rangePlaybackEnabled)return preview.setPlayback({exportStartSeconds:args.start,exportEndSeconds:args.end});
-      return;
+      await syncExportPreview();
+      await pausePlayback();
+      return preview.seek(args.second ?? args.start);
     }
     if(id==="export.browseOutputPath")return chooseExportFile(workbench.documentSession.exportValues||={});
     if(id==="export.browseIntroBackground") {
       const files=await reader(".png,.jpg,.jpeg,.webp,.bmp");if(!files.length)return;
       const image=await createImageBitmap(files[0]);image.close();introBackground=files[0];
       (workbench.documentSession.exportValues||={}).introCustomBackgroundPath=files[0].name;
-      if(workbench.documentSession.introAudition?.active)updateIntroSettings();refreshExport();return;
+      await preferenceAssets.put({ id: "export-intro-background", kind: "export", file: introBackground });
+      saveExportPreferences(); await syncExportPreview(); refreshExport(); return;
     }
     if(id==="export.importIntroFonts") {
       const files=await reader(".ttf,.otf",true);for(const file of files)await userFonts.import(file);
       workbench.documentSession.userFonts=userFonts.list();refreshExport();return;
     }
     if(id==="export.resetIntroFonts") {
-      Object.assign(workbench.documentSession.exportValues||={},{introFontDisplayPath:"",introFontBodyPath:""});refreshExport();return;
+      Object.assign(workbench.documentSession.exportValues||={},{introFontDisplayPath:"",introFontBodyPath:""});
+      saveExportPreferences(); await syncExportPreview(); refreshExport(); return;
     }
     if(id==="job.cancel")return exportJobs.cancel();
     if(id==="export.video") {
@@ -596,13 +653,13 @@ export function createWorkbench(container, options = {}) {
         if(!project)throw new Error("请打开谱面工程");
         if(!exportFileHandle){const selected=await chooseExportFile(values);if(selected===undefined)return;}
         await editPending;
-        clearTimeout(introUpdateTimer);await introPending;
+        await introPending;
         await preview.setIntroAudition({enabled:false});
         const [document,state,audio]=await Promise.all([preview.getDocument(),preview.getState(),preview.audioCommand("audio.getSettings")]);
         const request={chart:{...project.input,maidata:document.sourceText,filePath:document.filePath},
           difficulty:values.selectedDifficultyId??document.activeDifficultyId,fileName:values.outputPath,fileHandle:exportFileHandle};
         return await exportJobs.start(request,{...values,introBackground:values.introBackgroundModeIndex===1?introBackground:undefined,
-          showChartInfoHud:values.showChartInfoHud??false,showObjectStatsHud:values.showObjectStatsHud??false,clockCountEnabled:values.clockCountEnabled??false},
+          showChartInfoHud:values.showChartInfoHud??false,showObjectStatsHud:values.showObjectStatsHud??false,clockCountEnabled:values.clockCountEnabled??true},
           {settings:state.settings,audio:audio.settings,performance:state.performance,hidePv:Boolean(viewState.preferences.previewHidePv)});
       } finally {exportRequestActive=false;}
     }
@@ -873,6 +930,7 @@ export function createWorkbench(container, options = {}) {
       const audio = await preview.audioCommand(id, args);
       workbench.setAudio(audio);
       viewState.setPreference("audioSettings", audio.settings);
+      await flushRecovery();
       return audio;
     }
     if (id === "timeline.viewport") return refreshTimeline();
@@ -955,10 +1013,12 @@ export function createWorkbench(container, options = {}) {
     }
     if (id === "preview.stop") {
       await pausePlayback();
+      if (exportPageActive) return preview.setExportPreview({ stop: true });
       if(workbench.documentSession.introAudition?.active)return;
       return preview.seek(0);
     }
-    if (id === "preview.seek") return preview.seek(args.second);
+    if (id === "preview.pause") return pausePlayback();
+    if (id === "preview.seek") { await pausePlayback(); return preview.seek(args.second); }
     if (id === "preview.rate") return preview.setPlayback({ rate: args.rate });
     if (id === "preview.toggleFreeAspect") {
       viewState.setPreference("previewCanvasFreeAspect", !viewState.preferences.previewCanvasFreeAspect);
@@ -1101,6 +1161,7 @@ export function createWorkbench(container, options = {}) {
       await userAppearance.restore(args);
       const settings = await preview.setSettings(args);
       workbench.documentSession.previewSettings = settings;
+      viewState.setPreference("previewValues", { ...viewState.preferences.previewValues, ...previewValuesFromSettings(settings), hudFontPaths: settings.hudFontPaths });
       await refreshTimeline();
       return;
     }
@@ -1232,6 +1293,7 @@ export function createWorkbench(container, options = {}) {
     if (document.hidden) void flushRecovery().catch(error => workbench.status(error.message));
   }, { signal: abort.signal });
   const ready = mountPreview().then(async () => {
+    introBackground = (await preferenceAssets.get("export-intro-background"))?.file;
     await background.update({});
     await background.restore();
     await shortcuts.configure(viewState.preferences.shortcuts);
@@ -1244,16 +1306,17 @@ export function createWorkbench(container, options = {}) {
   viewState.addEventListener("change", () => {
     const switched = navigationKey !== viewState.activeEditorKey || navigationPanel !== viewState.bottomPanel || navigationView !== viewState.compactView;
     navigationKey = viewState.activeEditorKey; navigationPanel = viewState.bottomPanel; navigationView = viewState.compactView;
-    const stopIntro = viewState.activeEditorKey!=="export"&&(workbench.documentSession.introAudition?.active||introQueued);
-    if (stopIntro) {
-      clearTimeout(introUpdateTimer);
+    const exporting = viewState.activeEditorKey === "export" && workbench.documentSession.hasDocument;
+    if (exporting !== exportPageActive) {
+      exportPageActive = exporting;
+      navigationPending = navigationPending.then(() => updateExportPage(exporting)).catch(error => workbench.status(error.message));
     }
+    const stopIntro = viewState.activeEditorKey!=="export"&&(workbench.documentSession.introAudition?.active||introQueued);
     if (stopIntro || switched && (workbench.previewTransport.state.playing || playbackTarget === true)) {
       navigationPending = navigationPending.then(async () => {
         await pausePlayback();
         if (stopIntro) { await runIntro(()=>preview.setIntroAudition({enabled:false})); await pausePlayback(); }
-      });
-      void navigationPending.catch(error => workbench.status(error.message));
+      }).catch(error => workbench.status(error.message));
     }
     preview?.windowRouter.updateAppearance();
     void updatePerformance().catch(error => workbench.status(error.message));
@@ -1270,7 +1333,7 @@ export function createWorkbench(container, options = {}) {
     async getDocument() { await workbench.sourceEditor.pending; await editPending; return preview.getDocument(); },
     async getDocumentSaveText(section = 0) { await workbench.sourceEditor.pending; await editPending; return preview.getDocumentSaveText(section); },
     get preview() { return preview; },
-    destroy() { clearTimeout(introUpdateTimer);clearTimeout(analysisTimer);clearTimeout(editPreviewTimer); ++analysisSequence; void flushRecovery().then(() => projectStore.close()).catch(error => workbench.status(error.message)); exportJobs.destroy();background.destroy();userFonts?.destroy();void preferenceAssets.close().catch(error=>workbench.status(error.message));abort.abort(); cancelAnimationFrame(selectionFrame); canvasResize.disconnect(); preview?.destroy(); if (coverSource) URL.revokeObjectURL(coverSource); workbench.destroy(); viewState.destroy(); },
+    destroy() { clearTimeout(analysisTimer);clearTimeout(editPreviewTimer); ++analysisSequence; void flushRecovery().then(() => projectStore.close()).catch(error => workbench.status(error.message)); exportJobs.destroy();background.destroy();userFonts?.destroy();void preferenceAssets.close().catch(error=>workbench.status(error.message));abort.abort(); cancelAnimationFrame(selectionFrame); canvasResize.disconnect(); preview?.destroy(); if (coverSource) URL.revokeObjectURL(coverSource); workbench.destroy(); viewState.destroy(); },
   };
 }
 

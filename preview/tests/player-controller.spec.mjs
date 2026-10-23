@@ -11,6 +11,7 @@ function fixture({ intro = false } = {}) {
     events(listener) { this.emit = listener; },
     exportRunning:()=>exporting,
     introAuditionActive:()=>intro,
+    exportPreviewActive:()=>false,
     async stopIntroAudition(){calls.push("introStopped");},
     setPerformance(value){calls.push(["performance",value]);return value;},
     startExport(){exporting=true;return {jobId:"export-job"};},

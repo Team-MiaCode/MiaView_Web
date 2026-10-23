@@ -11,7 +11,7 @@ export function createPlayerController(engine) {
     for (const listener of listeners) listener(type, payload);
   };
   engine.events(emit);
-  const introSafeCommands=new Set(["setIntroAudition","getState","getDocument","getAnalysis","getDocumentSaveText","getDiagnostics","getExportStatus","getExportCapabilities",
+  const introSafeCommands=new Set(["setIntroAudition","setExportPreview","getState","getDocument","getAnalysis","getDocumentSaveText","getDiagnostics","getExportStatus","getExportCapabilities",
     "getCoverComposition","getTimeline","navigateTimeline","getTimelineFollow","normalizeShortcuts","normalizeBackground","readAudioInfo","importFont","setInputShortcuts","setTheme","setCanvasSize","setDiagnostics","resetDiagnostics","setPerformance","play","pause"]);
   const loadedInfo = () => {
     const chart = engine.chart();
@@ -54,6 +54,7 @@ export function createPlayerController(engine) {
     if (type === "getState") return engine.state();
     if (type === "setPerformance") return engine.setPerformance(performanceSettings({}, payload));
     if (type === "setIntroAudition") return engine.setIntroAudition(payload);
+    if (type === "setExportPreview") return engine.setExportPreview(payload);
     if (type === "getExportCapabilities") return engine.getExportCapabilities(payload);
     if (type === "startExport") return engine.startExport(payload);
     if (type === "cancelExport") return engine.cancelExport();
@@ -148,8 +149,8 @@ export function createPlayerController(engine) {
       await engine.seek(0);
       if (expectedPlayback === playbackRequest) await engine.play();
     } else if (type === "seek") {
-      if (!Number.isFinite(payload.second) || payload.second < 0)
-        throw new Error("Seek time must be finite and non-negative");
+      if (!Number.isFinite(payload.second) || payload.second < 0 && !engine.exportPreviewActive())
+        throw new Error("Seek time must lie inside the preview timeline");
       await engine.seek(payload.second);
       emit("seeked", { currentTime: engine.state().currentTime });
     }

@@ -44,6 +44,7 @@ export interface VideoExportOptions {
   presetIndex?: 0|1; sizePresetIndex?: 0|1|2|3;
   format?: "auto"|"mp4"|"webm";
   exportStartSeconds?: number; exportEndSeconds?: number; clockCountEnabled?: boolean;
+  showTimestamp?: boolean; showObjectStatsHud?: boolean; showChartInfoHud?: boolean;
   introEnabled?: boolean; introPvPreview?: boolean; introPvStartSeconds?: number;
   introModeIndex?: 0|1|2; introBackgroundModeIndex?: 0|1;
   introBlurBackground?: boolean; introCardShadow?: boolean; introLevelTextRender?: boolean;
@@ -288,6 +289,8 @@ export interface PreviewState {
   performance: PerformanceSettings;
   videoPresentation: { decoder: "software" | "browser"; frames: number; timestamp: number; requestedTime?: number; rejectedFrames?: number; pending?: boolean };
   introAudition: IntroAuditionState|null;
+  exportPreview: ExportPreviewState | null;
+  minimum: number;
   statistics: NoteStatistic[];
   statisticsAvailable: boolean;
   playback: PlaybackSettings;
@@ -307,6 +310,11 @@ export interface PreviewState {
     showChartInfoHud: boolean;
     showObjectStatsHud: boolean;
   };
+}
+export interface ExportPreviewState {
+  active: boolean; currentTime: number; minimum: number; duration: number; playing: boolean;
+  playbackEntrySeconds: number; auditionPlaying: boolean; introPvStartSeconds: number; fps: number;
+  clockCountEnabled: boolean; clockCount: number; clockBpm: number;
 }
 export interface ChartInfo {
   title: string;
@@ -410,6 +418,7 @@ export interface PreviewOptions {
 }
 export interface PreviewEvents {
   introAuditionChanged: IntroAuditionState;
+  exportPreviewChanged: ExportPreviewState;
   exportProgress: { jobId: string; stage: "encoding"; frame: number; frameCount: number; progress: number };
   exportCompleted: VideoExportResult & { jobId: string };
   exportFailed: { jobId: string; cancelled: boolean; message: string };
@@ -452,6 +461,7 @@ export interface MiaCodePreview {
   importFont(font: Resource, name?: string): Promise<ImportedFont>;
   getExportCapabilities(settings?: VideoExportOptions): Promise<VideoExportCapabilities>;
   setIntroAudition(settings?: IntroAuditionOptions): Promise<IntroAuditionState|null>;
+  setExportPreview(settings?: VideoExportOptions & { enabled?: boolean; selectedDifficultyId?: number; stop?: boolean; cardDimmed?: boolean; introAuditionLoop?: boolean }): Promise<PreviewState>;
   /** Returns a job id; completion and progress arrive through PreviewEvents. */
   startExport(settings?: VideoExportOptions): Promise<{jobId:string}>;
   cancelExport(): Promise<{jobId:string|null}>;

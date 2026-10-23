@@ -5,6 +5,7 @@ import { createWorkbenchPreview } from "../services/preview-window.mjs";
 test("closing an intro window preserves its song position and returns a paused audition", async () => {
   const restored = {};
   const owner = { on() {},
+    async getState() { return { exportPreview: null }; },
     async setPlayback(value) { restored.playback = value; },
     async seek(value) {
       assert.equal(restored.detached, false, "Show the embedded renderer before awaiting its video frame");

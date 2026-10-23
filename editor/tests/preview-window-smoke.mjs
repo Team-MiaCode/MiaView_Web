@@ -134,14 +134,21 @@ try {
   await command("export.settings", { introEnabled: true, introPvPreview: true, introPvStartSeconds: .2, introAuditionLoop: true });
   await command("export.toggleIntroAudition");
   await page.evaluate(() => document.getElementById("workbench").editor.preview.setSettings({ touchPadAuthoringContext: false }));
-  await waitForAsync(page, async () => (await document.getElementById("workbench").editor.preview.getState()).introAudition?.elapsed > .3);
-  const paused = await state(); await popup.getByRole("button", { name: "嵌回编辑器", exact: true }).click();
-  await waitForAsync(page, () => !document.getElementById("workbench").editor.preview.windowRouter.presenting);
+  await waitForAsync(page, async () => { const state = await document.getElementById("workbench").editor.preview.getState(); return state.exportPreview?.active && state.currentTime - state.minimum > .3; });
+  await page.evaluate(() => {
+    const preview = document.getElementById("workbench").editor.preview.windowRouter.popup.preview;
+    const pause = preview.pause.bind(preview);
+    preview.pause = async () => { const state = await pause(); window.exportWindowPause = state; return state; };
+  });
+  await popup.getByRole("button", { name: "嵌回编辑器", exact: true }).click();
+  await waitForAsync(page, () => { const router = document.getElementById("workbench").editor.preview.windowRouter; return !router.presenting && !router.attaching; });
+  const paused = await page.evaluate(() => window.exportWindowPause);
   assert.equal((await doc()).documentOpenGeneration, before.documentOpenGeneration);
   assert.equal((await state()).playback.rate, .5); assert.ok(Math.abs((await state()).currentTime - paused.currentTime) < .1);
-  const restoredIntro = (await state()).introAudition;
-  assert.equal(restoredIntro.playing, false); assert.equal(restoredIntro.introAuditionLoop, true);
-  assert.ok(restoredIntro.elapsed >= paused.introAudition.elapsed - .1);
+  const restoredIntro = (await state()).exportPreview;
+  assert.equal(restoredIntro.playing, false);
+  assert.equal(await page.evaluate(() => document.getElementById("workbench").editor.workbench.documentSession.exportValues.introAuditionLoop), true);
+  assert.ok(restoredIntro.currentTime >= paused.currentTime - .1);
   await page.evaluate(() => document.getElementById("workbench").editor.preview.setIntroAudition({ enabled: false }));
   results.phase = "window-close";
   console.log("Preview window: window close");

@@ -8,7 +8,7 @@ test("browser PV keeps three immutable timestamps and releases images, waits and
   globalThis.VideoFrame = class {
     constructor(video) {
       if (!presenting && !decoded) throw new DOMException("Decoded image pending", "InvalidStateError");
-      this.index = video.currentFrame; this.timestamp = (video.frameTimestamp ?? video.currentTime) * 1e6; images.push(this);
+      this.index = video.currentFrame; this.timestamp = video.timestampScale === 1 ? Math.trunc(video.currentTime) : video.currentTime * 1e6; images.push(this);
     }
     close() { assert.ok(!this.closed); this.closed = true; }
   };
@@ -23,7 +23,7 @@ test("browser PV keeps three immutable timestamps and releases images, waits and
     video.currentFrame = index; video.currentTime = timestamp;
     const [id, callback] = callbacks.entries().next().value; callbacks.delete(id);
     presenting = true;
-    try { callback(0, { mediaTime: timestamp + 1 }); }
+    try { callback(0, { mediaTime: timestamp }); }
     finally { presenting = false; }
   };
   let changes = 0; const errors = [];
@@ -61,11 +61,15 @@ test("browser PV keeps three immutable timestamps and releases images, waits and
   frameVisible = true; present(120, 2);
   frames.beginSeek();
   const sameFrame = frames.ready(new AbortController().signal);
-  video.currentTime = 2.02; video.frameTimestamp = 2; decoded = true;
+  video.currentTime = 2.02; decoded = true;
   video.dispatchEvent(new Event("seeked"));
   await sameFrame;
-  assert.equal(frames.at(2.02).timestamp, 2); assert.equal(frames.pendingSeek, false);
-  decoded = false; delete video.frameTimestamp;
+  assert.equal(frames.at(2.02).timestamp, 2.02); assert.equal(frames.at(2.02).image.index, 120); assert.equal(frames.pendingSeek, false);
+  video.timestampScale = 1; video.currentTime = 2.5; frames.beginSeek();
+  const secondBased = frames.ready(new AbortController().signal);
+  video.dispatchEvent(new Event("seeked")); await secondBased;
+  assert.equal(frames.at(2.5).timestamp, 2.5);
+  decoded = false;
   video.seeking = true; video.dispatchEvent(new Event("seeking"));
   const controller = new AbortController(), aborted = assert.rejects(frames.ready(controller.signal), /cancelled/);
   controller.abort(new Error("cancelled")); await aborted; assert.equal(frames.waiters.size, 0);

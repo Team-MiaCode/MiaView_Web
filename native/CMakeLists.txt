@@ -91,6 +91,13 @@ qt_add_executable(miacode-preview browser-host.cpp cover-scene.cpp cover-scene.h
     "${MIACODE_SOURCE_DIR}/src/export/cover_export/CoverLayoutModel.h"
     "${CMAKE_CURRENT_BINARY_DIR}/browser-assets.qrc")
 target_link_libraries(miacode-preview PRIVATE miacode_preview_quick miacode_preview_quickplugin miaview_timeline miaview_editor Qt6::Svg)
+# Match the v2 intro timing in the web export and audition translation units.
+file(READ "${MIACODE_SOURCE_DIR}/src/core/chart/IntroConfig.h" web_intro_config)
+string(REPLACE "kPvPreviewHoldFrames = 390" "kPvPreviewHoldFrames = 510" web_intro_config "${web_intro_config}")
+string(REPLACE "kPvPreviewAudioFadeOutSeconds = 2.0" "kPvPreviewAudioFadeOutSeconds = 3.0" web_intro_config "${web_intro_config}")
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/web-config/core/chart")
+file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/web-config/core/chart/IntroConfig.h" CONTENT "${web_intro_config}" @ONLY)
+target_include_directories(miacode-preview BEFORE PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/web-config")
 qt_add_executable(miacode-analysis analysis-host.cpp)
 target_link_libraries(miacode-analysis PRIVATE miacode_analysis Qt6::Core)
 set_target_properties(miacode-analysis PROPERTIES

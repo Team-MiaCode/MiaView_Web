@@ -26,6 +26,7 @@
 #include "app/services/Id3TagReader.h"
 #include "common/InputShortcutGesture.h"
 #include "app/runtime/latency/LatencyTestChartBuilder.h"
+#include "app/runtime/ContentDurationConfig.h"
 #include "audio/PreviewAudioSettings.h"
 #include <QQmlExtensionPlugin>
 #include <QPointer>
@@ -33,6 +34,7 @@
 #include "preview/quick_scene/PreviewQuickHudLayer.h"
 #include "preview/runtime/PreviewSceneAssetLoader.h"
 #include "core/chart/document/SimaiDocument.h"
+#include "core/chart/document/ChartClockCount.h"
 #include "core/chart/parser/SimaiParser.h"
 #include "core/scene/PreviewFrameState.h"
 #include "core/scene/PreviewSceneGeometry.h"
@@ -255,6 +257,14 @@ void ensureCoverScene() {
 
 }
 
+QJsonObject exportDocumentSnapshot() {
+    auto document = editorDocument.snapshot();
+    const auto& source = editorDocument.workspace.document();
+    if (const auto* difficulty = source.difficulty(loadedDifficulty))
+        document.insert("bpm", miacode::chart_clock::clockBpmForChart(source, difficulty->chart));
+    return document;
+}
+
 extern "C" {
 EMSCRIPTEN_KEEPALIVE const char* miacode_export_asset(const char* kind, const char* name, const unsigned char* data, int count) {
     if (!exportScene || !data || count <= 0) return json({{"error", "Export asset is empty"}});
@@ -265,7 +275,7 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_export_prepare(const char* source) {
     if (exportSavedState) return json({{"error", "An export is running"}});
     const auto request = QJsonDocument::fromJson(QByteArray(source));
     if (!request.isObject()) return json({{"error", "Export settings must be an object"}});
-    const auto plan = exportScene->configure(request.object(), state, editorDocument.snapshot(), audioSettings);
+    const auto plan = exportScene->configure(request.object(), state, exportDocumentSnapshot(), audioSettings);
     if (!plan.contains("error")) {
         exportSavedState = state;
         exportSavedPlaying = previewPlaying;
@@ -295,12 +305,25 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_export_reconfigure(const char* source) 
     if (!exportSavedState) return json({{"error", "Prepare the scene before changing its intro"}});
     const auto request = QJsonDocument::fromJson(QByteArray(source));
     if (!request.isObject()) return json({{"error", "Intro settings must be an object"}});
-    return json(exportScene->configure(request.object(), *exportSavedState, editorDocument.snapshot(), audioSettings));
+    return json(exportScene->configure(request.object(), *exportSavedState, exportDocumentSnapshot(), audioSettings));
 }
 EMSCRIPTEN_KEEPALIVE void miacode_export_still(int still) {
     if (!exportSavedState) return;
     exportScene->setStillFrame(still != 0);
     previewWindow->update();
+}
+EMSCRIPTEN_KEEPALIVE const char* miacode_export_preview_frame(double second) {
+    if (!exportSavedState) return json({{"error", "请进入导出预览"}});
+    const auto result = exportScene->previewFrame(second, state);
+    if (!result.contains("error")) {
+        scene->setVisible(result.value("chartVisible").toBool());
+        refresh();
+        previewWindow->update();
+    }
+    return json(result);
+}
+EMSCRIPTEN_KEEPALIVE void miacode_export_card_dimmed(int dimmed) {
+    if (exportScene) exportScene->setCardDimmed(dimmed != 0);
 }
 EMSCRIPTEN_KEEPALIVE const char* miacode_export_frame_info(int index) {
     if (!exportSavedState) return json({{"error", "Prepare an export before reading frames"}});
@@ -416,12 +439,18 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_appearance_skin(const char* operation, 
     return json(webSkinImport(QString::fromUtf8(operation), QString::fromUtf8(name)));
 }
 EMSCRIPTEN_KEEPALIVE const char* miacode_settings() {
-    return json(settings());
+    if (!exportSavedState) return json(settings());
+    const auto render = state.render;
+    state.render = exportSavedState->render;
+    const auto values = settings();
+    state.render = render;
+    return json(values);
 }
 EMSCRIPTEN_KEEPALIVE const char* miacode_set_settings(const char* source) {
     using namespace miacode::preview_gameplay;
     const auto request = QJsonDocument::fromJson(QByteArray(source));
     if (!request.isObject()) return json({{"error", "预览设置必须为对象"}});
+    if (exportSavedState) state.render = exportSavedState->render;
     auto values = settings();
     auto hudFonts = state.hudFontSettings;
     const QHash<QString, QPair<double, double>> ranges{
@@ -499,6 +528,14 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_set_settings(const char* source) {
     applyPausedOutline();
     const auto mode = muriRenderModeFromToken(values.value("previewMode").toString());
     if (state.muriRenderOptions.renderMode != mode) applyRenderMode(mode);
+    if (exportSavedState) {
+        exportScene->updateRenderSettings(state);
+        exportSavedState->render = state.render;
+        exportSavedState->skin = state.skin;
+        exportSavedState->judgeOverlay = state.judgeOverlay;
+        exportSavedState->judgeEffect = state.judgeEffect;
+        exportSavedState->hudFontSettings = state.hudFontSettings;
+    }
     ++state.sceneContentRevision;
     refresh();
     return json(settings());
@@ -521,7 +558,7 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_touch_pointer(const char* source) {
     }
     return json(result);
 }
-const char* renderDocument(int difficultyId, bool resetTime) {
+const char* renderDocument(int difficultyId, bool resetTime, bool selectWorkspace = true) {
     using namespace miacode::timeline::offset;
     const SimaiDocument& doc = editorDocument.workspace.document();
     const auto ids = doc.difficultyIds();
@@ -547,7 +584,7 @@ const char* renderDocument(int difficultyId, bool resetTime) {
         hud->setVisible(true);
     }
     if (!ids.contains(difficultyId)) difficultyId = ids.last();
-    editorDocument.workspace.selectDifficulty(difficultyId);
+    if (selectWorkspace) editorDocument.workspace.selectDifficulty(difficultyId);
     const auto revision = editorDocument.workspace.snapshot().revision;
     if (chartLoaded && loadedDifficulty == difficultyId && renderedRevision == revision) {
         if (resetTime) state.playheadSeconds = 0;
@@ -593,6 +630,13 @@ const char* renderDocument(int difficultyId, bool resetTime) {
     auto data = sceneAudioData();
     data.insert("title", doc.title); data.insert("artist", doc.artist); data.insert("difficultyId", difficultyId);
     data.insert("duration", duration); data.insert("noteCount", state.noteMarkers.size()); data.insert("charts", charts);
+    double exportEnd = 0;
+    for (const auto& marker : state.noteMarkers) {
+        double end = qMax(qMax(marker.second, marker.endSecond), qMax(marker.slideTraceSecond, marker.availableSecond));
+        for (double shoot : marker.slideSegmentShootSeconds) end = qMax(end, shoot);
+        exportEnd = qMax(exportEnd, end);
+    }
+    data.insert("exportDuration", miacode::content_duration::totalContentDurationSeconds(exportEnd, 0));
     json(data);
     cachedLoadResponse = response;
     loadedDifficulty = difficultyId;
@@ -606,6 +650,9 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_load(const char* text, int difficultyId
 }
 EMSCRIPTEN_KEEPALIVE const char* miacode_document() {
     return json(editorDocument.snapshot());
+}
+EMSCRIPTEN_KEEPALIVE const char* miacode_export_preview_chart(int difficultyId) {
+    return renderDocument(difficultyId, false, false);
 }
 EMSCRIPTEN_KEEPALIVE const char* miacode_editor_command(const char* source) {
     const auto request = QJsonDocument::fromJson(QByteArray(source));

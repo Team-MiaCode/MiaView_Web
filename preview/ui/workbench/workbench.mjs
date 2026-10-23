@@ -78,7 +78,7 @@ export class Workbench extends EventTarget {
       }
       else if (id === "view.swap") return state.setPreference("previewOnLeft", !state.preferences.previewOnLeft);
       else if (id === "view.preview") state.compactView = state.compactView === "editor" ? "preview" : "editor";
-      state.changed();
+      state.savePanels();
       return;
     }
     const detail = { id, args, result: undefined };
@@ -153,7 +153,7 @@ export class Workbench extends EventTarget {
     const editorPanel = h("section", { className: "editor-panel", "aria-label": "编辑区域" }, this.tabs, this.content);
     this.bottomBody = h("div", { className: "bottom-body" });
     this.bottomTabs = h("div", { className: "bottom-tabs", role: "tablist", "aria-label": "底部面板" });
-    for (const [id, key] of [["timeline", "window.timeline"], ["validation", "window.syntax"], ["muri", "window.muri"]]) this.bottomTabs.append(button(translate(key, state.preferences.languageToken || "zh"), () => { state.bottomPanel = id; state.changed(); }, { dataset: { panel: id }, role: "tab", "aria-selected": "false" }));
+    for (const [id, key] of [["timeline", "window.timeline"], ["validation", "window.syntax"], ["muri", "window.muri"]]) this.bottomTabs.append(button(translate(key, state.preferences.languageToken || "zh"), () => { state.bottomPanel = id; state.savePanels(); }, { dataset: { panel: id }, role: "tab", "aria-selected": "false" }));
     this.bottomTabs.append(h("span", { className: "spacer" }), this.timelineControls.follow);
     const bottomPanel = h("section", { className: "bottom-panel", "aria-label": "时间轴与分析" }, this.bottomTabs, this.bottomBody);
     const bottomHandle = h("div", { className: "split-handle horizontal bottom-divider", role: "separator", tabIndex: 0, "aria-label": "底部面板高度", "aria-orientation": "horizontal" });
@@ -243,6 +243,7 @@ export class Workbench extends EventTarget {
   }
   update() {
     const state = this.viewState;
+    this.previewTransport.setExportMode(state.activeEditorKey === "export");
     this.applyLayout();
     this.timelineControls.update({});
     this.difficultyHeader.update(this.documentSession);

@@ -9,10 +9,10 @@ export class BrowserVideoFrames {
       failed(error);
     };
     this.error = () => this.fail(new Error(video.error?.message || "PV 视频帧读取失败"));
-    this.onFrame = () => {
+    this.onFrame = (_now, metadata) => {
       if (this.failure) return;
       try {
-        if (this.capture()) {
+        if (this.capture(metadata.mediaTime)) {
           if (video.seeking) this.frameDuringSeek = true;
           else this.finishSeek();
         }
@@ -41,7 +41,7 @@ export class BrowserVideoFrames {
     this.pendingSeek = false; this.frameDuringSeek = false;
     for (const waiter of this.waiters) waiter.finish();
   }
-  capture() {
+  capture(mediaTime = this.video.currentTime) {
     if (this.video.readyState < 2) return false;
     let image;
     try { image = new VideoFrame(this.video); }
@@ -50,7 +50,9 @@ export class BrowserVideoFrames {
       if (error.name === "InvalidStateError") return false;
       throw error;
     }
-    const timestamp = image.timestamp / 1e6;
+    // Use the decoded timestamp when its unit is microseconds; browser snapshots can expose seconds.
+    const seconds = image.timestamp / 1e6;
+    const timestamp = Math.abs(seconds - mediaTime) < Math.abs(image.timestamp - mediaTime) ? seconds : mediaTime;
     if (this.frames.at(-1)?.timestamp === timestamp) { image.close(); return true; }
     this.frames.push({ image, timestamp });
     if (this.frames.length > 3) this.frames.shift().image.close();

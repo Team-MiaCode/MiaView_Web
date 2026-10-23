@@ -84,6 +84,7 @@
     "sync:media": "node scripts/sync-media.mjs",
     "test:video-export": "node tests/video-export-core-smoke.mjs",
     "test:video-export-workbench": "node tests/video-export-workbench-smoke.mjs",
+    "test:export-preview": "node tests/export-preview-smoke.mjs",
     "test:intro-audition": "node tests/intro-audition-core-smoke.mjs",
     "test:cover-chart-frame": "node tests/cover-chart-frame-smoke.mjs",
     "test:cover-pv": "node tests/cover-pv-smoke.mjs",

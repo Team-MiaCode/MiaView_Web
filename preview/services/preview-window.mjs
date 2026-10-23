@@ -4,8 +4,8 @@ import { PopupHost } from "../ui/components/popup-host.mjs";
 import { restorePreviewAppearance } from "./user-appearance.mjs";
 import { previewSettingsFromValues } from "./preview-appearance.mjs";
 
-const presentationEvents = new Set(["timeupdate", "playing", "paused", "ended", "seeked", "playbackChanged", "introAuditionChanged", "shortcutInput", "touchPadAuthoring"]);
-const activeMethods = new Set(["getState", "play", "pause", "seek", "setIntroAudition", "detectLatency"]);
+const presentationEvents = new Set(["timeupdate", "playing", "paused", "ended", "seeked", "playbackChanged", "introAuditionChanged", "exportPreviewChanged", "shortcutInput", "touchPadAuthoring"]);
+const activeMethods = new Set(["getState", "play", "pause", "seek", "setIntroAudition", "setExportPreview", "detectLatency"]);
 const mirroredMethods = new Set(["setSettings", "setPlayback", "setPerformance", "setMediaSettings", "setLatency", "audioCommand", "importFont", "importSkin", "importJudgeLine", "setInputShortcuts", "setTheme"]);
 
 // The editor keeps its native document owner. The window owns playback while
@@ -158,6 +158,7 @@ class PreviewWindow {
         }
       }, { once: true });
       if (snapshot.introAudition?.active) { await this.owner.setIntroAudition({ enabled: false }); await this.owner.pause(); }
+      if (snapshot.exportPreview?.active) await this.owner.setExportPreview({ enabled: false });
       popup.preview = window.miacodePreviewWindow.createPreview(document.getElementById("preview-window-stage"), { ...this.options.preview,
         resolution: this.options.resolution, controls: false, layout: "fit", diagnostics: false, audioContextOwner: "opener", theme: this.options.viewState.activeThemeToken });
       for (const type of this.listeners.keys()) this.listen(popup, type);
@@ -166,6 +167,7 @@ class PreviewWindow {
         popup.transport.update(state); popup.statistics.update(state.statistics || [], { dataAvailable: state.statisticsAvailable, noteSkin: popup.settings?.noteSkin });
       });
       popup.preview.on("introAuditionChanged", state => { popup.intro = state; });
+      popup.preview.on("exportPreviewChanged", state => { popup.exportPreview = state; });
       for (const type of ["playing", "paused"]) popup.preview.on(type, state => {
         popup.clock = { ...popup.clock, currentTime: state.elapsedMs / 1000, playing: type === "playing", observedAt: performance.now() };
       });
@@ -199,6 +201,8 @@ class PreviewWindow {
     }
   }
   async restore(preview, state) {
+    if (state.exportPreview?.active) await preview.setExportPreview({ ...this.options.exportSettings(), enabled: true });
+    else if ((await preview.getState()).exportPreview) await preview.setExportPreview({ enabled: false });
     if (state.latency?.onPage) await preview.setLatency(state.latency);
     await preview.setPlayback(state.playback);
     await preview.seek(state.currentTime);
@@ -208,11 +212,13 @@ class PreviewWindow {
   }
   updateAppearance() {
     const popup = this.popup; if (!popup || popup.window.closed) return;
+    popup.transport?.setExportMode(this.options.viewState.activeEditorKey === "export");
     popup.window.document.documentElement.dataset.theme = this.options.viewState.activeThemeToken;
     popup.window.document.getElementById("preview-window").style.cssText = this.options.root.style.cssText;
   }
   async fit() {
     const popup = this.popup; if (!popup?.preview || popup.window.closed) return;
+    if (this.options.viewState.activeEditorKey === "export") return;
     const bounds = popup.window.document.getElementById("preview-window-stage").getBoundingClientRect(), limit = Math.max(this.options.resolution.width, this.options.resolution.height);
     const scale = Math.min(1, limit / Math.max(1, bounds.width, bounds.height));
     const size = this.options.viewState.preferences.previewCanvasFreeAspect
@@ -234,7 +240,7 @@ class PreviewWindow {
       if (!closed && !popup.window.closed) state = await popup.preview.pause();
       else {
         const clock = popup.closingState?.clock || popup.clock || {};
-        state = { ...clock, playback: clock.playback || (await this.owner.getState()).playback, introAudition: popup.closingState?.intro || popup.intro };
+        state = { ...clock, playback: clock.playback || (await this.owner.getState()).playback, introAudition: popup.closingState?.intro || popup.intro, exportPreview: popup.exportPreview };
         if (clock.playing && !state.introAudition?.active) state.currentTime = Math.min(clock.duration, clock.currentTime + (performance.now() - clock.observedAt) / 1000 * clock.rate);
       }
       this.presenting = false; this.popup = null; this.closePopup(popup);

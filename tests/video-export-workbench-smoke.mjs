@@ -5,11 +5,12 @@ import {pathToFileURL} from "node:url";
 import {staticServer} from "../scripts/serve.mjs";
 import {listenForBrowser} from "./helpers/browser-server.mjs";
 import {waitForAsync} from "./helpers/wait-async.mjs";
+import {launchPreviewBrowser} from "./preview-browser.mjs";
 
 const browsers=await import(process.env.MIACODE_PLAYWRIGHT_MODULE?pathToFileURL(process.env.MIACODE_PLAYWRIGHT_MODULE).href:"playwright");
 const output=resolve("artifacts/video-export-workbench");mkdirSync(output,{recursive:true});
 const server=staticServer(process.cwd(),{performanceTerminal:false});await listenForBrowser(server);
-const browser=await browsers.chromium.launch({headless:true});
+const browser=await launchPreviewBrowser(browsers, process.env.MIACODE_BROWSER || "chromium");
 try {
   const page=await browser.newPage({viewport:{width:1366,height:900},acceptDownloads:true});page.setDefaultTimeout(120000);
   const errors=[];page.on("pageerror",error=>errors.push(error.message));

@@ -1,5 +1,5 @@
 import { element as h, button, field, section, icon } from "../components/dom.mjs";
-import { select, text, number, toggle, formRow, range } from "../components/forms.mjs";
+import { select, text, number, toggle, formRow } from "../components/forms.mjs";
 import { settingsTabs } from "../components/settings-tabs.mjs";
 import { translate } from "../components/translate.mjs";
 import { previewAppearanceSections } from "./preview-settings.mjs";
@@ -15,11 +15,17 @@ export function createVideoExport(context) {
   const footer=session=>h("div",{className:"export-footer native-form"},
     session.exportRunning?h("progress",{id:"export-progress",max:1,value:session.exportProgress??0,"aria-label":"视频导出进度"}):null,
     session.exportMessage?h("output",{id:"export-result",role:"status"},session.exportMessage):null,
-    button(t(session.exportRunning?"video_export.cancel_export":"video_export.start_export"),()=>command(session.exportRunning?"job.cancel":"export.video"),{className:"primary"}));
+    button(t(session.exportRunning?"video_export.cancel_export":"video_export.start_export"),()=>command(session.exportRunning?"job.cancel":"export.video"),{className:"primary",disabled:!session.exportRunning&&session.duration===0}));
   root.updateProgress=session=>root.querySelector(".export-footer")?.replaceWith(footer(session));
   root.updateAudition=state=>{
     const node=root.querySelector("[data-intro-audition]");
     if(node&&node.getAttribute("aria-pressed")!==String(state.playing)){node.setAttribute("aria-pressed",String(state.playing));node.replaceChildren(icon(state.playing?"pause":"play"));}
+  };
+  let outputRange, pvRange;
+  root.updatePreview = state => {
+    outputRange?.setPlayhead(Math.max(0, state.currentTime));
+    if (pvRange) pvRange.setPlayhead((values.introPvStartSeconds ?? 0) + Math.max(0, (state.currentTime ?? 0) - (state.minimum ?? 0)));
+    root.updateAudition({ playing: state.auditionPlaying ?? state.exportPreview?.auditionPlaying ?? documentSession.introAuditionPlaying ?? false });
   };
   const put = (key, value) => { values[key] = value; command("export.settings", { [key]: value }); };
   const input = (key, fallback = "") => {
@@ -45,14 +51,14 @@ export function createVideoExport(context) {
     return node;
   };
   const output = () => {
-    const applyRange = (begin, finish) => {
+    const applyRange = (begin, finish, edge = "start") => {
       values.exportStartSeconds = begin; values.exportEndSeconds = finish;
       start.value = begin.toFixed(3); end.value = finish.toFixed(3);
-      command("export.setExportRangeSeconds", { start: begin, end: finish });
+      command("export.setExportRangeSeconds", { start: begin, end: finish, second: edge === "end" ? finish : begin });
     };
     const editRange = (key, { value }) => {
       rangeView.setRange(key === "exportStartSeconds" ? value : rangeView.start, key === "exportEndSeconds" ? value : rangeView.end);
-      applyRange(rangeView.start, rangeView.end);
+      applyRange(rangeView.start, rangeView.end, key === "exportEndSeconds" ? "end" : "start");
     };
     const options = { min: 0, max: duration, step: .001, format: value => value.toFixed(3) };
     const start = number("exportStartSeconds", (values.exportStartSeconds ?? 0).toFixed(3), editRange, options);
@@ -62,6 +68,7 @@ export function createVideoExport(context) {
       labels: [t("dialog.video_export.range.start"), t("dialog.video_export.range.end")],
       onRangeChanged: applyRange,
     });
+    outputRange = rangeView;
     return [
     field(t("video_export.filename"), h("div", { className: "form-input-action" }, input("outputPath", "MiaCode.mp4"), button(t("action.browse"), () => command("export.browseOutputPath")))),
     h("div", { className: "export-output-triple" },
@@ -77,10 +84,16 @@ export function createVideoExport(context) {
     h("hr", { className: "settings-rule" }),
     switchControl("showObjectStatsHud", "dialog.video_export.option.show_object_stats", false),
     switchControl("showChartInfoHud", "qml.show_chart_information", false),
-    switchControl("clockCountEnabled", "qml.enable_clock_count", false),
+    switchControl("clockCountEnabled", "qml.enable_clock_count", true),
   ].filter(Boolean);
   };
   const intro = () => {
+    pvRange = values.introPvPreview ? new ExportRange({ totalSeconds: duration, startSeconds: values.introPvStartSeconds ?? 0,
+      endSeconds: Math.min(duration, (values.introPvStartSeconds ?? 0) + 8.5), fixedRangeSeconds: 8.5,
+      labels: [t("video_export.intro_pv_start"), t("dialog.video_export.range.end")],
+      onRangeChanged: start => put("introPvStartSeconds", start),
+      onDragChanged: active => command("export.introScrubbing", { active }),
+      onSeek: second => command("preview.seek", { second: (documentSession.exportPreviewMinimum ?? 0) + second - (values.introPvStartSeconds ?? 0) }) }) : null;
     const body = h("fieldset", { className: "intro-settings", disabled: !values.introEnabled },
       section(t("qml.visuals"),
         formRow(t("video_export.intro_style"), select([[false, t("video_export.intro_style_classic")], [true, t("video_export.intro_style_pv_preview")]], values.introPvPreview ?? false, value => { put("introPvPreview", value === "true"); render(); })),
@@ -91,10 +104,10 @@ export function createVideoExport(context) {
         switchControl("introCardShadow", "cover.card_drop_shadow", false),
         switchControl("introLevelTextRender", "qml.render_level_as_text", false)),
       values.introPvPreview ? section(t(documentSession.videoAvailable ? "video_export.intro_pv_segment" : "video_export.intro_music_segment"),
-        range(t("video_export.intro_pv_start"), "introPvStartSeconds", values.introPvStartSeconds ?? 0, 0, duration || 1, (_, args) => put("introPvStartSeconds", args.value), .001, "s"),
+        pvRange.root,
         h("div", { className: "action-row" }, button(t("video_export.intro_audition"), () => command("export.toggleIntroAudition"), { symbol: documentSession.introAuditionPlaying?"pause":"play", iconOnly: true, "data-intro-audition":"", "aria-pressed":String(documentSession.introAuditionPlaying??false) }),
           button(t("video_export.intro_audition_loop"), () => { put("introAuditionLoop", !values.introAuditionLoop); render(); }, { symbol: "repeat", iconOnly: true, "aria-pressed": String(values.introAuditionLoop ?? false) })),
-        formRow(t("video_export.intro_pv_start"), numeric("introPvStartSeconds", "0.000", { min: 0, step: .001 }))) : null,
+        formRow(t("video_export.intro_pv_start"), numeric("introPvStartSeconds", "0.000", { min: 0, max: Math.max(0, duration - 8.5), step: .001 }))) : null,
       section(t("qml.difficulty_card_fonts"),
         formRow(t("card_font.title"), fontChoice("introFontDisplayPath")),
         formRow(t("card_font.body"), fontChoice("introFontBodyPath")),

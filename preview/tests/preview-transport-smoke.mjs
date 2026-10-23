@@ -4,13 +4,14 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { staticServer } from "../dev/server.mjs";
+import { launchPreviewBrowser } from "./preview-browser.mjs";
 
-const { chromium } = await import(process.env.MIACODE_PLAYWRIGHT_MODULE ? pathToFileURL(process.env.MIACODE_PLAYWRIGHT_MODULE).href : "playwright");
+const playwright = await import(process.env.MIACODE_PLAYWRIGHT_MODULE ? pathToFileURL(process.env.MIACODE_PLAYWRIGHT_MODULE).href : "playwright");
 const output = resolve("artifacts/preview-controls");
 mkdirSync(output, { recursive: true });
 const server = staticServer(process.cwd(), { performanceTerminal: false });
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
-const browser = await chromium.launch({ headless: true });
+const browser = await launchPreviewBrowser(playwright, "chromium");
 const references = JSON.parse(readFileSync(".assets/ui-reference/reference.json", "utf8"));
 const results = [];
 try {

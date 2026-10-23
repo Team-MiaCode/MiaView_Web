@@ -15,8 +15,11 @@ public:
     QJsonObject configure(const QJsonObject& options,const miacode::preview::scene::PreviewFrameState& state,
         const QJsonObject& document,const PreviewAudioSettings& audio);
     QJsonObject frame(int index,miacode::preview::scene::PreviewFrameState& state);
+    QJsonObject previewFrame(double second,miacode::preview::scene::PreviewFrameState& state);
     QJsonObject frameInfo(int index) const;
     void setStillFrame(bool still);
+    void updateRenderSettings(const miacode::preview::scene::PreviewFrameState& state);
+    void setCardDimmed(bool dimmed);
     void finish();
 private:
     QQuickItem* parent_;

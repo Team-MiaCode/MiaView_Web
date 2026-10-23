@@ -26,8 +26,11 @@ export function attachPlayerControls(controller, engine) {
     $("fullscreen").textContent = document.fullscreenElement ? "退出全屏" : "全屏";
     $("fullscreen").setAttribute("aria-label", document.fullscreenElement ? "退出全屏" : "进入全屏");
   });
-  function updateTransport(currentTime, duration) {
-    const format = second => `${Math.floor(second / 60)}:${String(Math.floor(second % 60)).padStart(2, "0")}`;
+  function updateTransport(currentTime, duration, minimum = 0) {
+    $("seek").min = minimum;
+    $("seek").max = duration;
+    $("seek").value = currentTime;
+    const format = second => `${second < 0 ? "-" : ""}${Math.floor(Math.abs(second) / 60)}:${String(Math.floor(Math.abs(second) % 60)).padStart(2, "0")}`;
     const text = `${format(currentTime)} / ${format(duration)}`;
     if ($("time").textContent !== text) $("time").textContent = text;
   }
@@ -106,6 +109,7 @@ export function attachPlayerControls(controller, engine) {
   };
   $("play").addEventListener("click", () => run(engine.state().playing ? "pause" : "play"));
   $("restart").addEventListener("click", () => run("restart"));
+  $("seek").addEventListener("pointerdown", () => run("pause"));
   $("seek").addEventListener("input", () => run("seek", { second: Number($("seek").value) }));
   return { settings: updateSettingsControls, chart: updateChart, transport: updateTransport, theme: setTheme };
 }

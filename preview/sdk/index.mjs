@@ -276,7 +276,7 @@ class MiaCodePreview {
       return this.command(
         "load",
         normalizeChart(chart, this.wrapper.ownerDocument.baseURI),
-      ).then(value => { this.setIntrinsicSurface(this.resolution, false); return value; });
+      ).then(value => { this.exportPreviewMinimum = 0; this.setIntrinsicSurface(this.resolution, false); return value; });
     } catch (error) {
       return Promise.reject(error);
     }
@@ -295,9 +295,9 @@ class MiaCodePreview {
     return this.command("restart");
   }
   seek(second) {
-    if (!Number.isFinite(second) || second < 0)
+    if (!Number.isFinite(second) || second < 0 && !(this.exportPreviewMinimum < 0))
       return Promise.reject(
-        new Error("Seek time must be finite and non-negative"),
+        new Error("Seek time must be finite"),
       );
     return this.command("seek", { second });
   }
@@ -349,6 +349,18 @@ class MiaCodePreview {
   setIntroAudition(settings = {}) {
     try { return this.command("setIntroAudition", {...settings,...(settings.introBackground?{introBackground:normalizeResources({cover:settings.introBackground},this.wrapper.ownerDocument.baseURI).cover}:{})}); }
     catch(error){return Promise.reject(error);}
+  }
+  setExportPreview(settings = {}) {
+    try {
+      return this.command("setExportPreview", { ...settings, ...(settings.introBackground ? {
+        introBackground: normalizeResources({ cover: settings.introBackground }, this.wrapper.ownerDocument.baseURI).cover,
+      } : {}) }).then(state => {
+        this.exportPreviewMinimum = state.minimum;
+        this.resolution = { width: state.resolution.width, height: state.resolution.height };
+        this.setIntrinsicSurface(this.resolution, false);
+        return state;
+      });
+    } catch (error) { return Promise.reject(error); }
   }
   startExport(settings = {}) {
     try { return this.command("startExport", { ...settings, ...(settings.introBackground ? {introBackground:normalizeResources({cover:settings.introBackground},this.wrapper.ownerDocument.baseURI).cover} : {}) }); }

@@ -22,10 +22,10 @@ export class ViewState extends EventTarget {
     this.activeSidebarView = "chart";
     this.difficultySectionExpanded = true;
     this.expandedBookmarkGroups = new Map();
-    this.sidebarVisible = true;
-    this.bottomPanelVisible = true;
-    this.bottomPanel = "timeline";
-    this.compactPanel = "";
+    this.sidebarVisible = saved.sidebarVisible ?? true;
+    this.bottomPanelVisible = saved.bottomPanelVisible ?? true;
+    this.bottomPanel = saved.bottomPanel ?? "timeline";
+    this.compactPanel = saved.compactPanel ?? "";
     this.compactView = "editor";
     this.editorCursorLine = 1;
     this.editorCursorColumn = 1;
@@ -54,6 +54,9 @@ export class ViewState extends EventTarget {
   }
   setPreference(key, value) {
     this.setPreferences({ [key]: value });
+  }
+  savePanels() {
+    this.setPreferences(Object.fromEntries(["sidebarVisible", "bottomPanelVisible", "bottomPanel", "compactPanel"].map(key => [key, this[key]])));
   }
   setPreferences(values) {
     Object.assign(this.preferences, values);

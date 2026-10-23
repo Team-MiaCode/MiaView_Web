@@ -1,0 +1,161 @@
+import assert from "node:assert/strict";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { resolve, join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { staticServer } from "../dev/server.mjs";
+import { launchPreviewBrowser } from "./preview-browser.mjs";
+import { waitForAsync } from "./helpers/wait-async.mjs";
+
+const playwright = await import(process.env.MIACODE_PLAYWRIGHT_MODULE ? pathToFileURL(process.env.MIACODE_PLAYWRIGHT_MODULE).href : "playwright");
+const browserName = process.env.MIACODE_BROWSER || "chromium";
+const software = process.env.MIACODE_SOFTWARE_VIDEO === "1";
+const output = resolve("artifacts/export-preview", browserName + (software ? "-software" : "")); mkdirSync(output, { recursive: true });
+const server = staticServer(process.cwd(), { performanceTerminal: false });
+await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+const browser = await launchPreviewBrowser(playwright, browserName);
+const results = [], errors = [];
+try {
+  const page = await browser.newPage({ viewport: { width: 1366, height: 900 } }); page.setDefaultTimeout(120000);
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto(process.env.MIACODE_WORKBENCH_URL || `http://127.0.0.1:${server.address().port}/`);
+  await page.locator(".welcome-title").waitFor();
+  await page.evaluate(() => document.getElementById("workbench").editor.ready);
+  await page.mouse.click(800, 35);
+  const command = (id, args) => page.evaluate(({ id, args }) => document.getElementById("workbench").editor.command(id, args), { id, args });
+  const state = () => page.evaluate(() => document.getElementById("workbench").editor.preview.getState());
+  if (software) await command("preferences.performance", { videoDecodePrefersSoftware: true });
+  for (const theme of ["dark", "light", "legacy", "legacy_light"]) {
+    await page.evaluate(theme => {
+      const light = theme.includes("light");
+      document.getElementById("workbench").editor.viewState.setPreferences({ themeModeToken: light ? "light" : "dark", [light ? "lightThemeToken" : "darkThemeToken"]: theme });
+    }, theme);
+    const create = page.getByRole("button", { name: "新建", exact: true });
+    const open = page.getByRole("button", { name: "打开谱面文件夹", exact: true }).filter({ hasNot: page.locator(".icon") });
+    const colors = await page.locator(".welcome-actions").evaluate(node => {
+      const luminance = color => color.match(/[\d.]+/g).slice(0, 3).map(Number).map(value => value / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4).reduce((sum, value, index) => sum + value * [.2126, .7152, .0722][index], 0);
+      return [...node.children].map(button => { const style = getComputedStyle(button), foreground = luminance(style.color), background = luminance(style.backgroundColor); return { color: style.backgroundColor, contrast: (Math.max(foreground, background) + .05) / (Math.min(foreground, background) + .05) }; });
+    });
+    assert.notEqual(colors[0].color, colors[1].color); assert.ok(colors.every(item => item.contrast >= 4.5), JSON.stringify({ theme, colors }));
+    await create.hover(); await page.waitForFunction(() => getComputedStyle(document.querySelector(".welcome-new")).transform === "matrix(1, 0, 0, 1, 0, -2)");
+    await open.hover(); await page.waitForFunction(() => getComputedStyle(document.querySelector(".welcome-open")).transform === "matrix(1, 0, 0, 1, 0, -2)");
+    await page.locator(".welcome-column").screenshot({ path: join(output, `welcome-${theme}.png`) });
+    results.push({ welcome: theme, colors });
+  }
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.locator(".welcome-new").hover();
+  assert.equal(await page.locator(".welcome-new").evaluate(node => getComputedStyle(node).transitionDuration), "0s");
+  assert.equal(await page.locator(".welcome-new").evaluate(node => getComputedStyle(node).transform), "none");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const video = readFileSync(resolve("tests/fixtures/bg-pattern.webm")).toString("base64");
+  const chart = "&title=Export preview\n&artist=MiaCode\n&first=1\n&clock_count=4\n&lv_4=10\n&lv_5=12\n&inote_4=(180){4}1h[1:10],E\n&inote_5=(120){4}" + "1,".repeat(160) + "E";
+  await page.evaluate(async ({ chart, video }) => {
+    window.editor = document.getElementById("workbench").editor;
+    await editor.load({ maidata: chart, difficulty: 5, video: new Blob([Uint8Array.from(atob(video), c => c.charCodeAt(0))], { type: "video/webm" }) });
+    await editor.preview.seek(20);
+  }, { chart, video });
+  await command("page.export");
+  await waitForAsync(page, async () => (await editor.preview.getState()).exportPreview?.active);
+  let current = await state(); assert.equal(current.currentTime, 20); assert.equal(current.playing, false);
+  assert.equal(await page.locator(".bottom-panel").isVisible(), false);
+  results.push({ enter: current.currentTime });
+  for (const [resolutionIndex, width, height] of [[2, 1280, 720], [4, 1440, 1080], [3, 1080, 1080]]) {
+    await command("export.settings", { resolutionIndex }); current = await state();
+    assert.equal(current.resolution.width, width); assert.equal(current.resolution.height, height); assert.equal(current.currentTime, 20);
+  }
+  for (const fps of [30, 120, 60]) { await command("export.settings", { fps }); assert.equal((await state()).maxFps, fps); }
+  await command("export.settings", { showObjectStatsHud: true, showChartInfoHud: true, clockCountEnabled: true });
+  current = await state(); assert.equal(current.resolution.showObjectStatsHud, true); assert.equal(current.resolution.showChartInfoHud, true);
+  assert.equal(current.exportPreview.clockCountEnabled, true); assert.equal(current.exportPreview.clockCount, 4); assert.equal(current.exportPreview.clockBpm, 120);
+  await command("preview.values", { brightnessOuter: 73, tapFlowSpeed: 8.25 });
+  await command("export.settings", { fps: 30 }); current = await state();
+  assert.equal(current.settings.outerBrightness, .73); assert.equal(current.settings.tapFlowSpeed, 8.25);
+  results.push({ liveSettings: true });
+  await command("export.settings", { sizePresetIndex: 3 });
+  const frame = page.frames().find(frame => frame.url().includes("/renderer/index.html"));
+  assert.equal(await frame.locator("#stage-video").evaluate(node => node.hidden), true);
+  await command("export.settings", { sizePresetIndex: 0 });
+  assert.equal(await frame.locator("#stage-video").evaluate(node => node.hidden), false);
+  await command("preview.seek", { second: 0 });
+  await command("export.settings", { introEnabled: true, introPvPreview: false }); current = await state();
+  assert.ok(Math.abs(current.minimum + 349 / 60) < 1e-9); assert.equal(current.currentTime, current.minimum);
+  assert.equal(Number(await page.locator('.preview-transport input[type="range"]').getAttribute("min")), current.minimum);
+  await command("preview.seek", { second: -3 }); assert.equal((await state()).currentTime, -3);
+  await command("preview.toggle");
+  await waitForAsync(page, async () => (await editor.preview.getState()).currentTime > -2.8);
+  await command("preview.pause"); current = await state(); assert.equal(current.playing, false); assert.ok(current.currentTime < 0);
+  await command("preview.stop"); assert.equal((await state()).currentTime, -3);
+  await command("export.settings", { introPvPreview: true, introPvStartSeconds: .5 }); current = await state();
+  assert.ok(Math.abs(current.minimum + 664 / 60) < 1e-9, JSON.stringify(current.exportPreview)); assert.equal(current.currentTime, current.minimum);
+  await command("preview.seek", { second: current.minimum + 1.5 }); current = await state();
+  assert.ok(Math.abs(current.videoPresentation.timestamp - 2) < .1, JSON.stringify({ presentation: current.videoPresentation, preview: current.exportPreview,
+    video: await frame.locator("#stage-video").evaluate(video => ({ second: video.currentTime, seeking: video.seeking, readyState: video.readyState, duration: video.duration, hidden: video.hidden })) }));
+  await command("preferences.performance", { stageMediaFrameRateMode: 1 });
+  if (!software) assert.ok(Math.abs(await frame.locator("#stage-video").evaluate(video => video.currentTime) - 2) < .05);
+  results.push({ classicMinimum: -349 / 60, pvMinimum: current.minimum, pvSourceSecond: current.videoPresentation.timestamp });
+  await page.locator('[role="tab"][data-page="intro"]').click();
+  const pvLane = page.locator('.intro-settings .export-range-lane');
+  await pvLane.scrollIntoViewIfNeeded();
+  const lane = await pvLane.boundingBox(), laneWidth = lane.width - 20;
+  const sourceX = second => lane.x + 10 + second / current.duration * laneWidth;
+  await page.mouse.click(sourceX(4.5), lane.y + lane.height / 2);
+  await waitForAsync(page, async minimum => Math.abs((await editor.preview.getState()).currentTime - minimum - 4) < .05, current.minimum);
+  await page.mouse.move(sourceX(3.5), lane.y + lane.height / 2); await page.mouse.down();
+  await page.mouse.move(sourceX(8.5), lane.y + lane.height / 2, { steps: 5 }); await page.mouse.up();
+  await waitForAsync(page, async minimum => {
+    const s = await editor.preview.getState();
+    return s.exportPreview.introPvStartSeconds > 5 && Math.abs(s.currentTime - minimum) < .05 && !s.playing;
+  }, current.minimum);
+  results.push({ pvSelectionClickAndDrag: true });
+  await command("export.settings", { introPvStartSeconds: .5 });
+  await command("preview.seek", { second: -.1 }); await command("preview.toggle");
+  await waitForAsync(page, async () => (await editor.preview.getState()).currentTime > .2);
+  await command("preview.pause"); assert.ok((await state()).currentTime > 0);
+  await command("export.setExportRangeSeconds", { start: 5, end: 12, second: 12 });
+  assert.equal((await state()).currentTime, 12); assert.equal((await state()).minimum, 0);
+  await command("preview.rangeMode", { enabled: true });
+  await command("preview.seek", { second: 11.9 }); await command("preview.toggle");
+  await waitForAsync(page, async () => { const s = await editor.preview.getState(); return !s.playing && s.currentTime === 5; });
+  results.push({ rangeEndReturns: 5 });
+  await command("preview.rangeMode", { enabled: false });
+  await command("export.settings", { selectedDifficultyId: 4 }); current = await state();
+  assert.equal(current.difficultyId, 4); assert.equal((await page.evaluate(() => editor.getDocument())).activeDifficultyId, 5);
+  const targetDuration = 1 + 40 / 3 + 3;
+  assert.ok(Math.abs(current.duration - targetDuration) < 1e-9, `Hold end plus 3 seconds and first: ${current.duration}`);
+  assert.equal(current.exportPreview.clockBpm, 180);
+  assert.equal(current.playback.exportStartSeconds, 0); assert.equal(current.playback.exportEndSeconds, targetDuration);
+  await command("preview.seek", { second: 7 }); await command("page.metadata");
+  await waitForAsync(page, async () => !(await editor.preview.getState()).exportPreview);
+  current = await state(); assert.equal(current.difficultyId, 5); assert.equal(current.currentTime, 7); assert.equal(current.playing, false);
+  results.push({ exit: current.currentTime, editingDifficulty: current.difficultyId });
+  await command("audio.channelPercent", { key: "track", percent: 37 });
+  await command("view.sidebar"); await command("view.bottom");
+  await page.evaluate(() => editor.viewState.setPreference("editorFontSize", 19));
+  await page.reload(); await page.locator(".welcome-title").waitFor();
+  await page.evaluate(() => document.getElementById("workbench").editor.ready);
+  const saved = await page.evaluate(() => {
+    const e = document.getElementById("workbench").editor;
+    return { preferences: e.viewState.preferences, sidebar: e.viewState.sidebarVisible, bottom: e.viewState.bottomPanelVisible, audio: e.workbench.documentSession.audio };
+  });
+  assert.equal(saved.sidebar, false); assert.equal(saved.bottom, false); assert.equal(saved.preferences.editorFontSize, 19);
+  assert.equal(saved.audio.channels.track.percent, 37); assert.equal(saved.preferences.previewValues.brightnessOuter, 73);
+  assert.equal(saved.preferences.exportValues.fps, 30); assert.equal(saved.preferences.exportValues.introPvPreview, true);
+  assert.equal(saved.preferences.exportValues.exportStartSeconds, undefined);
+  results.push({ refreshPersistence: true });
+  const firstProject = await page.evaluate(() => document.getElementById("workbench").editor.workbench.documentSession.recentDocuments.find(item => item.label === "Export preview").id);
+  await page.evaluate(() => document.getElementById("workbench").editor.load({ maidata: "&title=Second project\n&inote_5=(120){4}1,2,E" }));
+  await command("audio.channelPercent", { key: "track", percent: 61 });
+  await command("file.openRecent", { id: firstProject });
+  assert.equal((await state()).audio.channels.track.percent, 37);
+  results.push({ projectMixer: true });
+  await page.evaluate(() => document.getElementById("workbench").editor.load({ maidata: "&title=Empty project\n&inote_5=(120){4}E" }));
+  await command("page.export");
+  await waitForAsync(page, async () => (await document.getElementById("workbench").editor.preview.getState()).exportPreview?.active);
+  assert.equal((await state()).duration, 0);
+  assert.equal(await page.locator(".export-footer > button").isDisabled(), true);
+  results.push({ emptyProject: true });
+  assert.deepEqual(errors, []);
+  console.log(`${browserName}: export live settings, negative intro transport, PV mapping, range playback, difficulty isolation and persisted preferences passed`);
+} finally {
+  writeFileSync(join(output, "results.json"), JSON.stringify({ results, errors }, null, 2) + "\n");
+  await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
+}

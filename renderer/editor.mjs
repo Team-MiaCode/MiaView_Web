@@ -31,7 +31,7 @@ attachSdkBridge({ boot, identity: () => identity, state: () => editor.preview.ge
     const unsubscribe = [];
     void editor.ready.then(() => {
       if (closed) return;
-      for (const type of ["progress", "playing", "paused", "ended", "error", "seeked", "settingsChanged", "playbackChanged", "timeupdate", "coverChanged", "coverPlaybackChanged", "touchPadAuthoring", "documentChanged", "shortcutInput", "exportProgress", "introAuditionChanged", "exportCompleted", "exportFailed", "performance"])
+      for (const type of ["progress", "playing", "paused", "ended", "error", "seeked", "settingsChanged", "playbackChanged", "timeupdate", "coverChanged", "coverPlaybackChanged", "touchPadAuthoring", "documentChanged", "shortcutInput", "exportProgress", "introAuditionChanged", "exportPreviewChanged", "exportCompleted", "exportFailed", "performance"])
         unsubscribe.push(editor.preview.on(type, payload => listener(type, payload)));
     }).catch(() => {});
     return () => { closed = true; for (const stop of unsubscribe) stop(); };

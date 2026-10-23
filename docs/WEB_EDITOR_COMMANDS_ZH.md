@@ -16,7 +16,7 @@
 | 触区编写 | `edit.touchPadAuthoring`、`touchPadAuthoring` 事件 | `TouchPadAuthoringEdit`、原生触区几何 | `touch-authoring-smoke.mjs` |
 | 诊断与无理列表 | `getAnalysis()`、`analysis.activateRow` | `SimaiParser`、`MuriAnalyzer`、`MuriStaticChecker`、`MuriPanelEntries` | `analysis-core-smoke.mjs` |
 | 时间轴 | `timeline.viewport/settings/scroll/zoom/navigateAtPoint`、`timeline.zoom_in/zoom_out`；`getTimeline()`、`navigateTimeline()` | `TimelineData`、`TimelineMarkerOffset`、`TimelineQuickModel` | `timeline-smoke.mjs`、`timeline-controls-smoke.mjs`、`timeline-visual-smoke.mjs` |
-| 播放控制 | `preview.toggle/stop/seek/rate/rangeMode`、`preview.stop_or_play/play_pause_global/speed_down/speed_up`；`setPlayback()` | `PreviewAudio`、`player-engine`、区间时间基准 | `preview-transport-smoke.mjs`、`shortcuts-core-smoke.mjs` |
+| 播放控制 | `preview.toggle/pause/stop/seek/rate/rangeMode`、`preview.stop_or_play/play_pause_global/speed_down/speed_up`；`setPlayback()` | `PreviewAudio`、`player-engine`、区间时间基准 | `preview-transport-smoke.mjs`、`shortcuts-core-smoke.mjs` |
 | 画布与媒体显示 | `preview.toggleFreeAspect/toggleHidePv`；`setCanvasSize()`、`setMediaSettings()` | Qt 逻辑画布、自由比例设置、浏览器视频 | `preview-transport-smoke.mjs`、`touch-authoring-smoke.mjs` |
 | 分离预览 | `preview.detach` | `PreviewWindow`、原文档所有者、独立 SDK 实例 | `preview-window-smoke.mjs` |
 | 预览外观 | `preview.values/settings/pause_display_hold`；`setSettings()` | `PreviewSceneAssetLoader`、原生场景与暂停显示规则 | `preview-settings-core-smoke.mjs`、`shortcuts-core-smoke.mjs` |
@@ -28,6 +28,6 @@
 | 标签页与布局 | `page.*`、`view.sidebar/bottom/swap/preview`、`editor.activate/close` | `ViewState`、工作台标签与响应式布局 | `workbench-chrome-smoke.mjs`、`editor-tabs-smoke.mjs`、`stage1-acceptance.mjs` |
 | 封面图层与谱面帧 | `coverCommand()`、`setCoverComposition()`、`setCoverChart()` | `CoverLayoutModel`、`CoverFramePlaybackController`、共享预览场景 | `cover-canvas-smoke.mjs`、`cover-chart-frame-smoke.mjs`、`cover-pv-smoke.mjs` |
 | 封面素材、布局、预设与输出 | `cover.browseOutputFile/importLayout/saveLayout/managePresets/export`、`importCoverImage()`、`exportCover()` | `CoverCompositionState`、原生图像编码、`CoverCanvas`、素材库 | `cover-files-core-smoke.mjs`、`cover-files.spec.mjs` |
-| 单视频导出与片头 | `export.video/settings/setExportRangeSeconds/browseOutputPath/browseIntroBackground/importIntroFonts/resetIntroFonts/toggleIntroAudition`、`job.cancel`；`startExport()`、`cancelExport()`、`setIntroAudition()` | `VideoExportAudioRenderPlan`、`IntroOverlay.qml`、独立导出实例、Mediabunny | `video-export-core-smoke.mjs`、`video-export-workbench-smoke.mjs`、`video-export-long-smoke.mjs`、`intro-audition-core-smoke.mjs` |
+| 单视频导出与片头 | `export.video/settings/setExportRangeSeconds/browseOutputPath/browseIntroBackground/importIntroFonts/resetIntroFonts/toggleIntroAudition/introScrubbing`、`job.cancel`；`startExport()`、`cancelExport()`、`setIntroAudition()`、`setExportPreview()` | `VideoExportAudioRenderPlan`、`IntroOverlay.qml`、独立导出实例、Mediabunny | `video-export-core-smoke.mjs`、`video-export-workbench-smoke.mjs`、`video-export-long-smoke.mjs`、`intro-audition-core-smoke.mjs`、`export-preview-smoke.mjs` |
 
 协议、类型与纯逻辑验证采用 `npm test`、`tests/tsconfig.json`。原生源码与运行时一致性采用 `npm run check:source`，目录和文件归属采用 `npm run check:repo`。浏览器脚本使用本地 HTTP 服务及项目的 WASM 产物。

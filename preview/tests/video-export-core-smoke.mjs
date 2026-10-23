@@ -118,8 +118,8 @@ try {
     assert.equal(intro.frames,intro.declaredFrames);assert.ok(intro.bright>1000,`Intro pixels: ${intro.bright}`);
     const sourceDuration=(await page.evaluate(()=>preview.getState())).duration;
     assert.ok(Math.abs(sourceDuration-sourceAudio.duration)<1e-9);
-    // v2 authors 349 classic / 544 PV intro frames at 60 FPS, plus the two-second lead-in.
-    const expected=Math.round(((pv?544:349)/60+2+sourceDuration)*30);
+    // v2 authors 349 classic / 664 PV intro frames at 60 FPS, plus the two-second lead-in.
+    const expected=Math.round(((pv?664:349)/60+2+Math.max(sourceDuration,4.5))*30);
     console.log(JSON.stringify({intro:pv?"pv":"classic",expected,frames:intro.frames,declaredFrames:intro.declaredFrames,sourceAudio,sourceDuration}));
     assert.equal(intro.frames,expected);
     writeFileSync(join(output,`intro-${pv?"pv":"classic"}.png`),Buffer.from(intro.screenshot.split(",")[1],"base64"));

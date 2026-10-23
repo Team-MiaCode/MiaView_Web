@@ -16,6 +16,7 @@ import { shortcutInput, matchesShortcut } from "./input-shortcut.mjs";
 import { encodeVideoExport, exportCapabilities, exportSettings, seekVideo } from "./video-export.mjs";
 import { CoverPvFrames } from "./cover-pv.mjs";
 import { IntroAudition } from "./intro-audition.mjs";
+import { ExportPreview } from "./export-preview.mjs";
 import { DEFAULT_PERFORMANCE, frameRateForMode, performanceSettings } from "./performance-settings.mjs";
 import { VideoPresentation } from "./video-presentation.mjs";
 import { nextAnimationFrame } from "./animation-frame.mjs";
@@ -49,6 +50,7 @@ export function createPlayerEngine(view) {
   let loadedAudioResource, exportJob;
   let introAudition,introOptions,introSaved;
   let introWasPlaying=false;
+  let exportPreview, exportPreviewOptions, exportPreviewSaved;
   const exportSoundBytes = new Map();
   let latency = { ...DEFAULT_LATENCY }, analyzedTrack;
   let video = $("stage-video");
@@ -225,13 +227,13 @@ export function createPlayerEngine(view) {
   const statistics = () => ready && chart ? JSON.parse(call("miacode_statistics", "string", [], []))
     : { statistics: [], statisticsAvailable: false };
   const updateTransport = (force = true) => {
-    const currentTime = audio?.currentSecond() ?? 0;
+    const currentTime = exportPreview?.position() ?? audio?.currentSecond() ?? 0;
     const duration = audio?.duration ?? 0;
-    view.transport?.(currentTime, duration);
+    view.transport?.(currentTime, duration, exportPreview?.minimum ?? 0);
     const now = performance.now();
     if (force || now - lastTimeUpdate >= 100) {
       lastTimeUpdate = now;
-      emit("timeupdate", { currentTime, duration, playing: audio?.playing ?? false, rate: playback.rate, ...statistics() });
+      emit("timeupdate", { currentTime, duration, minimum: exportPreview?.minimum ?? 0, auditionPlaying: Boolean(exportPreview?.audition && exportPreview.playing), playing: exportPreview?.playing ?? audio?.playing ?? false, rate: playback.rate, ...statistics() });
     }
   };
   const fail = (error) => {
@@ -381,8 +383,8 @@ export function createPlayerEngine(view) {
     module.onPreviewFrame = (now, renderStarted, second) => {
       renderedSecond = introAudition ? introVideoSecond : second;
       // Paused updates have no subsequent frame to retry a rate-limited draw.
-      presentVideo(now, !(introAudition?.playing || audio?.playing));
-      if (!playbackDiagnostics.enabled || !(introAudition?.playing || audio?.playing)) {
+      presentVideo(now, !(exportPreview?.playing || introAudition?.playing || audio?.playing));
+      if (!playbackDiagnostics.enabled || !(exportPreview?.playing || introAudition?.playing || audio?.playing)) {
         lastPresentation = undefined;
         return;
       }
@@ -426,6 +428,7 @@ export function createPlayerEngine(view) {
     ++playbackRequest;
     playStartAbort?.abort();
     seekPresentationAbort?.abort();
+    if (exportPreview) { exportPreview.audition = null; exportPreview.pause(); updateTransport(); return; }
     if(introAudition){introAudition.pause();return;}
     if (!audio) return;
     diagnostics.flush();
@@ -442,6 +445,7 @@ export function createPlayerEngine(view) {
     emit("paused", { elapsedMs: elapsed() });
   }
   async function play() {
+    if (exportPreview) { await exportPreview.play(); updateTransport(); return; }
     if(introAudition)return introAudition.play();
     if (!chart || audio.playing) return;
     const request = ++playbackRequest;
@@ -488,6 +492,7 @@ export function createPlayerEngine(view) {
   }
   function seek(second) {
     if (!chart) return;
+    if (exportPreview) { exportPreview.seek(second); updateTransport(); return; }
     audio.seek(second);
     call("miacode_seek", null, ["number"], [audio.offset]);
     if (video.src && !performanceOptions.videoDecodePrefersSoftware) positionVideo(audio.offset);
@@ -602,6 +607,7 @@ export function createPlayerEngine(view) {
     }
   }
   async function load(resources, difficultyId) {
+    if (exportPreview) await setExportPreview({ enabled: false });
     const pending = diagnostics.measureAsync("chartLoad", () =>
       loadChart(resources, difficultyId),
     );
@@ -830,6 +836,13 @@ export function createPlayerEngine(view) {
     return result;
   }
   async function documentCommand(request) {
+    if (exportPreview) {
+      const options = { ...exportPreviewOptions };
+      await setExportPreview({ enabled: false });
+      const result = await documentCommand(request);
+      if (result.document.hasDocument && chart) await setExportPreview(options);
+      return result;
+    }
     if (request.id === "document.selectDifficulty") pause();
     const wasPlaying = audio?.playing ?? false;
     const second = audio?.currentSecond() ?? 0;
@@ -887,9 +900,11 @@ export function createPlayerEngine(view) {
       videoPresentation: coverState ? coverPv.snapshot() : { decoder: videoPresentation.decoder ? "software" : "browser", frames: videoPresentation.frames, timestamp: videoPresentation.timestamp ?? video.currentTime },
       pvTimeoutMs,
       loaded: Boolean(chart),
-      playing: Boolean(introAudition?.playing || audio?.playing),
+      playing: Boolean(exportPreview?.playing || introAudition?.playing || audio?.playing),
       introAudition:introAudition?.state()??null,
-      currentTime: audio?.currentSecond() ?? 0,
+      exportPreview: exportPreview?.state() ?? null,
+      minimum: exportPreview?.minimum ?? 0,
+      currentTime: exportPreview?.position() ?? audio?.currentSecond() ?? 0,
       duration: audio?.duration ?? 0,
       difficultyId: chart?.difficultyId ?? null,
       settings: JSON.parse(call("miacode_settings", "string", [], [])),
@@ -983,6 +998,10 @@ export function createPlayerEngine(view) {
       fpsSampleFrames = frames;
       fpsSampleTime = now;
     }
+    if (ready && exportPreview) {
+      if (frameLimiter.accept(now)) { exportPreview.tick(); updateTransport(false); }
+      return;
+    }
     if(ready&&introAudition){
       if(frameLimiter.accept(now)){
         playbackDiagnostics.hostFrame(now,introAudition.playing);
@@ -1016,20 +1035,20 @@ export function createPlayerEngine(view) {
   }
   function presentVideo(now, force = false) {
     if (!ready || disposed || exportJob?.running) return;
-    const second = introAudition ? introVideoSecond : videoFollowsScene() ? renderedSecond : audio?.currentSecond() ?? 0;
+    const second = exportPreview ? exportPreview.mediaSecond ?? 0 : introAudition ? introVideoSecond : videoFollowsScene() ? renderedSecond : audio?.currentSecond() ?? 0;
     return videoPresentation.tick(now, second,
       Boolean(video.src && !video.hidden && !document.body.classList.contains("cover-view")), WIDTH, HEIGHT, force,
       introAudition ? 1 : playback.rate);
   }
   function videoFrameReady() {
     if (!ready || disposed) return;
-    const playing = introAudition?.playing || audio?.playing;
-    const second = introAudition ? introVideoSecond : audio?.currentSecond() ?? 0;
-    if (!videoFollowsScene() || !playing && renderedSecond === second) presentVideo(performance.now(), !playing);
+    const playing = exportPreview?.playing || introAudition?.playing || audio?.playing;
+    const second = exportPreview ? exportPreview.mediaSecond ?? 0 : introAudition ? introVideoSecond : audio?.currentSecond() ?? 0;
+    if (!videoFollowsScene() || !playing && (exportPreview || renderedSecond === second)) presentVideo(performance.now(), !playing);
   }
   function frame(now) {
     try {
-      if (ready && chart && video.src && !performanceOptions.videoDecodePrefersSoftware && !introAudition) {
+      if (ready && chart && video.src && !performanceOptions.videoDecodePrefersSoftware && !introAudition && !exportPreview) {
         const playing = audio.playing && audio.context.currentTime >= audio.startedAt && !hidePv && !video.ended;
         if (playing && video.paused) void video.play().catch(() => {});
         else if (!playing && !video.paused) video.pause();
@@ -1062,6 +1081,7 @@ export function createPlayerEngine(view) {
     ++generation;
     abort?.abort();
     introAudition?.destroy(); introAudition = null;
+    exportPreview?.destroy(); exportPreview = null;
     mediaCache.clear(); coverPv.clear();
     if (coverPixelPointer) module._free(coverPixelPointer);
     coverPixelPointer = 0; coverPixelCapacity = 0;
@@ -1125,9 +1145,15 @@ export function createPlayerEngine(view) {
     return plan;
   }
   function configureExportScene(settings,reconfigure=false) {
-    return exportCall(reconfigure?"miacode_export_reconfigure":"miacode_export_prepare",["string"],[JSON.stringify({...settings,duration:audio.duration,
-      exportStartSeconds:settings.exportStartSeconds??0,exportEndSeconds:settings.exportEndSeconds??audio.duration,
+    const duration = Math.max(audio.duration, chart.exportDuration ?? 0);
+    return exportCall(reconfigure?"miacode_export_reconfigure":"miacode_export_prepare",["string"],[JSON.stringify({...settings,duration,
+      exportStartSeconds:settings.exportStartSeconds??0,exportEndSeconds:settings.exportEndSeconds??duration,
       videoAvailable:Boolean(video.src)&&!hidePv&&settings.sizePresetIndex!==3,audioAvailable:Boolean(audio.track)})]);
+  }
+  function exportAudioTimeline(plan) {
+    const clocks = plan.scheduledSfxPlaybacks.filter(item => item.kind === "clock").map(item => ({ ...item,
+      second: item.mixSecond + plan.timelineOriginSecond, gain: 1, nextSameKindSecond: Infinity }));
+    audio.replaceTimeline([...(audioSettings.breakSlideTailCheerMuted ? chart.sfxMutedTail : chart.sfx), ...clocks].sort((a, b) => a.second - b.second), chart.touchholdSegments);
   }
   async function stopIntroAudition() {
     if(!introSaved)return;
@@ -1140,7 +1166,100 @@ export function createPlayerEngine(view) {
     emit("introAuditionChanged",{active:false,playing:false,introAuditionLoop:false,elapsed:0,duration:0,introPvStartSeconds:0});
     if(saved.playing)await play();
   }
+  async function setExportPreview(input = {}) {
+    if (input.enabled === false) {
+      if (!exportPreviewSaved) return previewState();
+      const second = Math.max(0, exportPreview?.position() ?? audio.currentSecond());
+      exportPreview?.destroy(); exportPreview = null;
+      const saved = exportPreviewSaved;
+      exportPreviewSaved = null; exportPreviewOptions = null;
+      call("miacode_export_finish", null, [], []);
+      setSurfaceSize(saved.width, saved.height);
+      exportCall("miacode_set_canvas_size", ["number", "number"], [saved.width, saved.height]);
+      exportCall("miacode_set_settings", ["string"], [JSON.stringify(saved.settings)]);
+      frameLimiter = new PreviewFrameLimiter(frameRateForMode(performanceOptions.canvasFrameRateMode));
+      const result = exportCall("miacode_document_refresh");
+      await applyDocumentPreview(result, false, second, false);
+      playback.rangePlaybackEnabled = false;
+      video.hidden = hidePv;
+      if (video.src && !hidePv) call("miacode_external_video", null, ["number"], [1]);
+      updateTransport(); return previewState();
+    }
+    if (!chart) throw new Error("请打开含谱面的项目");
+    if (input.stop && exportPreview) { exportPreview.stop(); updateTransport(); return previewState(); }
+    if (exportPreview && "cardDimmed" in input) {
+      call("miacode_export_card_dimmed", null, ["number"], [Number(input.cardDimmed)]);
+      return previewState();
+    }
+    if (exportPreview && Object.keys(input).every(key => key === "introAuditionLoop")) {
+      exportPreviewOptions.introAuditionLoop = input.introAuditionLoop;
+      if (exportPreview.audition) exportPreview.audition.loop = input.introAuditionLoop;
+      return previewState();
+    }
+    if (introAudition) await stopIntroAudition();
+    const previous = exportPreview;
+    const second = previous?.position() ?? audio.currentSecond();
+    const playing = previous?.playing ?? false;
+    if (!exportPreviewSaved) exportPreviewSaved = { width: WIDTH, height: HEIGHT, settings: exportCall("miacode_settings") };
+    pause();
+    const settings = exportSettings({ ...exportPreviewOptions, ...input,
+      ...("resolutionIndex" in input ? { width: input.width, height: input.height } : {}),
+      clockCountEnabled: input.clockCountEnabled ?? exportPreviewOptions?.clockCountEnabled ?? true });
+    const difficulty = settings.selectedDifficultyId ?? chart.difficultyId;
+    const changeChart = !previous || difficulty !== chart.difficultyId;
+    if (changeChart) {
+      if (previous) { previous.destroy(); exportPreview = null; call("miacode_export_finish", null, [], []); }
+      const parsed = exportCall("miacode_export_preview_chart", ["number"], [difficulty]);
+      await prepareEffects(parsed);
+      chart = parsed; view.chart?.(parsed);
+      audio.replaceTimeline(audioSettings.breakSlideTailCheerMuted ? parsed.sfxMutedTail : parsed.sfx, parsed.touchholdSegments);
+      audio.duration = Math.max(parsed.exportDuration, audio.track?.duration ?? 0);
+      settings.exportStartSeconds = 0; settings.exportEndSeconds = audio.duration;
+    }
+    settings.selectedDifficultyId = difficulty;
+    setSurfaceSize(settings.width, settings.height);
+    exportCall("miacode_set_canvas_size", ["number", "number"], [settings.width, settings.height]);
+    exportCall("miacode_set_settings", ["string"], [JSON.stringify(exportPreviewSaved.settings)]);
+    const sceneSettings = { ...settings, previewMode: true, exportStartSeconds: 0, exportEndSeconds: audio.duration,
+      introEnabled: Boolean(settings.introEnabled && (settings.exportStartSeconds ?? 0) <= .01) };
+    let plan;
+    if (changeChart) plan = await prepareExportAssets(sceneSettings, lifetime.signal);
+    else {
+      if (input.introBackground) storeExportAsset("intro_background", "background", await bytes(input.introBackground, lifetime.signal));
+      plan = configureExportScene(sceneSettings, true);
+    }
+    settings.introPvStartSeconds = plan.introPvStartSeconds;
+    exportPreviewOptions = settings;
+    video.hidden = hidePv || settings.sizePresetIndex === 3;
+    if (video.hidden) await setBackground(loadedCover);
+    else if (video.src) call("miacode_external_video", null, ["number"], [1]);
+    exportAudioTimeline(plan);
+    if (!exportPreview) exportPreview = new ExportPreview({ audio, video,
+      frame: second => exportCall("miacode_export_preview_frame", ["number"], [second]),
+      still: value => call("miacode_export_still", null, ["number"], [Number(value)]),
+      changed: state => emit("exportPreviewChanged", state),
+      presentVideo: second => { introVideoSecond = second; },
+      positionVideo,
+      softwareVideo: () => performanceOptions.videoDecodePrefersSoftware, hidePv: () => hidePv || exportPreviewOptions.sizePresetIndex === 3,
+      ended: () => emit("ended", { elapsedMs: elapsed() }), failed: fail });
+    frameLimiter = new PreviewFrameLimiter(settings.fps);
+    exportPreview.configure(plan, settings, Math.min(second, audio.duration));
+    exportPreview.setRange(playback.rangePlaybackEnabled, settings.exportStartSeconds ?? 0, settings.exportEndSeconds ?? audio.duration);
+    playback.exportStartSeconds = settings.exportStartSeconds ?? 0;
+    playback.exportEndSeconds = settings.exportEndSeconds ?? audio.duration;
+    if (playing) await exportPreview.play();
+    updateTransport(); return previewState();
+  }
   async function setIntroAudition(input={}) {
+    if (exportPreview) {
+      if (input.enabled === false) { if (exportPreview.audition) await exportPreview.auditionIntro(); return null; }
+      if ("elapsed" in input) exportPreview.seek(exportPreview.minimum + input.elapsed);
+      if (input.playing === true) {
+        if (exportPreview.audition) await exportPreview.play();
+        else await exportPreview.auditionIntro(input.introAuditionLoop ?? exportPreviewOptions.introAuditionLoop);
+      } else if (input.playing === false && exportPreview.audition) await exportPreview.auditionIntro();
+      return exportPreview.auditionState();
+    }
     if(input.enabled===false){await stopIntroAudition();return null;}
     if(!chart)throw new Error("请打开含谱面的项目");
     if(["enabled","playing","introAuditionLoop"].some(key=>key in input&&typeof input[key]!=="boolean"))throw new Error("片头试听状态需要布尔值");
@@ -1253,14 +1372,19 @@ export function createPlayerEngine(view) {
       try { await coverPv.configure(next); }
       catch (error) { await videoPresentation.configure(performanceOptions); throw error; }
       performanceOptions = next;
-      if ("canvasFrameRateMode" in changes) frameLimiter = new PreviewFrameLimiter(frameRateForMode(next.canvasFrameRateMode));
-      if (!next.videoDecodePrefersSoftware && video.src && !hidePv) {
-        positionVideo(introAudition ? introVideoSecond : audio?.currentSecond() ?? 0);
-        if (audio?.playing || introAudition?.playing) void video.play().catch(() => {});
+      if ("canvasFrameRateMode" in changes && !exportPreview) frameLimiter = new PreviewFrameLimiter(frameRateForMode(next.canvasFrameRateMode));
+      if (!next.videoDecodePrefersSoftware && video.src && !video.hidden) {
+        if (exportPreview?.playing) exportPreview.startVideo(exportPreview.mediaSecond);
+        else {
+          positionVideo(exportPreview?.mediaSecond ?? (introAudition ? introVideoSecond : audio?.currentSecond() ?? 0));
+          if (audio?.playing || introAudition?.playing) void video.play().catch(() => {});
+        }
       }
       return { ...performanceOptions };
     },
     stopIntroAudition,
+    setExportPreview,
+    exportPreviewActive: () => Boolean(exportPreview),
     introAuditionActive:()=>Boolean(introAudition),
     getExportCapabilities:exportCapabilities,
     startExport,
@@ -1289,12 +1413,12 @@ export function createPlayerEngine(view) {
     pause,
     seek: async second => {
       seek(second);
-      if (video.src && !hidePv) {
+      if (video.src && !video.hidden) {
         const controller = seekPresentationAbort = new AbortController();
         const signal = AbortSignal.any([abort.signal, controller.signal]);
         try {
-          await videoPresentation.ready(audio.offset, signal);
-          if (renderedSecond === audio.currentSecond()) await presentVideo(performance.now(), true);
+          await videoPresentation.ready(exportPreview?.mediaSecond ?? audio.offset, signal);
+          if (exportPreview || renderedSecond === audio.currentSecond()) await presentVideo(performance.now(), true);
         } catch (error) {
           if (!signal.aborted) throw error;
         } finally {
@@ -1425,12 +1549,24 @@ export function createPlayerEngine(view) {
       const result = JSON.parse(call("miacode_audio_command", "string", ["string"], [JSON.stringify(request)]));
       if (result.error) throw new Error(result.error);
       const tailChanged = audioSettings?.breakSlideTailCheerMuted !== result.breakSlideTailCheerMuted;
+      const clockChanged = Boolean(audioSettings?.gains.clock) !== Boolean(result.gains.clock);
       audioSettings = result;
       audio?.setMix(activeAudioGains());
+      if (exportPreview) {
+        if (clockChanged) {
+          exportPreview.plan = configureExportScene({ ...exportPreviewOptions, previewMode: true,
+            exportStartSeconds: 0, exportEndSeconds: audio.duration, introEnabled: exportPreview.minimum < 0 }, true);
+          exportPreview.lastFrame = null;
+        }
+        exportPreview.plan.introPreviewTrack.gain = result.gains.track;
+        if (exportPreview.gain && !exportPreview.settings.introPvPreview) exportPreview.gain.gain.value = result.gains.track_start;
+        if (clockChanged || tailChanged) exportAudioTimeline(exportPreview.plan);
+        exportPreview.tick();
+      }
       if (tailChanged && chart && !latency.onPage) {
         const second = audio.currentSecond(), playing = audio.playing;
         audio.pause();
-        audio.events = result.breakSlideTailCheerMuted ? chart.sfxMutedTail : chart.sfx;
+        if (!exportPreview) audio.events = result.breakSlideTailCheerMuted ? chart.sfxMutedTail : chart.sfx;
         audio.seek(second);
         if (playing) audio.start();
       }
@@ -1448,13 +1584,14 @@ export function createPlayerEngine(view) {
         throw new Error("Media settings require a boolean hidePv");
       hidePv = settings.hidePv;
       if (video.src) {
-        video.hidden = hidePv;
-        if (hidePv) { video.pause(); await setBackground(loadedCover); }
+        video.hidden = hidePv || Boolean(exportPreview && exportPreviewOptions.sizePresetIndex === 3);
+        if (video.hidden) { video.pause(); await setBackground(loadedCover); }
         else {
           call("miacode_external_video", null, ["number"], [1]);
           if (!performanceOptions.videoDecodePrefersSoftware) {
-            positionVideo(audio.currentSecond());
-            if (audio.playing) void video.play().catch(() => {});
+            positionVideo(exportPreview?.mediaSecond ?? audio.currentSecond());
+            if (exportPreview?.playing) exportPreview.startVideo(exportPreview.mediaSecond);
+            else if (audio.playing) void video.play().catch(() => {});
           }
         }
       }
@@ -1462,10 +1599,13 @@ export function createPlayerEngine(view) {
     },
     setPlayback: changes => {
       const result = playbackSettings(playback, changes, audio?.duration ?? 0);
-      if (audio && result.rate !== playback.rate) audio.setRate(result.rate);
+      if (audio && result.rate !== playback.rate) {
+        if (exportPreview) void exportPreview.setRate(result.rate); else audio.setRate(result.rate);
+      }
       playback = result;
       video.playbackRate = result.rate;
-      if (result.rangePlaybackEnabled && audio && (audio.offset < result.exportStartSeconds || audio.offset > result.exportEndSeconds))
+      if (exportPreview) exportPreview.setRange(result.rangePlaybackEnabled, result.exportStartSeconds, result.exportEndSeconds);
+      else if (result.rangePlaybackEnabled && audio && (audio.offset < result.exportStartSeconds || audio.offset > result.exportEndSeconds))
         seek(result.exportStartSeconds);
       updateTransport();
       return { ...result };
@@ -1511,7 +1651,12 @@ export function createPlayerEngine(view) {
           ["string"], [JSON.stringify(settings)],
         ),
       );
-      if (!result.error) { appearance = result; videoPresentation.invalidatePlacement(); view.settings(result); }
+      if (!result.error) {
+        appearance = result;
+        if (exportPreviewSaved) exportPreviewSaved.settings = result;
+        if (exportPreview) { exportPreview.lastFrame = null; exportPreview.tick(); }
+        videoPresentation.invalidatePlacement(); view.settings(result);
+      }
       return result;
     },
   };

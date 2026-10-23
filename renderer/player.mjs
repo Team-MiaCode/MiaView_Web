@@ -7,7 +7,7 @@ let controls;
 const engine = createPlayerEngine({
   settings: (settings) => controls?.settings(settings),
   chart: (chart) => controls?.chart(chart),
-  transport: (currentTime, duration) => controls?.transport(currentTime, duration),
+  transport: (currentTime, duration, minimum) => controls?.transport(currentTime, duration, minimum),
   theme: theme => controls?.theme(theme),
 });
 const controller = createPlayerController(engine);
