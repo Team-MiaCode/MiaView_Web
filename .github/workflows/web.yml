@@ -44,6 +44,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Use Ubuntu HTTPS package mirror
+        run: sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources
       - run: sudo apt-get update && sudo apt-get install -y ninja-build libegl1 libopengl0 libxcb-cursor0 libxkbcommon-x11-0 libgl1-mesa-dri mesa-utils xvfb
       - run: python -m pip install -r scripts/qt-requirements.txt
       - uses: actions/cache@v4
@@ -130,6 +132,8 @@ jobs:
           path: .
       - run: npm run check:source
       - run: npm install --no-save --package-lock=false playwright@1.62.1
+      - name: Use Ubuntu HTTPS package mirror
+        run: sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources
       - run: npx playwright install --with-deps ${{ matrix.browser }}
       - name: Configure clocked audio output
         run: |
@@ -175,6 +179,8 @@ jobs:
           name: miaview-preview
           path: .
       - run: npm run check:source
+      - name: Use Ubuntu HTTPS package mirror
+        run: sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources
       - run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dri mesa-utils xvfb
       - run: npm install --no-save --package-lock=false playwright@1.62.1
       - run: npx playwright install --with-deps chromium firefox webkit chrome msedge
@@ -231,6 +237,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Use Ubuntu HTTPS package mirror
+        run: sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources
       - run: sudo apt-get update && sudo apt-get install -y ninja-build libegl1 libopengl0 libxcb-cursor0 libxkbcommon-x11-0
       - run: python -m pip install -r scripts/qt-requirements.txt
       - uses: actions/cache@v4
