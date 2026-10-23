@@ -418,10 +418,6 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_set_canvas_size(double width, double he
         || width > 4096 || height > 4096 || width != int(width) || height != int(height))
         return json({{"error", "画布尺寸无效"}});
     renderSize = QSize(int(width), int(height));
-    const bool square = width == height;
-    state.render.showTimestamp = true;
-    state.render.showChartInfoHud = !square;
-    state.render.showObjectStatsHud = !square;
     previewWindow->resize(renderSize);
     scene->setSize(renderSize);
     hud->setSize(renderSize);

@@ -239,14 +239,10 @@ export function createWorkbench(container, options = {}) {
       : initialResolution;
     const key = `${size.width}x${size.height}`;
     if (key === canvasSize) return;
-    canvasSize = key;
     const state = await preview.getState();
-    if (exportPageActive || key !== canvasSize) return;
+    if (exportPageActive || state.exportPreview) return;
+    canvasSize = key;
     await preview.setCanvasSize(size);
-    if (exportPageActive || key !== canvasSize) return;
-    if (state.introAudition?.active) return;
-    await userAppearance.restore(state.settings);
-    await preview.setSettings(state.settings);
   }
   const reader = async (accept, multiple = false, directory = false, purpose = "asset", chartScoped = false) => {
     const fallback = () => {

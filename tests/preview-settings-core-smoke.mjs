@@ -35,6 +35,12 @@ try {
   for (const [key, value] of Object.entries(values)) {
     if (!["brightnessOuter", "brightnessInner", "layoutSquareScale", "slideEarlierOnTop", "skinIndex"].includes(key)) assert.equal(actual[key], value, key);
   }
+  const canvasSettings = await page.evaluate(async () => {
+    const preview = document.getElementById("workbench").editor.preview;
+    await preview.setCanvasSize({ width: 960, height: 540 });
+    return (await preview.getState()).settings;
+  });
+  assert.deepEqual(canvasSettings, actual, "Canvas resizing preserves every render setting");
   await page.evaluate(() => document.getElementById("workbench").editor.command("page.preview-settings"));
   await page.locator('.settings-tabs [data-page="gameplay"]').click();
   const slider = page.getByRole("slider", { name: "Tap流速", exact: true });
