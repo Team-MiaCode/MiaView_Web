@@ -89,8 +89,12 @@ export class ExportPreview {
     this.still(false);
     this.startSources(); this.tick(); this.publish();
   }
-  startSources() {
-    if (this.second >= 0) { this.audio.seek(this.second); this.audio.start(); this.startVideo(this.second); return; }
+  startSources(fromZero = false) {
+    if (this.second >= 0) {
+      this.audio.seek(fromZero ? 0 : this.second);
+      this.audio.start(fromZero ? this.audio.context.currentTime - this.second / this.audio.rate : undefined);
+      this.startVideo(this.second); return;
+    }
     const elapsed = this.second - this.minimum;
     const pv = this.settings.introPvPreview;
     if (pv) this.startVideo((this.settings.introPvStartSeconds ?? 0) + elapsed);
@@ -152,7 +156,8 @@ export class ExportPreview {
       return;
     }
     if (this.playing && this.second < 0 && second >= 0) {
-      this.stopSources(); this.second = Math.max(0, second); this.startSources();
+      this.stopSources(); this.second = Math.max(0, second) * this.audio.rate; this.startSources(true);
+      second = this.position();
     }
     const end = this.rangeEnabled ? this.rangeEnd : this.audio.duration;
     if (this.playing && second >= end) {

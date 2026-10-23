@@ -16,6 +16,16 @@ const browser = await launchPreviewBrowser(playwright, browserName);
 const results = [], errors = [];
 try {
   const page = await browser.newPage({ viewport: { width: 1366, height: 900 } }); page.setDefaultTimeout(120000);
+  await page.addInitScript(() => {
+    const start = AudioBufferSourceNode.prototype.start;
+    const resume = AudioContext.prototype.resume;
+    AudioContext.prototype.resume = function(...args) { window.lastResumeAt = this.currentTime; return resume.apply(this, args); };
+    window.clockStarts = [];
+    AudioBufferSourceNode.prototype.start = function(...args) {
+      if (this.kind === "clock") window.clockStarts.push({ when: args[0], offset: args[1] });
+      return start.apply(this, args);
+    };
+  });
   page.on("pageerror", error => errors.push(error.message));
   await page.goto(process.env.MIACODE_WORKBENCH_URL || `http://127.0.0.1:${server.address().port}/`);
   await page.locator(".welcome-title").waitFor();
@@ -107,9 +117,19 @@ try {
   }, current.minimum);
   results.push({ pvSelectionClickAndDrag: true });
   await command("export.settings", { introPvStartSeconds: .5 });
+  await command("preview.rate", { rate: 2 });
   await command("preview.seek", { second: -.1 }); await command("preview.toggle");
   await waitForAsync(page, async () => (await editor.preview.getState()).currentTime > .2);
   await command("preview.pause"); assert.ok((await state()).currentTime > 0);
+  const countIn = await frame.evaluate(() => ({ starts: clockStarts, resumedAt: lastResumeAt }));
+  assert.ok(countIn.starts.length > 0 && countIn.starts[0].when - countIn.resumedAt < .4, "The zero-second count-in survives the intro transition");
+  await command("export.settings", { clockCountEnabled: false });
+  await command("preview.seek", { second: 0 }); await command("preview.toggle");
+  await waitForAsync(page, async () => (await editor.preview.getState()).currentTime > .1);
+  await command("preview.pause");
+  assert.equal(await frame.evaluate(() => clockStarts.length), countIn.starts.length, "Disabling count-in removes it from preview playback");
+  await command("export.settings", { clockCountEnabled: true });
+  results.push({ countInTransitionAndToggle: true });
   await command("export.setExportRangeSeconds", { start: 5, end: 12, second: 12 });
   assert.equal((await state()).currentTime, 12); assert.equal((await state()).minimum, 0);
   await command("preview.rangeMode", { enabled: true });

@@ -73,12 +73,17 @@ try {
   await page.locator("[data-intro-audition]").click();
   await waitForAsync(page,async()=>(await document.getElementById("workbench").editor.preview.getState()).exportPreview?.auditionPlaying);
   await waitForAsync(page,async picked=>{const s=await document.getElementById("workbench").editor.preview.getState();return !s.playing&&Math.abs(s.currentTime-picked)<1e-9;},picked,{timeout:10000});
+  const loopOffset = .7 + 8.4;
+  const loopEntries = await frame.evaluate(offset => sourceProbe.filter(item => Math.abs(item.offset - offset) < .001).length, loopOffset);
   await page.locator("[data-intro-audition] + button").click();
   await page.locator("[data-intro-audition]").click();
   await waitForAsync(page,async()=>{const s=await document.getElementById("workbench").editor.preview.getState();return s.playing&&s.currentTime-s.minimum>9;}).catch(async error=>{
     console.error(JSON.stringify({state:await state(),values:await page.evaluate(()=>document.getElementById("workbench").editor.workbench.documentSession.exportValues)}));throw error;
   });
-  await waitForAsync(page,async()=>{const s=await document.getElementById("workbench").editor.preview.getState();return s.playing&&s.currentTime-s.minimum<8.8;},null,{timeout:5000});
+  await waitForAsync(page, async ({ offset, entries }) => {
+    const editor = document.getElementById("workbench").editor, s = await editor.preview.getState();
+    return s.playing && editor.preview.iframe.contentWindow.sourceProbe.filter(item => Math.abs(item.offset - offset) < .001).length > entries + 1;
+  }, { offset: loopOffset, entries: loopEntries }, { timeout: 5000 });
   const looped=await frame.evaluate(()=>sourceProbe.length);assert.ok(looped>=3);
   const start=page.locator('.intro-settings input[type="number"]');await start.fill("1.2");await start.press("Tab");
   await waitForAsync(page,async()=>{const s=await document.getElementById("workbench").editor.preview.getState();return !s.playing&&s.exportPreview?.introPvStartSeconds===1.2&&s.currentTime===s.minimum;});

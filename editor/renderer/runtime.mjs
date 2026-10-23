@@ -542,10 +542,10 @@ export class PreviewAudio {
     this.segmentIndex = lowerBound(segments, this.currentSecond(), "endSecond");
     this.schedule();
   }
-  start() {
+  start(startedAt = this.context.currentTime + 0.03) {
     if (this.playing) return;
     if (this.offset >= this.duration) this.offset = 0;
-    this.startedAt = this.context.currentTime + 0.03;
+    this.startedAt = startedAt;
     this.playing = true;
     this.eventIndex = lowerBound(this.events, this.offset);
     this.segmentIndex = lowerBound(this.segments, this.offset, "endSecond");

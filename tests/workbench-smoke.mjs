@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { staticServer } from "../scripts/serve.mjs";
 import { launchPreviewBrowser, previewGraphics } from "./preview-browser.mjs";
+import { waitForAsync } from "./helpers/wait-async.mjs";
 
 const runtime = process.env.MIACODE_PLAYWRIGHT_MODULE;
 const playwright = await import(runtime ? pathToFileURL(runtime).href : "playwright");
@@ -136,7 +137,17 @@ try {
         editor.viewState.openEditor("difficulty:5");
       });
       await page.locator(".source-input").waitFor();
-      await page.evaluate(() => {
+      if (webAudio) {
+        await page.evaluate(async () => {
+          const editor = document.getElementById("workbench").editor;
+          await editor.load({ maidata: "&title=Export range\n&inote_5=(120){4}1h[2:27],E", difficulty: 5 });
+          await editor.command("page.export");
+        });
+        await waitForAsync(page, async () => {
+          const state = await document.getElementById("workbench").editor.preview.getState();
+          return state.exportPreview?.active && state.duration === 30;
+        });
+      } else await page.evaluate(() => {
         const editor = document.getElementById("workbench").editor;
         editor.workbench.setDocument({ ...editor.workbench.documentSession, duration: 30, exportValues: {exportStartSeconds: 0, exportEndSeconds: 30} });
         editor.viewState.openEditor("export");
