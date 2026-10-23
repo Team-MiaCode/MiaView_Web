@@ -7,7 +7,7 @@ import { staticServer } from "../scripts/serve.mjs";
 const { chromium } = await import(process.env.MIACODE_PLAYWRIGHT_MODULE ? pathToFileURL(process.env.MIACODE_PLAYWRIGHT_MODULE).href : "playwright");
 const server = staticServer(process.cwd(), { performanceTerminal: false });
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, args: ["--mute-audio"] });
 try {
   const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
   const errors = []; page.on("pageerror", error => errors.push(error.message));
@@ -47,7 +47,7 @@ try {
   await page.setViewportSize({ width: 1600, height: 1000 });
   const { touchPadAuthoringContext: settingsContext, ...settings } = (await page.evaluate(() => document.getElementById("workbench").editor.preview.getState())).settings;
   assert.equal(settingsContext, false); assert.deepEqual(settings, persisted);
-  await page.reload(); await page.locator(".welcome-title").waitFor();
+  await page.reload(); await page.waitForFunction(() => document.getElementById("workbench")?.editor);
   const restored = await page.evaluate(async () => {
     const editor = document.getElementById("workbench").editor; await editor.ready;
     return (await editor.preview.getState()).settings;

@@ -25,7 +25,7 @@ export class ProjectStore {
     const records = await this.transaction("readonly", store => store.getAll());
     return records.sort((a, b) => b.updatedAt - a.updatedAt);
   }
-  async recent() { return (await this.list()).filter(record => record.recent !== false); }
+  async recent() { return (await this.list()).filter(record => record.recent !== false).slice(0, 10); }
   put(record) {
     const write = this.writes.then(() => this.transaction("readwrite", store => store.put(record)));
     this.writes = write.catch(() => {});

@@ -18,6 +18,7 @@ using namespace miacode::preview::scene;
 
 // Each renderer document owns one WASM instance and one preview window.
 std::atomic<bool> fireworkPresented{false};
+std::atomic<double> fireworkBrightness{1.0};
 
 class RetainedFireworkNode final : public QSGNode
 {
@@ -140,6 +141,9 @@ bool miaview::firework::ready()
 {
     return fireworkPresented.load(std::memory_order_acquire);
 }
+
+double miaview::firework::brightness() { return fireworkBrightness.load(std::memory_order_relaxed); }
+void miaview::firework::setBrightness(double value) { fireworkBrightness.store(value, std::memory_order_relaxed); }
 
 QSGNode* PreviewQuickJudgeFireworkLayer::updateNode(
     QSGNode* oldNode,

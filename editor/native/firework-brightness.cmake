@@ -1,0 +1,32 @@
+# v2 dev 8917e58: soften core/halo emission and expose the 50–120% brightness range.
+# Generate a focused adapter while retaining the pinned dependency checkout.
+file(READ "${upstream_firework_source}" firework_source)
+string(PREPEND firework_source "#include \"firework-layer.h\"\n")
+string(REPLACE "160 + kFireworkStarCount" "176 + kFireworkStarCount" firework_source "${firework_source}")
+string(REPLACE "    return true;\n}\n\nvoid PreviewQuickJudgeFireworkMaterialShader::updateSampledImage"
+    "    const float brightness[4] = {float(miaview::firework::brightness()), 0, 0, 0};\n    std::memcpy(uniformData->data() + 160 + sizeof(FireworkStarState) * kFireworkStarCount, brightness, sizeof(brightness));\n    return true;\n}\n\nvoid PreviewQuickJudgeFireworkMaterialShader::updateSampledImage"
+    firework_source "${firework_source}")
+string(REPLACE ":/src/preview/quick_scene/shaders/PreviewFireworkMaterial" ":/web-firework/PreviewFireworkMaterial" firework_source "${firework_source}")
+set(web_firework_source "${CMAKE_CURRENT_BINARY_DIR}/web-firework-layer.cpp")
+file(CONFIGURE OUTPUT "${web_firework_source}" CONTENT "${firework_source}" @ONLY)
+get_target_property(all_preview_sources miacode_preview_quick SOURCES)
+list(FILTER all_preview_sources EXCLUDE REGEX "(^|/)PreviewQuickJudgeFireworkLayer\\.cpp$")
+set_property(TARGET miacode_preview_quick PROPERTY SOURCES "${all_preview_sources}")
+target_sources(miacode_preview_quick PRIVATE "${web_firework_source}")
+set(upstream_firework_source "${web_firework_source}")
+target_include_directories(miacode_preview_quick PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${upstream_firework_dir}")
+
+foreach(stage vert frag)
+    file(READ "${upstream_firework_dir}/shaders/PreviewFireworkMaterial.${stage}" shader)
+    string(REPLACE "vec4 starStates[32];" "vec4 starStates[32];\n    vec4 brightnessControls;" shader "${shader}")
+    if(stage STREQUAL "frag")
+        string(REPLACE "float glowAlpha = pow" "float glowAlpha = 0.85 * pow" shader "${shader}")
+        string(REPLACE "vec3(1.0, 0.93, 0.55)" "vec3(1.0, 0.96, 0.70)" shader "${shader}")
+        string(REPLACE "haloOpacity * 0.42" "haloOpacity * 0.28 * min(brightnessControls.x, 1.0)" shader "${shader}")
+        string(REPLACE "mix(1.0, 1.50, illumination)" "mix(1.0, 1.20, illumination)" shader "${shader}")
+        string(REPLACE "rootLayer.a * 1.25" "rootLayer.a * 1.10" shader "${shader}")
+        string(REPLACE "rootLayer.rgb * 1.25" "rootLayer.rgb" shader "${shader}")
+        string(REPLACE "dot(relative, axis) / mix(0.026, reach, dispersion)" "dot(relative, axis) / (mix(0.026, reach, dispersion) * brightnessControls.x / 1.20)" shader "${shader}")
+    endif()
+    file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/web-firework/PreviewFireworkMaterial.${stage}" CONTENT "${shader}" @ONLY)
+endforeach()

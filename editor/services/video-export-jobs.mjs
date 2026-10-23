@@ -2,7 +2,7 @@ import {restorePreviewAppearance} from "./user-appearance.mjs";
 import {createPreview} from "../sdk/index.mjs";
 
 export function videoFileName(name,extension) {
-  return `${(name||"MiaCode").split(/[\\/]/).at(-1).replace(/\.(mp4|webm)$/i,"").replace(/[<>:"|?*\x00-\x1f]/g,"_").replace(/[. ]+$/g,"")||"MiaCode"}${extension}`;
+  return `${(name||"MiaCode").split(/[\\/]/).at(-1).replace(/\.(mp4|webm|wav)$/i,"").replace(/[<>:"|?*\x00-\x1f]/g,"_").replace(/[. ]+$/g,"")||"MiaCode"}${extension}`;
 }
 
 // Each export owns a renderer and an immutable document/resource snapshot.

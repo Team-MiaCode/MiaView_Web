@@ -73,6 +73,7 @@ try {
   await input.fill("(120){4}4,5,E"); await command("file.flushRecovery");
   await command("file.saveAs");
   assert.equal((await getDocument()).dirty, true); assert.equal(await diskText(), savedText);
+  await page.evaluate(() => document.getElementById("workbench").editor.viewState.setPreference("autoRestoreLastSessionFile", false));
   await page.reload();
   await page.locator(".recent-open").first().waitFor();
   await page.evaluate(() => document.getElementById("workbench").editor.ready);

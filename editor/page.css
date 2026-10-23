@@ -489,6 +489,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .settings-form .settings-section > h2::after { content: ""; height: 1px; flex: 1; background: var(--border-normal); }
 .settings-form .field:has(.range-field) { grid-template-columns: 120px minmax(0, 1fr); gap: 5px; align-items: center; }
 .settings-form .form-row, .settings-form .range-field { gap: 5px; }
+.settings-form .form-row > .select-control { width: min(100%, 240px); }
 .settings-form .field-label { color: var(--text-secondary); }
 .settings-form .switch-control, .audio-settings .switch-control { grid-template-columns: 28px minmax(0, 1fr); min-height: 30px; font-size: var(--ui-font-size); color: var(--text-secondary); }
 .font-sample { padding: 8px; margin: 0; line-height: 20px; border-radius: var(--control-radius); background: var(--background-surface); text-align: center; color: var(--text-primary); }

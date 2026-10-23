@@ -32,7 +32,8 @@ export class PreviewAnalysis {
     });
   }
   analyze(input) {
-    const key = [input.documentOpenGeneration, input.revision, input.difficultyId, input.language, input.renderMode].join(":");
+    const key = [input.documentOpenGeneration, input.revision, input.difficultyId, input.language, input.renderMode,
+      input.handRadiusPx, input.wifiNeedC, input.staticTapOnSlideThresholdMs].join(":");
     if (this.cache?.key === key) return this.cache.result;
     const result = this.ready.then(() => this.request("analyze", input));
     this.cache = { key, result }; return result;

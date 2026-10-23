@@ -1,3 +1,4 @@
+import { observeFilePicker } from "./helpers/file-picker.mjs";
 import { launchPreviewBrowser } from "./preview-browser.mjs";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -16,6 +17,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true }); page.setDefaultTimeout(90000);
   page.on("pageerror", error => errors.push(error.message));
   await page.addInitScript(() => { window.showDirectoryPicker = undefined; window.showSaveFilePicker = undefined; });
+  await observeFilePicker(page);
   await page.goto(`http://127.0.0.1:${server.address().port}/index.html`); await page.locator(".welcome-title").waitFor();
   const ready = () => page.evaluate(() => document.getElementById("workbench").editor.ready);
   const command = (id, args = {}) => page.evaluate(([id, args]) => document.getElementById("workbench").editor.command(id, args), [id, args]);
@@ -52,7 +54,7 @@ try {
     catch (error) { return error.message; }
   }, `/artifacts/appearance/${name}/Green/tap.png`);
   assert.match(invalid, /PNG/); assert.equal((await settings()).skinDirectoryName, result.skin.skinDirectoryName);
-  await page.reload(); await page.locator(".welcome-title").waitFor(); await ready();
+  await page.reload(); await page.waitForFunction(() => document.getElementById("workbench")?.editor); await ready();
   const restored = await settings(); assert.equal(restored.skinDirectoryName, result.skin.skinDirectoryName); assert.equal(restored.customOutlineFileName, result.outline.customOutlineFileName);
   await command("page.preview-settings"); await page.locator('.settings-tabs [data-page="skin"]').click();
   await page.locator('.settings-tab-content select').nth(0).selectOption({ label: "Blue" });

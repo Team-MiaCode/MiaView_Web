@@ -39,3 +39,16 @@ test("Closing during worker initialization releases pending analysis and rejects
   assert.equal(worker.terminated, true); assert.equal(client.pending.size, 0);
   await assert.rejects(client.analyze({ ...input, revision: 4 }), /关闭/);
 });
+
+test("Judgment preferences invalidate analysis while an unchanged snapshot reuses its result", async () => {
+  const { client, worker } = fixture(); worker.reply(worker.messages[0], null); await client.ready;
+  const base = { ...input, handRadiusPx: 30, wifiNeedC: false, staticTapOnSlideThresholdMs: 200 };
+  const requests = [client.analyze(base)];
+  for (const patch of [{ handRadiusPx: 42 }, { wifiNeedC: true }, { staticTapOnSlideThresholdMs: 230 }]) {
+    const changed = { ...base, ...patch }, request = client.analyze(changed);
+    assert.equal(client.analyze(changed), request); requests.push(request);
+  }
+  await tick(); assert.equal(worker.messages.length, 5);
+  for (const message of worker.messages.slice(1)) worker.reply(message, message.payload);
+  const results = await Promise.all(requests); assert.equal(results[3].staticTapOnSlideThresholdMs, 230); client.close();
+});

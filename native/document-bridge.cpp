@@ -103,6 +103,9 @@ QJsonObject WebDocument::command(const QJsonObject& request)
         }
         accepted = changed || modeWas != unified;
     }
+    else if (id == "document.restorePreferences") {
+        workspace.setUnifiedDesignerEnabled(args.value("unifiedDesignerEnabled").toBool() && workspace.document().isUnifiedDesignerTriviallySafe());
+    }
     else if (id == "document.currentDifficultyLevel") accepted = workspace.updateDifficultyField(difficulty, ChartWorkspaceDifficultyField::Level, value);
     else if (id == "document.currentDifficultyDesigner") accepted = workspace.updateDifficultyField(difficulty, ChartWorkspaceDifficultyField::Designer, value);
     else if (id == "document.selectDifficulty") accepted = workspace.selectDifficulty(difficulty);

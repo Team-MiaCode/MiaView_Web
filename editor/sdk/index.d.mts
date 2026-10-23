@@ -43,6 +43,8 @@ export interface VideoExportOptions {
   audioBitrateKbps?: 128|160|192|256|320;
   presetIndex?: 0|1; sizePresetIndex?: 0|1|2|3;
   format?: "auto"|"mp4"|"webm";
+  outputMode?: "mp4"|"wav"|"mp4_and_wav";
+  introPvBrightness?: number; introSound?: Resource|null;
   exportStartSeconds?: number; exportEndSeconds?: number; clockCountEnabled?: boolean;
   showTimestamp?: boolean; showObjectStatsHud?: boolean; showChartInfoHud?: boolean;
   introEnabled?: boolean; introPvPreview?: boolean; introPvStartSeconds?: number;
@@ -54,14 +56,15 @@ export interface VideoExportOptions {
   fileHandle?: FileSystemFileHandle;
 }
 export interface VideoExportCapabilities {
-  format: "mp4"|"webm"; mimeType: string; extension: ".mp4"|".webm";
-  videoCodec: "avc"|"vp9"|"vp8"; audioCodec: "aac"|"opus";
+  format: "mp4"|"webm"|"wav"; mimeType: string; extension: ".mp4"|".webm"|".wav";
+  videoCodec: "avc"|"vp9"|"vp8"|null; audioCodec: "aac"|"opus"|"pcm-s16";
   width: number; height: number; fps: 30|60|120;
 }
 export interface VideoExportResult extends VideoExportCapabilities {
   frameCount: number; duration: number; fileName: string|null;
   /** Present for memory exports; file-handle exports return null. */
   blob: Blob|null;
+  wavBlob?: Blob|null;
 }
 export interface VideoExportStatus {
   jobId: string; running: boolean; stage: "preparing"|"encoding"|"completed"|"cancelled"|"failed";
@@ -98,6 +101,9 @@ export interface AnalysisSnapshot {
   validationRows: AnalysisRow[]; muriRows: AnalysisRow[]; syntaxErrorCount: number; syntaxWarningCount: number;
 }
 export interface PreviewSettings {
+  fireworkBrightness?: number;
+  showSlideTracks?: boolean; showJudgeMarkers?: boolean; showTouchTrail?: boolean;
+  handRadiusPx?: number; wifiNeedC?: boolean; staticTapOnSlideThresholdMs?: number;
   hudFontPaths?: HudFontPaths;
   previewMode: "native" | "maimuri_dx_style" | "erase_by_area";
   outerBrightness: number;

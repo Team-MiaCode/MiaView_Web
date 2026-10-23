@@ -22,9 +22,11 @@ public:
     void setCardDimmed(bool dimmed);
     void finish();
 private:
+    void applyIntroGeometry();
     QQuickItem* parent_;
     QQmlEngine engine_;
     QQuickItem* intro_ = nullptr;
+    double introPvBrightness_ = 1.0;
     VideoExportTask task_;
     miacode::video_export::VideoExportAudioRenderPlan plan_;
     QHash<QString,QString> assets_;

@@ -1,4 +1,5 @@
 const names = new Set([
+  "previewMode", "showSlideTracks", "showJudgeMarkers", "showTouchTrail", "handRadiusPx", "wifiNeedC", "staticTapOnSlideThresholdMs",
   "tapFlowSpeed", "touchFlowSpeed", "scaleMode", "smoothBrightness", "showTimestamp", "showDebugInfo",
   "forceLabeledJudgeLineWhenPaused", "touchPadAuthoringShortcut", "centerDisplay", "tapJudgeTextDistance",
   "judgeEffectSlide", "judgeEffectTap", "judgeEffectBreak", "judgeEffectTouch", "outlineIndex", "skinJudgeEffectIndex",
@@ -8,7 +9,8 @@ const names = new Set([
 export function previewSettingsFromValues(values) {
   const settings = {};
   for (const [key, value] of Object.entries(values)) {
-    if (key === "brightnessOuter") settings.outerBrightness = value / 100;
+    if (key === "fireworkBrightness") settings.fireworkBrightness = value / 100;
+    else if (key === "brightnessOuter") settings.outerBrightness = value / 100;
     else if (key === "brightnessInner") settings.innerBrightness = value / 100;
     else if (key === "layoutSquareScale") settings.layoutSquareScale = value / 100;
     else if (key === "slideEarlierOnTop") settings.earlierSlideOnTop = value;
@@ -21,6 +23,7 @@ export function previewSettingsFromValues(values) {
 
 export function previewValuesFromSettings(settings) {
   const values = {
+    fireworkBrightness: (settings.fireworkBrightness ?? 1) * 100,
     brightnessOuter: settings.outerBrightness * 100, brightnessInner: settings.innerBrightness * 100,
     layoutSquareScale: (settings.layoutSquareScale ?? .95) * 100,
     slideEarlierOnTop: settings.earlierSlideOnTop, skinIndex: settings.noteSkin === "SD" ? 0 : 1,

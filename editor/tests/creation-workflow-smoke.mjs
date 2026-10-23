@@ -58,7 +58,7 @@ try {
   assert.match(saved, /&custom=保留/); assert.match(saved, /&video=media\/clip.webm/); assert.match(saved, /&clock_count=6/);
   assert.equal((await documentState()).dirty, false); results.saved = { partialSection: true, allSections: true, fieldsPreserved: true };
   results.phase = "restore";
-  await page.reload(); await page.locator(".welcome-title").waitFor(); await page.evaluate(() => document.getElementById("workbench").editor.ready);
+  await page.reload(); await page.waitForFunction(() => document.getElementById("workbench")?.editor); await page.evaluate(() => document.getElementById("workbench").editor.ready);
   const recent = await page.evaluate(() => document.getElementById("workbench").editor.workbench.documentSession.recentDocuments[0]);
   await command("file.restore", { id: recent.id });
   const restored = await documentState(); assert.equal(restored.title, "保存恢复流程"); assert.equal(restored.chartText, edited5); assert.equal(restored.dirty, false);

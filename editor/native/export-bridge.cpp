@@ -25,6 +25,15 @@ QString soundFile(const QString& kind) {
 }
 }
 WebExportScene::~WebExportScene(){delete intro_;}
+void WebExportScene::applyIntroGeometry() {
+    if (!intro_) return;
+    // v2 authors the whole overlay at 1920x1080, fits its height and centre-crops.
+    const double width = qMax(1.0, parent_->width()), height = qMax(1.0, parent_->height());
+    intro_->setSize(QSizeF(1920, 1080));
+    intro_->setTransformOrigin(QQuickItem::Center);
+    intro_->setScale(height / 1080.0);
+    intro_->setPosition(QPointF(width / 2.0 - 960, height / 2.0 - 540));
+}
 QJsonObject WebExportScene::storeAsset(const QString& kind,const QString& name,const QByteArray& data) {
     const bool sound=kind=="sfx";
     if(!sound && kind!="track" && kind!="cover" && kind!="intro_background")return {{"error","导出素材种类无效"}};
@@ -42,6 +51,7 @@ QJsonObject WebExportScene::configure(const QJsonObject& options,const PreviewFr
     if(!qIsFinite(duration)||!qIsFinite(start)||!qIsFinite(end)||start<0||(!emptyPreview && end<=start)||end>duration+0.001||fps<1||fps>120)
         return {{"error","导出区间或帧率无效"}};
     task_={};task_.fps=fps;task_.exportStartSeconds=start;task_.contentDurationSeconds=end-start;
+    introPvBrightness_ = qBound(0.0, options.value("introPvBrightness").toDouble(1.0), 1.0);
     task_.fullRangeExport=start<=0.01;
     task_.trackPath=options.value("audioAvailable").toBool()?assets_.value("track"):QString();task_.noteMarkers=state.noteMarkers;task_.audioSettings=audio;
     task_.clockCountEnabled=options.value("clockCountEnabled").toBool();task_.clockCount=document.value("clockCount").toInt(4);task_.clockBpm=document.value("bpm").toDouble(120);
@@ -77,11 +87,12 @@ QJsonObject WebExportScene::configure(const QJsonObject& options,const PreviewFr
         QQmlComponent component(&engine_,QUrl("qrc:/intro/qml/IntroOverlay.qml"));
         QVariantMap properties=introBannerStyleMap(intro,options.value("videoAvailable").toBool());
         properties.insert("pvPreviewHoldFrames", miacode::intro::kPvPreviewHoldFrames);
+        properties.insert("pvPreviewBrightness", introPvBrightness_);
         properties.insert("bannerTrack",introBannerTrackMap(intro));properties.insert("bannerTemplateData",templateMap);
         properties.insert("backgroundImage",intro.jacketPath.isEmpty()?QUrl():QUrl::fromLocalFile(intro.jacketPath));
         intro_=qobject_cast<QQuickItem*>(component.createWithInitialProperties(properties));
         if(!intro_){QStringList errors;for(const auto& item:component.errors())errors<<item.toString();return {{"error",errors.join('\n')}};}
-        intro_->setParentItem(parent_);intro_->setParent(parent_);intro_->setSize(parent_->size());intro_->setZ(3);intro_->setVisible(false);
+        intro_->setParentItem(parent_);intro_->setParent(parent_);applyIntroGeometry();intro_->setZ(3);intro_->setVisible(false);
     }
     QJsonArray sounds,spans;
     for(const auto& item:plan_.scheduledSfxPlaybacks)sounds.append(QJsonObject{{"kind",item.kind},{"file",soundFile(item.assetKind)},
@@ -110,7 +121,7 @@ QJsonObject WebExportScene::frame(int index,PreviewFrameState& state) {
     state.render.showObjectStatsHud=task_.showObjectStatsHud&&!introCover;state.render.fixHudTextLayout=true;
     const double fade=task_.intro.enabled?qBound(0.0,state.playheadSeconds+miacode::intro::kBgFadeDurationSeconds,1.0):1.0;
     state.render.backgroundBrightnessOuter=task_.backgroundBrightnessOuter*fade;state.render.backgroundBrightnessInner=task_.backgroundBrightnessInner*fade;
-    if(intro_){intro_->setVisible(introActive);intro_->setProperty("frame",authoring);intro_->setSize(parent_->size());}
+    if(intro_){applyIntroGeometry();intro_->setVisible(introActive);intro_->setProperty("frame",authoring);}
     return info;
 }
 QJsonObject WebExportScene::frameInfo(int index) const {

@@ -77,6 +77,7 @@ double presentedFrames = 0;
 double frameRenderStarted = 0;
 MuriAnalysisReport cachedAnalysis;
 bool analysisReady = false;
+int staticTapOnSlideThresholdMs = miacode::muri::kStaticTapOnSlideThresholdDefaultMs;
 quint64 analysisRevision = 0;
 QElapsedTimer hudUpdateClock;
 constexpr qint64 kHudUpdateIntervalMs = 100;
@@ -166,13 +167,9 @@ QJsonObject sceneAudioData() {
 }
 void applyRenderMode(RenderMode mode) {
     state.muriRenderOptions.renderMode = mode;
-    // Hide diagnostic pad/hand overlays, not the analysis used by Slide
-    // clearing and the other notes' Perfect/Good effects.
-    state.muriRenderOptions.showJudgeMarkers = false;
-    state.muriRenderOptions.showTouchTrail = false;
-    if (mode == RenderMode::MaimuriDxStyle) {
+    if (mode == RenderMode::MaimuriDxStyle || state.muriRenderOptions.showJudgeMarkers || state.muriRenderOptions.showTouchTrail) {
         if (!analysisReady) {
-            cachedAnalysis = MuriAnalyzer::analyze(state.noteMarkers, state.muriRenderOptions);
+            cachedAnalysis = MuriAnalyzer::analyze(state.noteMarkers, state.muriRenderOptions, staticTapOnSlideThresholdMs / 1000.0);
             cachedAnalysis.revision = ++analysisRevision;
             analysisReady = true;
         }
@@ -188,6 +185,7 @@ const char* json(const QJsonObject& value) {
 }
 QJsonObject settings() {
     return {{"outerBrightness", state.render.backgroundBrightnessOuter},
+        {"fireworkBrightness", miaview::firework::brightness()},
         {"innerBrightness", state.render.backgroundBrightnessInner},
         {"tapFlowSpeed", state.render.tapFlowSpeed},
         {"touchFlowSpeed", state.render.touchFlowSpeed},
@@ -206,6 +204,9 @@ QJsonObject settings() {
         {"judgeEffectTap", state.muriRenderOptions.showChartReviewTapJudgeOverlay},
         {"judgeEffectBreak", state.muriRenderOptions.showChartReviewBreakJudgeOverlay},
         {"judgeEffectTouch", state.muriRenderOptions.showChartReviewTouchJudgeOverlay},
+        {"showSlideTracks", state.muriRenderOptions.showSlideTracks}, {"showJudgeMarkers", state.muriRenderOptions.showJudgeMarkers},
+        {"showTouchTrail", state.muriRenderOptions.showTouchTrail}, {"handRadiusPx", state.muriRenderOptions.handRadiusPx},
+        {"wifiNeedC", state.muriRenderOptions.wifiNeedC}, {"staticTapOnSlideThresholdMs", staticTapOnSlideThresholdMs},
         {"noteSkin", skinDirectoryName == "skinSD" ? "SD" : "DX"},
         {"skinDirectoryName", skinDirectoryName}, {"customOutlineFileName", customOutlineFileName},
         {"previewMode", muriRenderModeToken(state.muriRenderOptions.renderMode)}};
@@ -455,10 +456,12 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_set_settings(const char* source) {
     auto hudFonts = state.hudFontSettings;
     const QHash<QString, QPair<double, double>> ranges{
         {"outerBrightness", {0, 1}}, {"innerBrightness", {0, 1}},
+        {"fireworkBrightness", {.5, 1.2}},
         {"tapFlowSpeed", {kPreviewTimingFlowSpeedMin, kPreviewTimingFlowSpeedMax}},
         {"touchFlowSpeed", {kPreviewTimingFlowSpeedMin, kPreviewTimingFlowSpeedMax}}, {"layoutSquareScale", {.5, 1}},
         {"scaleMode", {0, 3}}, {"outlineIndex", {0, 3}}, {"centerDisplay", {0, 7}},
-        {"tapJudgeTextDistance", {0, 2}}, {"skinJudgeEffectIndex", {0, 1}}};
+        {"tapJudgeTextDistance", {0, 2}}, {"skinJudgeEffectIndex", {0, 1}},
+        {"handRadiusPx", {0, 60}}, {"staticTapOnSlideThresholdMs", {150, 250}}};
     const auto supplied = request.object();
     for (auto it = supplied.begin(); it != supplied.end(); ++it) {
         if (!values.contains(it.key())) return json({{"error", "未知预览设置：" + it.key()}});
@@ -477,7 +480,7 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_set_settings(const char* source) {
             const double number = value.toDouble(-1);
             valid = valid && qIsFinite(number) && number >= bounds.first && number <= bounds.second;
             if (it.key() != "outerBrightness" && it.key() != "innerBrightness" && it.key() != "layoutSquareScale"
-                && it.key() != "tapFlowSpeed" && it.key() != "touchFlowSpeed") valid = valid && number == int(number);
+                && it.key() != "tapFlowSpeed" && it.key() != "touchFlowSpeed" && it.key() != "fireworkBrightness") valid = valid && number == int(number);
         }
         if (it.key() == "noteSkin") valid = value.isString() && (value.toString() == "SD" || value.toString() == "DX");
         if (it.key() == "previewMode") valid = value.isString() && (value.toString() == "native" || value.toString() == "maimuri_dx_style" || value.toString() == "erase_by_area");
@@ -501,6 +504,7 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_set_settings(const char* source) {
     customOutlineFileName = nextOutline;
     state.render.backgroundBrightnessOuter = values.value("outerBrightness").toDouble();
     state.render.backgroundBrightnessInner = values.value("innerBrightness").toDouble();
+    miaview::firework::setBrightness(values.value("fireworkBrightness").toDouble());
     state.render.tapFlowSpeed = normalizePreviewTimingFlowSpeed(values.value("tapFlowSpeed").toDouble());
     state.render.touchFlowSpeed = normalizePreviewTimingFlowSpeed(values.value("touchFlowSpeed").toDouble());
     state.render.slideEarlierSecondAndTextOnTop = values.value("earlierSlideOnTop").toBool();
@@ -518,6 +522,16 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_set_settings(const char* source) {
     state.muriRenderOptions.showChartReviewTapJudgeOverlay = values.value("judgeEffectTap").toBool();
     state.muriRenderOptions.showChartReviewBreakJudgeOverlay = values.value("judgeEffectBreak").toBool();
     state.muriRenderOptions.showChartReviewTouchJudgeOverlay = values.value("judgeEffectTouch").toBool();
+    const bool reanalyze = state.muriRenderOptions.handRadiusPx != values.value("handRadiusPx").toInt()
+        || state.muriRenderOptions.wifiNeedC != values.value("wifiNeedC").toBool()
+        || staticTapOnSlideThresholdMs != values.value("staticTapOnSlideThresholdMs").toInt();
+    state.muriRenderOptions.showSlideTracks = values.value("showSlideTracks").toBool();
+    state.muriRenderOptions.showJudgeMarkers = values.value("showJudgeMarkers").toBool();
+    state.muriRenderOptions.showTouchTrail = values.value("showTouchTrail").toBool();
+    state.muriRenderOptions.handRadiusPx = values.value("handRadiusPx").toInt();
+    state.muriRenderOptions.wifiNeedC = values.value("wifiNeedC").toBool();
+    staticTapOnSlideThresholdMs = values.value("staticTapOnSlideThresholdMs").toInt();
+    if (reanalyze) analysisReady = false;
     selectedOutline = static_cast<PreviewOutlineVariant>(values.value("outlineIndex").toInt());
     forceLabeledWhenPaused = values.value("forceLabeledJudgeLineWhenPaused").toBool();
     state.hudFontSettings = hudFonts;
@@ -527,7 +541,7 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_set_settings(const char* source) {
     if (!touchPadAuthoringShortcut || !touchPadAuthoringContext) touchInput.reset();
     applyPausedOutline();
     const auto mode = muriRenderModeFromToken(values.value("previewMode").toString());
-    if (state.muriRenderOptions.renderMode != mode) applyRenderMode(mode);
+    if (state.muriRenderOptions.renderMode != mode || reanalyze || supplied.contains("showJudgeMarkers") || supplied.contains("showTouchTrail")) applyRenderMode(mode);
     if (exportSavedState) {
         exportScene->updateRenderSettings(state);
         exportSavedState->render = state.render;
@@ -535,6 +549,8 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_set_settings(const char* source) {
         exportSavedState->judgeOverlay = state.judgeOverlay;
         exportSavedState->judgeEffect = state.judgeEffect;
         exportSavedState->hudFontSettings = state.hudFontSettings;
+        exportSavedState->muriRenderOptions = state.muriRenderOptions;
+        exportSavedState->muriAnalysisReport = state.muriAnalysisReport;
     }
     ++state.sceneContentRevision;
     refresh();
@@ -688,7 +704,9 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_analysis_input(const char* language) {
     return json({{"sourceText", identity.sourceText}, {"hasDocument", identity.hasDocument},
         {"difficultyId", identity.activeDifficultyId}, {"revision", double(identity.revision)},
         {"documentOpenGeneration", double(identity.documentOpenGeneration)},
-        {"language", QString::fromUtf8(language)}, {"renderMode", muriRenderModeToken(state.muriRenderOptions.renderMode)}});
+        {"language", QString::fromUtf8(language)}, {"renderMode", muriRenderModeToken(state.muriRenderOptions.renderMode)},
+        {"handRadiusPx", state.muriRenderOptions.handRadiusPx}, {"wifiNeedC", state.muriRenderOptions.wifiNeedC},
+        {"staticTapOnSlideThresholdMs", staticTapOnSlideThresholdMs}});
 }
 EMSCRIPTEN_KEEPALIVE const char* miacode_cover(const char* source) {
     QJsonParseError error;

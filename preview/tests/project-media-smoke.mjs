@@ -1,3 +1,4 @@
+import { observeFilePicker } from "./helpers/file-picker.mjs";
 import assert from "node:assert/strict";
 import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
@@ -22,7 +23,7 @@ for (let index = 0; index < 24000 * 12; index++) wave.writeInt16LE(Math.round(Ma
 writeFileSync(join(folder, "track.wav"), wave);
 const server = staticServer(process.cwd(), { performanceTerminal: false });
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, args: ["--mute-audio"] });
 const records = [];
 try {
   async function setup(fallback) {
@@ -32,6 +33,7 @@ try {
       if (fallback) { delete window.showDirectoryPicker; delete window.showSaveFilePicker; return; }
       window.showDirectoryPicker = async options => options.id === "miacode-project-save" ? copyDirectory : testDirectory;
     }, fallback);
+    await observeFilePicker(page);
     await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);
     await page.locator(".welcome-title").waitFor(); await page.evaluate(() => document.getElementById("workbench").editor.ready);
     return { page, errors };
@@ -67,13 +69,12 @@ try {
   await importFile(page, "cover", resolve("ui/components/icons/app.png"));
   const staged = await doc(page); assert.equal(staged.cover, "Project/bg.png"); assert.equal(staged.mediaDirty, true);
   assert.ok(staged.files.includes("Project/bg_bak.jpg")); assert.equal(staged.files.includes("Project/bg.jpg"), false);
-  await page.reload(); await page.locator(".recent-open").first().waitFor();
+  await page.reload(); await page.waitForFunction(() => document.getElementById("workbench")?.editor);
   await page.evaluate(async () => {
     const root = await navigator.storage.getDirectory();
     window.testDirectory = await root.getDirectoryHandle("Project"); window.copyDirectory = await root.getDirectoryHandle("Copy");
     await document.getElementById("workbench").editor.ready;
   });
-  await page.locator(".recent-open").first().click();
   try { await page.waitForFunction(() => document.getElementById("workbench").editor.workbench.documentSession.coverPath === "Project/bg.png", null, { timeout: 5000 }); }
   catch (error) {
     console.log(JSON.stringify({ state: await doc(page), status: await page.evaluate(() => document.getElementById("workbench").editor.workbench.statusLabel.textContent), errors,

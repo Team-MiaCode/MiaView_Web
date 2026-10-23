@@ -1,6 +1,7 @@
 #include "editor-bridge.h"
 #include "app/ui/document/ChartTransformCommands.h"
 #include "core/chart/selection/ChartSelectionBeatSummary.h"
+#include "app/services/ChartNormalizationPreferences.h"
 #include <QJsonArray>
 
 QJsonObject WebEditor::command(const QJsonObject& request, int difficultyId, quint64 documentOpenGeneration)
@@ -53,6 +54,22 @@ QJsonObject WebEditor::command(const QJsonObject& request, int difficultyId, qui
         if (id == "edit.createBookmark") result = controller_.createBookmark(line, offset, title);
         else if (id == "edit.renameBookmark") result = controller_.renameBookmark(line, offset, title);
         else result = controller_.deleteBookmark(line, offset);
+    }
+    else if (id == "edit.normalizeChart") {
+        using namespace miacode::chart_transform;
+        const auto options = miacode::app_preferences::chartNormalizationOptionsFromPreferences(args.value("preferences").toObject());
+        const auto timing = miacode::simai::buildTimingMetadataFromRawText(args.value("sourceText").toString());
+        const bool selected = begin != end;
+        const auto normalized = selected ? normalizeChartSelectionText(text, begin, end, timing, options) : normalizeChartText(text, timing, options);
+        if (!normalized.ok) return {{"error", normalized.errorMessage}};
+        const QString replacement = selected ? composeNormalizedSelectionReplacement(text, begin, end, normalized.text) : normalized.text;
+        result.consumed = true;
+        result.transaction.hasEdit = replacement != (selected ? text.mid(begin, end - begin) : text);
+        result.transaction.replacementStart = selected ? begin : 0;
+        result.transaction.replacementEnd = selected ? end : text.size();
+        result.transaction.replacementText = replacement;
+        result.transaction.anchor = result.transaction.replacementStart;
+        result.transaction.position = result.transaction.anchor + replacement.size();
     }
     else if (id.startsWith("transform.")) {
         int changed = 0;

@@ -4,7 +4,7 @@ import { translate } from "../components/translate.mjs";
 import { shortcutDefinitions } from "../components/shortcut-definitions.mjs";
 
 const palettes = [["dark", "深色"], ["light", "浅色"], ["legacy", "经典深色"], ["legacy_light", "经典浅色"]];
-const tabs = [["interface", "界面"], ["background", "背景"], ["editor", "编辑器"], ["performance", "性能"], ["shortcuts", "快捷键"]];
+const tabs = [["interface", "界面"], ["background", "背景"], ["editor", "编辑器"], ["normalization", "谱面整理"], ["performance", "性能"], ["shortcuts", "快捷键"]];
 
 function layoutCard(onLeft, selected, action) {
   const label = onLeft ? "预览 | 编辑器" : "编辑器 | 预览";
@@ -24,7 +24,7 @@ export function createPreferences({ viewState, documentSession, command }) {
   const bar = h("div", { className: "settings-tabs", role: "tablist", "aria-label": "偏好设置分类" });
   const body = h("div", { className: "settings-tab-content", role: "tabpanel" });
   const prefs = viewState.preferences;
-  const set = (key, value) => viewState.setPreference(key, value);
+  const set = (key, value) => viewState.setPreferences({ [key]: value, ...(key === "chart_normalize_section_measure_count" ? { chart_normalize_split_every_four_measures: value === 4 } : {}) });
   const pick = (label, key, options, fallback) => formRow(label, select(options, prefs[key] ?? fallback, value => set(key, typeof fallback === "number" ? Number(value) : typeof fallback === "boolean" ? value === "true" : value)));
   const slider = (label, key, fallback, min, max, step = 1, suffix = "") => range(label, key, prefs[key] ?? fallback, min, max, (_, args) => set(key, args.value), step, suffix);
   let active = viewState.preferencesPage || "interface";
@@ -73,10 +73,16 @@ export function createPreferences({ viewState, documentSession, command }) {
         formRow("缩放模式", select([["cover", "覆盖"], ["contain", "完整显示"], ["stretch", "拉伸"], ["center", "居中"], ["repeat", "平铺"]], background.sizeMode || "cover", value => update("sizeMode", value))),
         formRow("位置", select([["center", "居中"], ["left", "左侧"], ["right", "右侧"], ["top", "顶部"], ["bottom", "底部"], ["left_top", "左上"], ["right_top", "右上"], ["left_bottom", "左下"], ["right_bottom", "右下"]], background.position || "center", value => update("position", value))));
     } else if (active === "editor") {
-      body.append(slider("字号", "editorFontSize", 14, 8, 28, 1, " pt"),
+      body.append(toggle("启动时恢复上次打开的谱面", prefs.autoRestoreLastSessionFile ?? true, value => set("autoRestoreLastSessionFile", value)),
+        slider("字号", "editorFontSize", 14, 8, 28, 1, " pt"),
         pick("行距", "editorLineSpacing", [1, 1.5, 2, 3, 5].map(value => [value, `${value} 倍`]), 1),
         pick("输入法与字符更正", "editorInputHandlingMode", [[0, "仅全角字符更正"], [1, "拉丁键盘提示+全角字符更正"], [2, "保留输入字符"]], 1),
         ...[["自动换行", "editorAutoWrap", true], ["自动补全", "editorAutoCompletion", true], ["允许滚动到行顶部", "editorScrollPastEnd", true], ["显示选区拍数", "editorSelectionBeatDisplay", true], ["概览标尺", "editorOverviewRulerEnabled", true]].map(([label, key, fallback]) => toggle(label, prefs[key] ?? fallback, value => set(key, value))));
+    } else if (active === "normalization") {
+      body.append(...[["从新小节开始", "chart_normalize_start_at_new_measure"], ["约分到 384 网格", "chart_normalize_reduce_to_384_grid"]]
+        .map(([label, key]) => toggle(label, prefs[key] ?? true, value => set(key, value))),
+        pick("语法格式", "chart_normalize_syntax", [["segment_preserving", "保留分段"], ["compact_single_line", "紧凑格式"]], "segment_preserving"),
+        slider("分段小节数（0 为连续）", "chart_normalize_section_measure_count", 4, 0, 32));
     } else if (active === "performance") {
       const rates = [[3, "显示器刷新率"], [0, "30 FPS"], [1, "60 FPS"], [2, "120 FPS"]];
       const controls = new Map();

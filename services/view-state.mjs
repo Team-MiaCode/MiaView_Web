@@ -4,6 +4,7 @@ export const DEFAULT_PREFERENCES = Object.freeze({
   bottomPanelHeightRatio: 0.29, previewOnLeft: false, fontSize: 13,
   editorFontSize: 14, editorAutoWrap: false, previewCanvasFreeAspect: false,
   videoDecodePrefersSoftware: false, canvasFrameRateMode: 1, stageMediaFrameRateMode: 1, timelineFrameRateMode: 1,
+  autoRestoreLastSessionFile: true,
 });
 
 export class ViewState extends EventTarget {

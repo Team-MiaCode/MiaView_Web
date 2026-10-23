@@ -150,7 +150,7 @@ try {
   await command("audio.channelPercent", { key: "track", percent: 37 });
   await command("view.sidebar"); await command("view.bottom");
   await page.evaluate(() => editor.viewState.setPreference("editorFontSize", 19));
-  await page.reload(); await page.locator(".welcome-title").waitFor();
+  await page.reload(); await page.waitForFunction(() => document.getElementById("workbench")?.editor);
   await page.evaluate(() => document.getElementById("workbench").editor.ready);
   const saved = await page.evaluate(() => {
     const e = document.getElementById("workbench").editor;

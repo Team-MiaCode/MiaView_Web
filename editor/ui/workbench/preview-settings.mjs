@@ -29,6 +29,7 @@ export function previewAppearanceSections({ viewState, documentSession, command 
     { key: "video", label: label("visual_group"), render: () => [
       slider("brightnessOuter", label("video.brightness_outer"), (settings.outerBrightness ?? .5) * 100, 0, 100),
       slider("brightnessInner", label("video.brightness_inner"), (settings.innerBrightness ?? .2) * 100, 0, 100),
+      slider("fireworkBrightness", "烟花亮度", (settings.fireworkBrightness ?? 1) * 100, 50, 120),
       slider("layoutSquareScale", label("video.layout_square_scale"), 95, 50, 100, 5),
       choice("scaleMode", label("video.scale_mode"), [[0, label("video.scale.fill")], [1, label("video.scale.fit")], [2, label("video.scale.square_fit")], [3, label("video.scale.inner_circle_fit_outer_fill")]], 0),
       switchRow("smoothBrightness", label("video.smooth_brightness"), true),
@@ -38,6 +39,13 @@ export function previewAppearanceSections({ viewState, documentSession, command 
       switchRow("showDebugInfo", label("preview.debug"), false),
     ] },
     { key: "gameplay", label: label("gameplay_group"), render: () => [
+      choice("previewMode", "渲染模式", [["native", "原生"], ["maimuri_dx_style", "无理检测"], ["erase_by_area", "区域消除"]], settings.previewMode ?? "native"),
+      switchRow("showSlideTracks", "显示轨迹", settings.showSlideTracks ?? true),
+      switchRow("showJudgeMarkers", "显示判定标记", settings.showJudgeMarkers ?? false),
+      switchRow("showTouchTrail", "显示 Touch 轨迹", settings.showTouchTrail ?? false),
+      switchRow("wifiNeedC", "WiFi 中心判定", settings.wifiNeedC ?? false),
+      slider("handRadiusPx", "手部半径", settings.handRadiusPx ?? 30, 0, 60, 3, " px"),
+      slider("staticTapOnSlideThresholdMs", "静态撞 Slide 阈值", settings.staticTapOnSlideThresholdMs ?? 200, 150, 250, 5, " ms"),
       slider("tapFlowSpeed", label("video.tap_flow_speed"), settings.tapFlowSpeed ?? 7.5, 1, 10, .25, ""),
       slider("touchFlowSpeed", label("video.touch_flow_speed"), settings.touchFlowSpeed ?? 8, 1, 10, .25, ""),
       choice("slideEarlierOnTop", label("gameplay.slide_stack_order"), [[true, label("gameplay.slide_stack_order.dx_style")], [false, label("gameplay.slide_stack_order.finale_style")]], settings.earlierSlideOnTop ?? true),

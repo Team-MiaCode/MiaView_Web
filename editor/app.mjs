@@ -24,8 +24,10 @@ import { openCoverPresets } from "./ui/workbench/cover-presets.mjs";
 import { timelineSecondAtX, timelineCenteredScroll, timelineZoomedScroll } from "./ui/workbench/timeline-playback.mjs";
 import { TIMELINE_ZOOM_PRESETS } from "./ui/workbench/timeline-controls.mjs";
 import { exportPreferences } from "./services/export-preferences.mjs";
+import { coverPreferences } from "./services/cover-preferences.mjs";
 
 const HUD_AREAS = ["chart_info", "timestamp", "center_display", "object_stats", "debug_info"];
+const MURI_SETTINGS = ["previewMode", "handRadiusPx", "wifiNeedC", "staticTapOnSlideThresholdMs"];
 
 const SAMPLE = "&title=MiaCode Example\n&artist=MiaCode\n&first=0\n&lv_5=12\n&des_5=MiaCode\n&inote_5=(120){4}\n1,2,3,4,5,6,7,8,\n1b,2x,3h[4:1],4-8[4:1],\nA1,B2,C,D3,E4,E\n";
 export function createWorkbench(container, options = {}) {
@@ -96,7 +98,7 @@ export function createWorkbench(container, options = {}) {
   const background = new AppBackground(workbench.root,viewState,preferenceAssets,settings=>preview.normalizeBackground(settings));
   let userFonts, userAppearance;
   let fileService;
-  let exportFileHandle,introBackground,exportRequestActive=false;
+  let exportFileHandle,introBackground,introSound,exportRequestActive=false;
   let coverOutputHandle, coverExportActive = false;
   let introPending=Promise.resolve(),introQueued=0;
   let exportPageActive = false, exportSyncSequence = 0;
@@ -149,11 +151,13 @@ export function createWorkbench(container, options = {}) {
     return result;
   }
   function introSettings() {return {...Object.fromEntries(Object.entries(workbench.documentSession.exportValues||{}).filter(([key])=>key.startsWith("intro"))),
+    introSound: introSound || null,
     introBackground:workbench.documentSession.exportValues?.introBackgroundModeIndex===1?introBackground:undefined};}
   const exportJobs=new VideoExportJobs({root:container,previewOptions:options.preview,assets:preferenceAssets,fonts:()=>preferenceAssets.fonts(),
     changed:state=>{workbench.setExportStatus(state);workbench.status(state.message);},
     deliver:async(video,filename)=>{
       if(video.blob)await fileService.download(video.blob,filename);
+      if(video.wavBlob)await fileService.download(video.wavBlob,videoFileName(filename,".wav"));
     }});
   const refreshExport=()=>{if(viewState.activeEditorKey==="export"){workbench.pageKey="";workbench.update();}};
   async function chooseExportFile(values) {
@@ -170,7 +174,9 @@ export function createWorkbench(container, options = {}) {
     return { ...project, sourceText: snapshot.sourceText, chartText, dirty: snapshot.sourceText !== project.savedSourceText || project.mediaDirty || chartText !== snapshot.chartText,
       inputPaths: inputPaths(project.input), savedInputPaths: inputPaths(project.savedInput),
       activeDifficultyId: snapshot.activeDifficultyId, title: snapshot.title, updatedAt: Date.now(),
+      unifiedDesignerEnabled: snapshot.unifiedDesignerEnabled,
       audioSettings: workbench.documentSession.audio?.settings,
+      introPvStartSeconds: workbench.documentSession.exportValues?.introPvStartSeconds ?? 0,
       coverExport: { coverValues: workbench.documentSession.coverValues, coverLayers: workbench.documentSession.coverLayers, coverFiles: workbench.documentSession.coverFiles },
       editorState: { activeEditorKey: viewState.activeEditorKey, openEditorTabs: [...viewState.openEditorTabs] } };
   }
@@ -188,9 +194,11 @@ export function createWorkbench(container, options = {}) {
     const record = recordProject(snapshot);
     recoveryTimer = setTimeout(() => { recoveryTimer = null; void projectStore.put(record).catch(error => workbench.status(error.message)); }, 2000);
   }
-  const timelineOptions = { zoomScale: .5, horizontalScrollValue: 0, cursorSeconds: 0, playbackEntrySeconds: 0, waveformBrightness: .5, measureLineBrightness: 1,
-    followPreviewEnabled: false, followProgressEnabled: true };
+  const timelineOptions = { zoomScale: .5, waveformBrightness: .5, measureLineBrightness: 1,
+    followPreviewEnabled: false, followProgressEnabled: true, ...viewState.preferences.timelineOptions,
+    horizontalScrollValue: 0, cursorSeconds: 0, playbackEntrySeconds: 0 };
   workbench.timelineControls.update(timelineOptions);
+  workbench.timelineView.followProgressEnabled = timelineOptions.followProgressEnabled;
   async function updateTimelineFollow(second) {
     const doc = workbench.documentSession;
     if (!timelineOptions.followPreviewEnabled || !doc.hasDocument || loadingDocument || latencyPage) return;
@@ -240,17 +248,21 @@ export function createWorkbench(container, options = {}) {
     await userAppearance.restore(state.settings);
     await preview.setSettings(state.settings);
   }
-  const reader = async (accept, multiple = false, directory = false) => {
-    const input = document.createElement("input");
-    input.type = "file"; input.accept = accept; input.multiple = multiple;
-    if (directory) input.setAttribute("webkitdirectory", "");
-    return new Promise(resolve => {
-      input.addEventListener("change", () => resolve([...input.files]), { once: true });
-      input.addEventListener("cancel", () => resolve([]), { once: true });
-      input.click();
-    });
+  const reader = async (accept, multiple = false, directory = false, purpose = "asset", chartScoped = false) => {
+    const fallback = () => {
+      const input = document.createElement("input");
+      input.type = "file"; input.accept = accept; input.multiple = multiple;
+      if (directory) input.setAttribute("webkitdirectory", "");
+      return new Promise(resolve => {
+        input.addEventListener("change", () => resolve([...input.files]), { once: true });
+        input.addEventListener("cancel", () => resolve([]), { once: true });
+        input.click();
+      });
+    };
+    return !directory && fileService?.openFiles
+      ? fileService.openFiles({ accept, multiple, purpose, projectId: chartScoped ? project?.id : undefined, fallback }) : fallback();
   };
-  fileService = options.fileService ?? new BrowserFiles({ readDirectory: () => reader("", true, true) });
+  fileService = options.fileService ?? new BrowserFiles({ readDirectory: () => reader("", true, true), assets: preferenceAssets });
   function mediaSnapshot(snapshot) {
     const input = project?.input || {};
     if (coverFile !== input.cover) {
@@ -352,6 +364,7 @@ export function createWorkbench(container, options = {}) {
     preview.on("playbackChanged", playback => workbench.previewTransport.update({ playback }));
     return preview.ready.then(async () => {
       await updatePerformance();
+      await preview.setPlayback({ rate: viewState.preferences.previewPlaybackRate ?? 1 });
       workbench.documentSession.userFonts=await userFonts.restore();
       Object.assign(workbench.documentSession,await userAppearance.list());
       await preview.setMediaSettings({ hidePv: Boolean(viewState.preferences.previewHidePv) });
@@ -447,6 +460,7 @@ export function createWorkbench(container, options = {}) {
       throw error;
     }
     if (sequence !== loadSequence) return info;
+    if (savedProject?.unifiedDesignerEnabled) snapshot = (await preview.documentCommand("document.restorePreferences", { unifiedDesignerEnabled: true })).document;
     if (folderFiles.size && snapshot.hasDocument) {
       const resolved = resolveChartMedia(folderFiles, filePath, snapshot.metadataVideoPath);
       input = { ...input, ...resolved };
@@ -464,16 +478,21 @@ export function createWorkbench(container, options = {}) {
     nextProject.savedInput ??= { ...nextProject.input }; nextProject.savedFiles ??= [...nextProject.files];
     nextProject.resourceChanges ??= [];
     const storedAudio = savedProject?.audioSettings ?? viewState.preferences.audioSoftwareDefault ?? viewState.preferences.audioSettings;
+    const sharedCover = (await preferenceAssets.get("cover-preferences")) || {};
+    const cover = nextProject.coverExport || sharedCover;
     if (storedAudio) await preview.audioCommand("audio.restoreSettings", { settings: storedAudio });
     const playback = await preview.getState();
     if (sequence !== loadSequence) return info;
     project = nextProject; loadingDocument = false; workbench.sourceEditor.input.readOnly = false;
+    viewState.setPreference("lastSessionProjectId", project.id);
     coverOutputHandle = null;
     workbench.sourceEditor.setFollowState({ active: false });
     workbench.setDocument({ ...info, ...snapshot, previewError, folderFiles,
-      exportValues: { ...viewState.preferences.exportValues },
-      coverValues: { ...nextProject.coverExport?.coverValues }, coverLayers: nextProject.coverExport?.coverLayers,
-      coverFiles: nextProject.coverExport?.coverFiles || [], coverDirty: false,
+      ...Object.fromEntries(["userFonts", "userSkins", "userOutlines", "shortcutRows"].map(key => [key, workbench.documentSession[key]])),
+      introSoundFileName: introSound?.name,
+      exportValues: { ...viewState.preferences.exportValues, introPvStartSeconds: nextProject.introPvStartSeconds ?? 0 },
+      coverValues: { ...cover.coverValues }, coverLayers: cover.coverLayers,
+      coverFiles: cover.coverFiles || [], coverDirty: false,
       audio: playback.audio,
       previewSettings: playback.settings, previewValues: { ...viewState.preferences.previewValues, ...previewValuesFromSettings(playback.settings) },
       ...mediaSnapshot(snapshot) });
@@ -605,12 +624,18 @@ export function createWorkbench(container, options = {}) {
     if(id==="export.settings") {
       await navigationPending;
       Object.assign(workbench.documentSession.exportValues||={},args);
-      if("outputPath" in args)exportFileHandle=null;
+      if("outputPath" in args || "outputMode" in args)exportFileHandle=null;
+      if ("outputMode" in args) {
+        const values = workbench.documentSession.exportValues;
+        const capabilities = await preview.getExportCapabilities(values);
+        values.outputPath = videoFileName(values.outputPath, capabilities.extension);
+        refreshExport();
+      }
       saveExportPreferences();
       if (exportPageActive && Object.keys(args).length === 1 && "introAuditionLoop" in args) return preview.setExportPreview(args);
       const state = await syncExportPreview();
       if ("selectedDifficultyId" in args) refreshExport();
-      if ("introPvStartSeconds" in args && state?.minimum < 0) await preview.seek(state.minimum);
+      if ("introPvStartSeconds" in args) { scheduleRecovery(workbench.documentSession); if (state?.minimum < 0) await preview.seek(state.minimum); }
       return state;
     }
     if(id==="export.toggleIntroAudition")return runIntro(async()=>{
@@ -629,6 +654,14 @@ export function createWorkbench(container, options = {}) {
       return preview.seek(args.second ?? args.start);
     }
     if(id==="export.browseOutputPath")return chooseExportFile(workbench.documentSession.exportValues||={});
+    if(id==="export.browseIntroSound" || id==="export.resetIntroSound") {
+      if(id==="export.browseIntroSound") {
+        const [file]=await reader(".wav,.mp3,.ogg,.flac,.m4a",false,false,"intro_sound");if(!file)return;
+        introSound=file;await preferenceAssets.put({id:"intro-sound",kind:"audio",file});
+      } else {introSound=null;await preferenceAssets.delete("intro-sound");}
+      workbench.documentSession.introSoundFileName=introSound?.name;
+      await syncExportPreview();refreshExport();return;
+    }
     if(id==="export.browseIntroBackground") {
       const files=await reader(".png,.jpg,.jpeg,.webp,.bmp");if(!files.length)return;
       const image=await createImageBitmap(files[0]);image.close();introBackground=files[0];
@@ -637,7 +670,7 @@ export function createWorkbench(container, options = {}) {
       saveExportPreferences(); await syncExportPreview(); refreshExport(); return;
     }
     if(id==="export.importIntroFonts") {
-      const files=await reader(".ttf,.otf",true);for(const file of files)await userFonts.import(file);
+      const files=await reader(".ttf,.otf",true,false,"intro_font");for(const file of files)await userFonts.import(file);
       workbench.documentSession.userFonts=userFonts.list();refreshExport();return;
     }
     if(id==="export.resetIntroFonts") {
@@ -658,7 +691,7 @@ export function createWorkbench(container, options = {}) {
         const [document,state,audio]=await Promise.all([preview.getDocument(),preview.getState(),preview.audioCommand("audio.getSettings")]);
         const request={chart:{...project.input,maidata:document.sourceText,filePath:document.filePath},
           difficulty:values.selectedDifficultyId??document.activeDifficultyId,fileName:values.outputPath,fileHandle:exportFileHandle};
-        return await exportJobs.start(request,{...values,introBackground:values.introBackgroundModeIndex===1?introBackground:undefined,
+        return await exportJobs.start(request,{...values,introSound:introSound || null,introBackground:values.introBackgroundModeIndex===1?introBackground:undefined,
           showChartInfoHud:values.showChartInfoHud??false,showObjectStatsHud:values.showObjectStatsHud??false,clockCountEnabled:values.clockCountEnabled??true},
           {settings:state.settings,audio:audio.settings,performance:state.performance,hidePv:Boolean(viewState.preferences.previewHidePv)});
       } finally {exportRequestActive=false;}
@@ -687,7 +720,7 @@ export function createWorkbench(container, options = {}) {
     }
     if (id === "preview.importHudFont") {
       const area=HUD_AREAS[viewState.preferences.previewValues?.hudFontAreaIndex ?? 0];
-      const files=await reader(".ttf,.otf");if(!files.length)return;
+      const files=await reader(".ttf,.otf",false,false,"hud_font");if(!files.length)return;
       const font=await userFonts.import(files[0]);
       workbench.documentSession.userFonts=userFonts.list();
       await command("preview.values",{hudFontPaths:{[area]:font.path}});
@@ -764,7 +797,7 @@ export function createWorkbench(container, options = {}) {
     if (id === "media.audioInfo") {
       if (!project || loadingDocument) { workbench.status("请选择谱面文件夹"); return; }
       const owner = project, generation = workbench.documentSession.documentOpenGeneration;
-      const selection = reader(".mp3,.wav,.flac,.ogg,.m4a");
+      const selection = reader(".mp3,.wav,.flac,.ogg,.m4a",false,false,"metadata_audio",true);
       const operation = Promise.all([mediaPending, selection]).then(async ([, files]) => {
         if (!files.length || owner !== project) return;
         await workbench.sourceEditor.pending; await editPending;
@@ -807,7 +840,7 @@ export function createWorkbench(container, options = {}) {
           close: value => resolve(value === "remove" ? { file: undefined } : null) }));
       } else {
         const accepted = { audio: ".mp3,.wav,.flac,.ogg,.m4a", cover: ".jpg,.jpeg,.png,.webp", video: ".mp4,.webm" }[kind];
-        selection = reader(accepted).then(files => files.length ? { file: files[0] } : null);
+        selection = reader(accepted,false,false,kind === "audio" ? "metadata_audio" : kind === "cover" ? "chart_image" : "chart_video",true).then(files => files.length ? { file: files[0] } : null);
       }
       const operation = Promise.all([mediaPending, selection]).then(([, selected]) =>
         selected && owner === project ? importMedia(kind, selected.file) : undefined);
@@ -855,7 +888,7 @@ export function createWorkbench(container, options = {}) {
       return;
     }
     if (id === "editor.overwrite_mode") return viewState.setPreference("editorOverwriteMode", !viewState.preferences.editorOverwriteMode);
-    if (id.startsWith("transform.") || ["edit.acceptCompletion", "edit.selectCompletionIndex", "edit.dismissCompletion", "edit.triggerCompletion", "edit.touchPadAuthoring", "edit.createBookmark", "edit.renameBookmark", "edit.deleteBookmark"].includes(id)) {
+    if (id.startsWith("transform.") || ["edit.normalizeChart", "edit.acceptCompletion", "edit.selectCompletionIndex", "edit.dismissCompletion", "edit.triggerCompletion", "edit.touchPadAuthoring", "edit.createBookmark", "edit.renameBookmark", "edit.deleteBookmark"].includes(id)) {
       await workbench.sourceEditor.pending;
       await editPending;
       const source = workbench.sourceEditor;
@@ -867,6 +900,7 @@ export function createWorkbench(container, options = {}) {
       const difficulty = workbench.documentSession.activeDifficultyId;
       const linePosition = args.line ? text.split("\n").slice(0, args.line - 1).reduce((position, line) => position + line.length + 1, 0) : null;
       const result = await preview.editorCommand(id, { ...args, text,
+        ...(id === "edit.normalizeChart" ? { sourceText: workbench.documentSession.sourceText, preferences: viewState.preferences } : {}),
         anchor: linePosition ?? (input.selectionDirection === "backward" ? input.selectionEnd : input.selectionStart),
         position: linePosition ?? (input.selectionDirection === "backward" ? input.selectionStart : input.selectionEnd) });
       if (input.value !== text || workbench.documentSession.documentOpenGeneration !== generation || workbench.documentSession.activeDifficultyId !== difficulty) return;
@@ -875,9 +909,9 @@ export function createWorkbench(container, options = {}) {
       await editPending;
       return result;
     }
-    if (["cover.browseActiveLayerImage", "cover.browseBackgroundImage"].includes(id)) return (await reader(".png,.jpg,.jpeg,.webp,.bmp"))[0];
+    if (["cover.browseActiveLayerImage", "cover.browseBackgroundImage"].includes(id)) return (await reader(".png,.jpg,.jpeg,.webp,.bmp",false,false,id === "cover.browseBackgroundImage" ? "cover_background" : "cover_image",true))[0];
     if (["cover.importActiveLayerFont", "cover.importCardDisplayFont", "cover.importCardBodyFont"].includes(id)) {
-      const [file] = await reader(".ttf,.otf"); if (!file) return;
+      const [file] = await reader(".ttf,.otf",false,false,"cover_font"); if (!file) return;
       await userFonts.import(file); workbench.documentSession.userFonts = userFonts.list(); return file;
     }
     if (id === "cover.browseOutputFile") {
@@ -889,7 +923,7 @@ export function createWorkbench(container, options = {}) {
       } catch (error) { if (error.name !== "AbortError") throw error; return; }
     }
     if (id === "cover.importLayout") {
-      const [file] = await reader(".json"); return file ? JSON.parse(await file.text()) : null;
+      const [file] = await reader(".json",false,false,"cover_layout"); return file ? JSON.parse(await file.text()) : null;
     }
     if (id === "cover.saveLayout" || id === "cover.managePresets" || id === "cover.export") {
       const canvas = workbench.root.querySelector(".cover-page:not([hidden]) .cover-editor")?.coverRenderer;
@@ -915,7 +949,12 @@ export function createWorkbench(container, options = {}) {
         workbench.status(`封面导出完成：${coverOutputHandle?.name || name}`); return { ...result, name: coverOutputHandle?.name || name };
       } finally { coverExportActive = false; }
     }
-    if (id === "cover.canvasChanged") { workbench.documentSession.coverDirty = true; scheduleRecovery(workbench.documentSession); return; }
+    if (id === "cover.canvasChanged") {
+      const doc = workbench.documentSession;
+      doc.coverDirty = true; scheduleRecovery(doc);
+      return preferenceAssets.put({ id: "cover-preferences", kind: "cover-preferences",
+        ...coverPreferences(doc.coverValues, doc.coverLayers, doc.coverFiles) });
+    }
     if (id === "cover.error") { workbench.status(args.message); return; }
     if (id === "audio.saveAsSoftwareDefault") {
       const audio = await preview.audioCommand("audio.getSettings");
@@ -942,6 +981,7 @@ export function createWorkbench(container, options = {}) {
       const scene = workbench.documentSession.timelineSceneState;
       const center = scene && timelineSecondAtX(scene, scene.viewportSize.width / 2, workbench.timelineView.scrollValue);
       Object.assign(timelineOptions, args);
+      viewState.setPreference("timelineOptions", Object.fromEntries(["zoomScale", "waveformBrightness", "measureLineBrightness", "followPreviewEnabled", "followProgressEnabled"].map(key => [key, timelineOptions[key]])));
       if (scene && args.zoomScale !== undefined) {
         timelineOptions.horizontalScrollValue = timelineZoomedScroll(scene, center, timelineOptions.zoomScale);
       }
@@ -1019,7 +1059,11 @@ export function createWorkbench(container, options = {}) {
     }
     if (id === "preview.pause") return pausePlayback();
     if (id === "preview.seek") { await pausePlayback(); return preview.seek(args.second); }
-    if (id === "preview.rate") return preview.setPlayback({ rate: args.rate });
+    if (id === "preview.rate") {
+      const result = await preview.setPlayback({ rate: args.rate });
+      viewState.setPreference("previewPlaybackRate", args.rate);
+      return result;
+    }
     if (id === "preview.toggleFreeAspect") {
       viewState.setPreference("previewCanvasFreeAspect", !viewState.preferences.previewCanvasFreeAspect);
       return fitCanvas();
@@ -1050,7 +1094,7 @@ export function createWorkbench(container, options = {}) {
       if (!await confirmDocumentChange()) return;
       await flushRecovery();
       const result = await preview.documentCommand("document.close", { documentOpenGeneration: workbench.documentSession.documentOpenGeneration });
-      project = null; applyDocument(result.document);
+      project = null; viewState.setPreference("lastSessionProjectId", null); applyDocument(result.document);
       viewState.openEditorTabs = ["welcome"]; viewState.editorHistory = []; viewState.openEditor("welcome");
       return;
     }
@@ -1126,6 +1170,8 @@ export function createWorkbench(container, options = {}) {
         applyDocument(result.document);
       }
       if (record.editorState) {
+        const restored = await preview.documentCommand("document.restorePreferences", { unifiedDesignerEnabled: Boolean(record.unifiedDesignerEnabled) });
+        applyDocument(restored.document);
         viewState.openEditorTabs = [...record.editorState.openEditorTabs];
         viewState.openEditor(record.editorState.activeEditorKey);
       }
@@ -1163,6 +1209,7 @@ export function createWorkbench(container, options = {}) {
       workbench.documentSession.previewSettings = settings;
       viewState.setPreference("previewValues", { ...viewState.preferences.previewValues, ...previewValuesFromSettings(settings), hudFontPaths: settings.hudFontPaths });
       await refreshTimeline();
+      if (MURI_SETTINGS.some(key => key in args)) scheduleAnalysis();
       return;
     }
     if (id === "preview.values") {
@@ -1180,7 +1227,7 @@ export function createWorkbench(container, options = {}) {
         if("hudFontPath" in args || "hudFontAreaIndex" in args || "hudFontPaths" in args || "skinDirectoryName" in args || "customOutlineFileName" in args) {
           workbench.pageKey=null;workbench.update();
         }
-        await refreshTimeline(); return settings;
+        await refreshTimeline(); if (MURI_SETTINGS.some(key => key in args)) scheduleAnalysis(); return settings;
       });
       previewValuesPending=operation.catch(()=>{});return operation;
     }
@@ -1293,6 +1340,8 @@ export function createWorkbench(container, options = {}) {
     if (document.hidden) void flushRecovery().catch(error => workbench.status(error.message));
   }, { signal: abort.signal });
   const ready = mountPreview().then(async () => {
+    introSound=(await preferenceAssets.get("intro-sound"))?.file;
+    workbench.documentSession.introSoundFileName=introSound?.name;
     introBackground = (await preferenceAssets.get("export-intro-background"))?.file;
     await background.update({});
     await background.restore();
@@ -1301,10 +1350,13 @@ export function createWorkbench(container, options = {}) {
     await fitCanvas();
     await refreshTimeline();
     await refreshRecent();
+    if (viewState.preferences.autoRestoreLastSessionFile && viewState.preferences.lastSessionProjectId && await projectStore.get(viewState.preferences.lastSessionProjectId))
+      await command("file.openRecent", { id: viewState.preferences.lastSessionProjectId });
     workbench.status("预览就绪"); return workbench;
   }).catch(error => { workbench.status(error.message); throw error; });
   viewState.addEventListener("change", () => {
     const switched = navigationKey !== viewState.activeEditorKey || navigationPanel !== viewState.bottomPanel || navigationView !== viewState.compactView;
+    if (switched && project && !loadingDocument) void flushRecovery().catch(error => workbench.status(error.message));
     navigationKey = viewState.activeEditorKey; navigationPanel = viewState.bottomPanel; navigationView = viewState.compactView;
     const exporting = viewState.activeEditorKey === "export" && workbench.documentSession.hasDocument;
     if (exporting !== exportPageActive) {

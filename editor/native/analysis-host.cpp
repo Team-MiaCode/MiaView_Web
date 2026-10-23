@@ -26,6 +26,9 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char* miacode_analysis(const char* source)
     const auto* difficulty = doc.difficulty(difficultyId);
     MuriRenderOptions options;
     options.renderMode = muriRenderModeFromToken(input.value("renderMode").toString());
+    options.handRadiusPx = miacode::muri::normalizedHandRadiusPx(input.value("handRadiusPx").toInt(miacode::muri::kHandRadiusDefaultPx));
+    options.wifiNeedC = input.value("wifiNeedC").toBool();
+    const double threshold = qBound(150, input.value("staticTapOnSlideThresholdMs").toInt(200), 250) / 1000.0;
     QJsonArray validationRows, muriRows;
     int errors = 0, warnings = 0;
     const auto locale = localeToken.startsWith("zh") ? SimaiValidationLocale::Chinese
@@ -48,9 +51,9 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char* miacode_analysis(const char* source)
             if (firstOk && qIsFinite(first)) {
                 const auto markers = miacode::timeline::offset::shiftedNoteMarkers(parsed.noteMarkers, first,
                     miacode::timeline::offset::NonFiniteHandling::Propagate);
-                const auto report = MuriAnalyzer::analyze(markers, options);
+                const auto report = MuriAnalyzer::analyze(markers, options, threshold);
                 const auto references = miacode::muri::buildStaticMuriReferences(markers,
-                    miacode::muri::kStaticTapOnSlideThresholdDefaultMs / 1000.0);
+                    threshold);
                 for (const auto& entry : miacode::muri::buildVisibleMuriPanelEntries(report, references)) {
                     const bool warning = entry.alertLevel == MuriAlertLevel::Warning;
                     QString detail = renderMuriDetail(entry.detailKind, entry.detailArgs, locale).trimmed();

@@ -352,7 +352,7 @@ class MiaCodePreview {
   }
   setExportPreview(settings = {}) {
     try {
-      return this.command("setExportPreview", { ...settings, ...(settings.introBackground ? {
+      return this.command("setExportPreview", { ...settings, ...(settings.introSound ? {introSound:normalizeResources({audio:settings.introSound},this.wrapper.ownerDocument.baseURI).audio} : {}), ...(settings.introBackground ? {
         introBackground: normalizeResources({ cover: settings.introBackground }, this.wrapper.ownerDocument.baseURI).cover,
       } : {}) }).then(state => {
         this.exportPreviewMinimum = state.minimum;
@@ -363,7 +363,7 @@ class MiaCodePreview {
     } catch (error) { return Promise.reject(error); }
   }
   startExport(settings = {}) {
-    try { return this.command("startExport", { ...settings, ...(settings.introBackground ? {introBackground:normalizeResources({cover:settings.introBackground},this.wrapper.ownerDocument.baseURI).cover} : {}) }); }
+    try { return this.command("startExport", { ...settings, ...(settings.introSound ? {introSound:normalizeResources({audio:settings.introSound},this.wrapper.ownerDocument.baseURI).audio} : {}), ...(settings.introBackground ? {introBackground:normalizeResources({cover:settings.introBackground},this.wrapper.ownerDocument.baseURI).cover} : {}) }); }
     catch(error) { return Promise.reject(error); }
   }
   cancelExport() { return this.command("cancelExport"); }

@@ -1,5 +1,5 @@
 import { element as h, button, field, section, icon } from "../components/dom.mjs";
-import { select, text, number, toggle, formRow } from "../components/forms.mjs";
+import { select, text, number, range, toggle, formRow } from "../components/forms.mjs";
 import { settingsTabs } from "../components/settings-tabs.mjs";
 import { translate } from "../components/translate.mjs";
 import { previewAppearanceSections } from "./preview-settings.mjs";
@@ -70,6 +70,7 @@ export function createVideoExport(context) {
     });
     outputRange = rangeView;
     return [
+    formRow("输出模式", choice("outputMode", [["mp4", "视频"], ["wav", "WAV 音频"], ["mp4_and_wav", "视频与 WAV 音频"]], "mp4")),
     field(t("video_export.filename"), h("div", { className: "form-input-action" }, input("outputPath", "MiaCode.mp4"), button(t("action.browse"), () => command("export.browseOutputPath")))),
     h("div", { className: "export-output-triple" },
       field(t("dialog.video_export.resolution"), choice("resolutionIndex", resolutions.map((label, id) => [id, label]), 3)),
@@ -96,6 +97,9 @@ export function createVideoExport(context) {
       onSeek: second => command("preview.seek", { second: (documentSession.exportPreviewMinimum ?? 0) + second - (values.introPvStartSeconds ?? 0) }) }) : null;
     const body = h("fieldset", { className: "intro-settings", disabled: !values.introEnabled },
       section(t("qml.visuals"),
+        values.introPvPreview ? range("PV 片头亮度", "introPvBrightness", (values.introPvBrightness ?? 1)*100, 0, 100, (_, args) => put("introPvBrightness", args.value/100), 1, "%") : null,
+        formRow("片头音效", h("div", { className: "action-row" }, h("span", { className: "caption" }, documentSession.introSoundFileName || "track_start.wav"),
+          button("选择音效", () => command("export.browseIntroSound")), button("恢复默认", () => command("export.resetIntroSound")))),
         formRow(t("video_export.intro_style"), select([[false, t("video_export.intro_style_classic")], [true, t("video_export.intro_style_pv_preview")]], values.introPvPreview ?? false, value => { put("introPvPreview", value === "true"); render(); })),
         formRow(t("dialog.preferences.background_group"), select([[0, t("cover.jacket")], [1, t("qml.custom")]], values.introBackgroundModeIndex ?? 0, value => { put("introBackgroundModeIndex", Number(value)); render(); })),
         values.introBackgroundModeIndex === 1 ? h("div", { className: "form-input-action" }, input("introCustomBackgroundPath"), button(t("action.browse"), () => command("export.browseIntroBackground"))) : null,

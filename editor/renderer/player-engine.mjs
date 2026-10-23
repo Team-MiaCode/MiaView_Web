@@ -880,6 +880,9 @@ export function createPlayerEngine(view) {
       view.chart?.(parsed);
       audio.replaceTimeline(audioSettings.breakSlideTailCheerMuted ? parsed.sfxMutedTail : parsed.sfx, parsed.touchholdSegments);
       audio.duration = latency.onPage ? parsed.duration : Math.max(parsed.duration, audio.track?.duration ?? 0);
+      playback.exportStartSeconds = Math.min(playback.exportStartSeconds, audio.duration);
+      playback.exportEndSeconds = Math.max(playback.exportStartSeconds, Math.min(playback.exportEndSeconds, audio.duration));
+      if (playback.exportEndSeconds <= playback.exportStartSeconds) playback.rangePlaybackEnabled = false;
       if (!latency.onPage) {
         seek(Math.min(request === playbackRequest ? second : audio.currentSecond(), audio.duration));
         if (wasPlaying && request === playbackRequest) await play();
@@ -1121,7 +1124,23 @@ export function createPlayerEngine(view) {
       return exportCall("miacode_export_asset",["string","string","number","number"],[kind,name,pointer,bytes.length]);
     } finally {module._free(pointer);}
   }
+  let introSoundResource;
+  let introSoundHash;
+  async function prepareIntroSound(settings, signal) {
+    if (introSoundResource === settings.introSound) return;
+    const resource = settings.introSound;
+    const data = resource ? await bytes(resource, signal) : await (await fetch("./sfx/track_start.wav", { signal })).arrayBuffer();
+    const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", data))].join(",");
+    if (hash === introSoundHash) { introSoundResource = resource; return; }
+    const decoded = await audio.context.decodeAudioData(data.slice(0));
+    exportSoundBytes.set("track_start.wav", data);
+    audio.buffers.set("track_start.wav", decoded);
+    storeExportAsset("sfx", "track_start.wav", data);
+    introSoundResource = resource;
+    introSoundHash = hash;
+  }
   async function prepareExportAssets(settings,signal,introOnly=false) {
+    await prepareIntroSound(settings, signal);
     const files=new Set(introOnly?["answer.wav"]:["answer.wav","clock.wav",...chart.sfx.map(item=>item.file),...chart.sfxMutedTail.map(item=>item.file)]);
     if(!introOnly&&chart.touchholdSegments.length)files.add("touch_Hold_riser.wav");
     if(!introOnly&&settings.introEnabled&&!settings.introPvPreview)files.add("track_start.wav");
@@ -1225,6 +1244,7 @@ export function createPlayerEngine(view) {
     let plan;
     if (changeChart) plan = await prepareExportAssets(sceneSettings, lifetime.signal);
     else {
+      await prepareIntroSound(sceneSettings, lifetime.signal);
       if (input.introBackground) storeExportAsset("intro_background", "background", await bytes(input.introBackground, lifetime.signal));
       plan = configureExportScene(sceneSettings, true);
     }

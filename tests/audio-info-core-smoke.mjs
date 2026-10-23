@@ -1,3 +1,4 @@
+import { observeFilePicker } from "./helpers/file-picker.mjs";
 import { launchPreviewBrowser } from "./preview-browser.mjs";
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -38,6 +39,7 @@ try {
   const page = await browser.newPage({viewport:{width:1366,height:900}}), errors=[];
   page.setDefaultTimeout(30000);
   page.on("pageerror",error=>errors.push(error.message));
+  await observeFilePicker(page);
   await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);
   await page.locator(".welcome-title").waitFor();
   await page.evaluate(async()=>{

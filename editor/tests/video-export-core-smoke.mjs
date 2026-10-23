@@ -96,6 +96,20 @@ try {
   const cancellation=await page.evaluate(async id=>({event:exports.get(id),text:await(await exportFile.getFile()).text(),status:await preview.getExportStatus()}),cancelled.jobId);
   assert.equal(cancellation.event.cancelled,true);assert.equal(cancellation.text,"original file");assert.equal(cancellation.status.running,false);
   const intros=[];
+  const modes=[];
+  for (const outputMode of ["wav", "mp4_and_wav"]) {
+    const job=await page.evaluate(({outputMode,format})=>preview.startExport({width:160,height:90,fps:30,format,outputMode,exportStartSeconds:.5,exportEndSeconds:1}),{outputMode,format:capabilities.format});
+    await waitForAsync(page,id=>exports.has(id),job.jobId,{timeout:120000,polling:1000});
+    const pcm=await page.evaluate(async ({id,mode})=>{
+      const result=exports.get(id),blob=mode==="wav"?result.blob:result.wavBlob;
+      if(!blob)throw new Error(result.message||"WAV output missing");
+      const data=new DataView(await blob.arrayBuffer());let peak=0;
+      for(let offset=44;offset<data.byteLength;offset+=2)peak=Math.max(peak,Math.abs(data.getInt16(offset,true)));
+      return {bytes:blob.size,header:String.fromCharCode(...new Uint8Array(data.buffer,0,4)),channels:data.getUint16(22,true),sampleRate:data.getUint32(24,true),peak,duration:result.duration};
+    },{id:job.jobId,mode:outputMode});
+    assert.equal(pcm.header,"RIFF");assert.equal(pcm.channels,2);assert.equal(pcm.sampleRate,48000);
+    assert.equal(pcm.bytes,44+Math.round(pcm.duration*48000)*4);assert.ok(pcm.peak>1000);modes.push({outputMode,...pcm});
+  }
   for(const pv of [false,true]) {
     if(pv)await page.evaluate(()=>preview.setResources({video:"/tests/fixtures/bg-pattern.webm"}));
     const job=await page.evaluate(({pv,format})=>preview.startExport({width:320,height:180,fps:30,format,introEnabled:true,introPvPreview:pv,introPvStartSeconds:.2}),{pv,format:capabilities.format});
@@ -106,6 +120,10 @@ try {
       const input=new media.Input({source:new media.BlobSource(result.blob),formats:media.ALL_FORMATS});
       try {
         const track=await input.getPrimaryVideoTrack(),sink=new media.VideoSampleSink(track);
+        if (!window.introReference) {
+          const opening=await sink.getSample(0);window.introReference=document.createElement("canvas");
+          introReference.width=320;introReference.height=180;opening.draw(introReference.getContext("2d"),0,0);opening.close();
+        }
         let frames=0;for await(const sample of sink.samples()){sample.close();frames++;}
         const sample=await sink.getSample(2),canvas=document.createElement("canvas");canvas.width=320;canvas.height=180;
         const context=canvas.getContext("2d");sample.draw(context,0,0);sample.close();
@@ -126,6 +144,29 @@ try {
     writeFileSync(join(output,`intro-${pv?"pv":"classic"}${capabilities.extension}`),Buffer.from(intro.encoded.split(",")[1],"base64"));
     delete intro.screenshot;delete intro.encoded;intros.push({pv,...intro});
   }
+  const geometry=[];
+  for (const [width,height] of [[640,360],[240,180],[180,180]]) {
+    const job=await page.evaluate(({width,height,format})=>preview.startExport({width,height,fps:30,format,introEnabled:true,introPvPreview:false,exportEndSeconds:.01}),{width,height,format:capabilities.format});
+    await waitForAsync(page,id=>exports.has(id),job.jobId,{timeout:180000,polling:1000});
+    const comparison=await page.evaluate(async ({id,width,height})=>{
+      const result=exports.get(id);if(!result.blob)throw new Error(result.message);
+      const media=await import("/renderer/vendor/mediabunny/index.mjs"),input=new media.Input({source:new media.BlobSource(result.blob),formats:media.ALL_FORMATS});
+      try {
+        const sink=new media.VideoSampleSink(await input.getPrimaryVideoTrack()),sample=await sink.getSample(0);
+        const actual=document.createElement("canvas"),expected=document.createElement("canvas");
+        actual.width=expected.width=width;actual.height=expected.height=height;
+        sample.draw(actual.getContext("2d"),0,0);sample.close();
+        const scaledWidth=height*16/9;
+        expected.getContext("2d").drawImage(introReference,(width-scaledWidth)/2,0,scaledWidth,height);
+        const a=actual.getContext("2d").getImageData(0,0,width,height).data,b=expected.getContext("2d").getImageData(0,0,width,height).data;
+        let error=0;for(let index=0;index<a.length;index++)if(index%4!==3)error+=Math.abs(a[index]-b[index]);
+        return {width,height,meanError:error/(width*height*3),screenshot:actual.toDataURL()};
+      } finally {input.dispose();}
+    },{id:job.jobId,width,height});
+    assert.ok(comparison.meanError<12,`Intro geometry: ${JSON.stringify({...comparison,screenshot:undefined})}`);
+    writeFileSync(join(output,`intro-opening-${width}x${height}.png`),Buffer.from(comparison.screenshot.split(",")[1],"base64"));
+    delete comparison.screenshot;geometry.push(comparison);
+  }
   await page.evaluate(()=>preview.setCoverComposition({outputWidth:320,outputHeight:180,trackOverrides:{title:"Cover restore"}}));
   const viewport=page.frameLocator("iframe").locator("#viewport");
   const coverBefore=await viewport.screenshot();
@@ -136,7 +177,7 @@ try {
   const decoderProbe=await page.frames().find(frame=>frame.url().includes("/renderer/index.html")).evaluate(decoderSnapshot);
   if(software){assert.ok(decoderProbe.configurations.length>0);assert.ok(decoderProbe.configurations.every(value=>value==="prefer-software"));}
   assert.deepEqual(errors,[]);
-  writeFileSync(join(output,"results.json"),JSON.stringify({capabilities,sourceAudio,result,cancellation,intros,coverRestored:true,decoderProbe,errors},null,2));
+  writeFileSync(join(output,"results.json"),JSON.stringify({capabilities,sourceAudio,result,cancellation,modes,intros,geometry,coverRestored:true,decoderProbe,errors},null,2));
   await page.screenshot({path:join(output,"restored-preview.png")});
   console.log("Video export frames, partial-range audio, restored preview and atomic cancellation passed");
 } finally {await browser.close();await new Promise(resolve=>server.close(resolve));}

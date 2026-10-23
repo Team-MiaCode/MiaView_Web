@@ -1,3 +1,4 @@
+import { observeFilePicker } from "./helpers/file-picker.mjs";
 import { launchPreviewBrowser } from "./preview-browser.mjs";
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -43,6 +44,7 @@ try {
     }, type);
   }
   const base = `http://127.0.0.1:${server.address().port}`;
+  await observeFilePicker(page);
   await page.goto(`${base}/tests/ui-page.html?page=about`);
   await page.evaluate(() => new Promise((resolve, reject) => {
     const request = indexedDB.open("miacode.web.assets", 1);
@@ -151,7 +153,7 @@ try {
   assert.equal((await imageStats()).hash, custom.hash);
   await command("file.flushRecovery");
   const id = await page.evaluate(() => document.getElementById("workbench").editor.workbench.documentSession.recentDocuments[0].id);
-  await page.reload(); await page.locator(".welcome-title").waitFor(); await page.evaluate(() => document.getElementById("workbench").editor.ready);
+  await page.reload(); await page.waitForFunction(() => document.getElementById("workbench")?.editor); await page.evaluate(() => document.getElementById("workbench").editor.ready);
   await command("file.openRecent", { id }); await page.locator(".cover-editor").waitFor(); await ready();
   const recovered = await imageStats(); assert.equal(recovered.hash, custom.hash, "project recovery restores image and font bytes in a fresh renderer");
   await menu("管理预设..."); await page.getByRole("button", { name: "删除", exact: true }).click();

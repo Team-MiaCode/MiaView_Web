@@ -1,12 +1,14 @@
 import { exportAudioClips, renderExportAudio } from "./export-audio.mjs";
 import { drawStageVideo } from "./video-geometry.mjs";
+import { wavHeader, wavPcm } from "./export-wav.mjs";
 
 export function exportSettings(input = {}) {
   const resolutions = [[720,720],[960,720],[1280,720],[1080,1080],[1440,1080],[1920,1080],[1440,1440],[1920,1440],[2560,1440]];
   const [width,height] = resolutions[input.resolutionIndex ?? 3] ?? [];
   const settings = { ...input, width: input.width ?? width, height: input.height ?? height, fps: input.fps ?? 60,
     presetIndex: input.presetIndex ?? 1, sizePresetIndex: input.sizePresetIndex ?? 0, audioBitrateKbps: input.audioBitrateKbps ?? 192, format: input.format ?? "auto",
-    clockCountEnabled: input.clockCountEnabled ?? true };
+    clockCountEnabled: input.clockCountEnabled ?? true, outputMode: input.outputMode ?? "mp4" };
+  if (!["mp4", "wav", "mp4_and_wav"].includes(settings.outputMode)) throw new Error("导出模式无效");
   if (![settings.width,settings.height].every(value => Number.isInteger(value) && value >= 64 && value <= 4096 && value % 2 === 0))
     throw new Error("视频宽高须为 64 至 4096 的偶数");
   if (![30,60,120].includes(settings.fps)) throw new Error("视频帧率须为 30、60 或 120");
@@ -24,6 +26,7 @@ export function exportSettings(input = {}) {
 
 export async function exportCapabilities(input) {
   const settings = exportSettings(input);
+  if (settings.outputMode === "wav") return { ...settings, format: "wav", mimeType: "audio/wav", extension: ".wav", videoCodec: null, audioCodec: "pcm-s16" };
   const media = await import("./vendor/mediabunny/index.mjs");
   const quality = new media.Quality({ bitrate: settings.videoBitrate, quantizer: settings.quantizer });
   const videoOptions = { width: settings.width, height: settings.height, frameRate: settings.fps, quality };
@@ -77,6 +80,23 @@ export async function encodeVideoExport(adapter, input, signal, progress) {
 async function encode(adapter,input,signal,progress) {
   const settings = await exportCapabilities(input);
   signal.throwIfAborted();
+  if (settings.outputMode === "wav") {
+    const plan = await adapter.prepare(settings, signal);
+    const clips = exportAudioClips(plan, adapter.track(), adapter.sounds());
+    const totalSamples = Math.round(plan.totalSeconds * 48000), parts = [wavHeader(totalSamples)];
+    const stream = input.fileHandle ? await input.fileHandle.createWritable() : null;
+    try {
+      if (stream) await stream.write(parts[0]);
+      for (let first = 0; first < totalSamples; first += 48000) {
+        signal.throwIfAborted();
+        const pcm = wavPcm(await renderExportAudio(clips, first, Math.min(48000, totalSamples - first)));
+        if (stream) await stream.write(pcm); else parts.push(pcm);
+        progress({ stage: "encoding", frame: Math.min(totalSamples, first + 48000), frameCount: totalSamples, progress: Math.min(1, (first + 48000) / totalSamples) });
+      }
+      signal.throwIfAborted(); if (stream) await stream.close();
+      return { ...settings, frameCount: 0, duration: plan.totalSeconds, fileName: input.fileHandle?.name ?? null, blob: stream ? null : new Blob(parts, { type: "audio/wav" }) };
+    } catch (error) { if (stream) await stream.abort(error); throw error; }
+  }
   const media = await import("./vendor/mediabunny/index.mjs");
   const canvas = document.createElement("canvas"); canvas.width=settings.width; canvas.height=settings.height;
   const context = canvas.getContext("2d",{alpha:false});
@@ -96,12 +116,14 @@ async function encode(adapter,input,signal,progress) {
     const clips = exportAudioClips(plan,adapter.track(),adapter.sounds());
     const totalSamples = Math.round(plan.totalSeconds*48000);
     let nextSample = 0, lastProgress = 0;
+    const wavParts = settings.outputMode === "mp4_and_wav" ? [wavHeader(totalSamples)] : null;
     await output.start();
     for (let index=0;index<plan.frameCount;index++) {
       signal.throwIfAborted();
       if (nextSample < totalSamples && nextSample / 48000 <= index/settings.fps) {
         const count = Math.min(48000,totalSamples-nextSample);
         const audio = await renderExportAudio(clips,nextSample,count);
+        if (wavParts) wavParts.push(wavPcm(audio));
         signal.throwIfAborted(); await audioSource.add(audio); nextSample += count;
       }
       const frame = adapter.frameInfo(index);
@@ -123,12 +145,15 @@ async function encode(adapter,input,signal,progress) {
     }
     while(nextSample<totalSamples) {
       signal.throwIfAborted();const count=Math.min(48000,totalSamples-nextSample);
-      await audioSource.add(await renderExportAudio(clips,nextSample,count)); nextSample+=count;
+      const audio = await renderExportAudio(clips,nextSample,count);
+      if (wavParts) wavParts.push(wavPcm(audio));
+      await audioSource.add(audio); nextSample+=count;
     }
     signal.throwIfAborted(); await output.finalize();
     if(fileWriter)await fileWriter.close();
     return { format:settings.format,mimeType:settings.mimeType,extension:settings.extension,width:settings.width,height:settings.height,
       fps:settings.fps,videoCodec:settings.videoCodec,audioCodec:settings.audioCodec,frameCount:plan.frameCount,duration:plan.totalSeconds,
+      wavBlob:wavParts ? new Blob(wavParts,{type:"audio/wav"}) : null,
       fileName:input.fileHandle?.name ?? null,blob:writable?null:new Blob([target.buffer],{type:settings.mimeType}) };
   } catch(error) {
     await Promise.allSettled([output.cancel(),fileWriter?.abort(error)]); throw error;

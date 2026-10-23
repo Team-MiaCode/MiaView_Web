@@ -1,3 +1,4 @@
+import { observeFilePicker } from "./helpers/file-picker.mjs";
 import { launchPreviewBrowser } from "./preview-browser.mjs";
 import assert from "node:assert/strict";
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -33,6 +34,7 @@ try {
     URL.createObjectURL = blob => { const url = create(blob); objectURLs.add(url); if (blob.type !== "application/javascript") mediaURLs.add(url); return url; };
     URL.revokeObjectURL = url => { objectURLs.delete(url); mediaURLs.delete(url); revoke(url); };
   });
+  await observeFilePicker(page);
   await page.goto(`http://127.0.0.1:${server.address().port}/index.html`); await page.locator(".welcome-title").waitFor();
   await page.evaluate(() => document.getElementById("workbench").editor.ready);
   const command = (id, args = {}) => page.evaluate(([id, args]) => document.getElementById("workbench").editor.command(id, args), [id, args]);

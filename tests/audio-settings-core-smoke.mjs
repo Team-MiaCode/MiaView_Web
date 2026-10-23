@@ -71,7 +71,7 @@ try {
   assert.ok(Math.abs(rendered.track - .5 * savedDefault.gains.track) < 1e-6);
   assert.ok(Math.abs(rendered.judge - .5 * savedDefault.gains.judge) < 1e-6);
   assert.equal(rendered.muted, 0);
-  await page.reload(); await page.locator(".welcome-title").waitFor();
+  await page.reload(); await page.waitForFunction(() => document.getElementById("workbench")?.editor);
   await page.evaluate(() => document.getElementById("workbench").editor.ready);
   assert.deepEqual(await command("audio.getSettings"), savedDefault);
   await command("file.demo"); await command("preview.toggle");

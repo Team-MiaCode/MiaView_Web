@@ -33,6 +33,7 @@ get_filename_component(upstream_firework_source "${upstream_firework_source}"
     ABSOLUTE BASE_DIR "${preview_source_dir}")
 get_filename_component(upstream_firework_dir "${upstream_firework_source}" DIRECTORY)
 set(upstream_firework_header "${upstream_firework_dir}/PreviewQuickJudgeFireworkLayer.h")
+include("${CMAKE_CURRENT_SOURCE_DIR}/firework-brightness.cmake")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${upstream_firework_header}")
 file(READ "${upstream_firework_header}" upstream_firework_interface)
 string(REPLACE "PreviewQuickJudgeFireworkLayer" "MiaViewUpstreamJudgeFireworkLayer"
@@ -90,6 +91,11 @@ qt_add_executable(miacode-preview browser-host.cpp cover-scene.cpp cover-scene.h
     "${MIACODE_SOURCE_DIR}/src/export/cover_export/CoverCompositeRenderer.cpp"
     "${MIACODE_SOURCE_DIR}/src/export/cover_export/CoverLayoutModel.h"
     "${CMAKE_CURRENT_BINARY_DIR}/browser-assets.qrc")
+qt_add_shaders(miacode-preview "web_firework_shaders" PREFIX "/web-firework"
+    BASE "${CMAKE_CURRENT_BINARY_DIR}/web-firework"
+    FILES "${CMAKE_CURRENT_BINARY_DIR}/web-firework/PreviewFireworkMaterial.vert"
+          "${CMAKE_CURRENT_BINARY_DIR}/web-firework/PreviewFireworkMaterial.frag")
+
 target_link_libraries(miacode-preview PRIVATE miacode_preview_quick miacode_preview_quickplugin miaview_timeline miaview_editor Qt6::Svg)
 # Match the v2 intro timing in the web export and audition translation units.
 file(READ "${MIACODE_SOURCE_DIR}/src/core/chart/IntroConfig.h" web_intro_config)
@@ -112,6 +118,14 @@ file(GLOB_RECURSE intro_assets CONFIGURE_DEPENDS
     "${MIACODE_SOURCE_DIR}/src/intro/qml/*"
     "${MIACODE_SOURCE_DIR}/src/intro/assets/*"
     "${MIACODE_SOURCE_DIR}/src/intro/templates/*")
+# v2 background-only PV brightness, shared by the video underlay and still fallback.
+file(READ "${MIACODE_SOURCE_DIR}/src/intro/qml/IntroOverlay.qml" web_intro_overlay)
+string(REPLACE "property bool pvPreviewMode: false" "property bool pvPreviewMode: false\n    property real pvPreviewBrightness: 1.0" web_intro_overlay "${web_intro_overlay}")
+string(REPLACE "    // PV-preview fade-in:" "    Rectangle {\n        anchors.fill: parent\n        color: \"#000000\"\n        opacity: 1.0 - root.clamp(root.pvPreviewBrightness, 0.0, 1.0)\n        visible: root.pvPreviewMode && root.frame < root.hideAbs && opacity > 0\n    }\n\n    // PV-preview fade-in:" web_intro_overlay "${web_intro_overlay}")
+file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/web-intro/IntroOverlay.qml" CONTENT "${web_intro_overlay}" @ONLY)
+set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/web-intro/IntroOverlay.qml" PROPERTIES QT_RESOURCE_ALIAS "qml/IntroOverlay.qml")
+list(FILTER intro_assets EXCLUDE REGEX "/IntroOverlay\\.qml$")
+list(APPEND intro_assets "${CMAKE_CURRENT_BINARY_DIR}/web-intro/IntroOverlay.qml")
 qt_add_resources(miacode-preview "web_intro"
     PREFIX "/intro" BASE "${MIACODE_SOURCE_DIR}/src/intro" FILES ${intro_assets})
 qt_add_shaders(miacode-preview "web_intro_shaders"

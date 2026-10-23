@@ -1,6 +1,6 @@
 # 设置持久化与 v2 对照
 
-对照时间：2026-10-22。参考本机 `MiaCode_v2` 的 `EditorDisplay.cpp`、`WarmupAndSettings.cpp`、`VideoExportSettings.cpp`、`ExportSession.cpp` 与 `IntroRegion.cpp`。
+对照时间：2026-10-23。参考本机 `MiaCode_v2` 的 `EditorDisplay.cpp`、`WarmupAndSettings.cpp`、`VideoExportSettings.cpp`、`ExportSession.cpp` 与 `IntroRegion.cpp`。
 
 ## 本次接入范围
 
@@ -12,7 +12,7 @@
 | 偏好设置 | 主题、字号、行距、输入、补全、快捷键、界面背景、性能参数 | 沿用现有偏好与素材存储，刷新时恢复 |
 | 导出预设 | 分辨率、帧率、音频码率、质量、体积、计数拍、片头样式、卡片和字体 | 保存现有输出与片头选项、物量统计和谱面信息开关；片头自定义背景存入 IndexedDB |
 
-导出范围在进入页面、切换导出难度时初始化为目标内容的全段。PV 片段位置、试听循环和文件写入句柄属于本次会话。导出页画面设置与公共预览设置共享。
+导出范围在进入页面、切换导出难度时初始化为目标内容的全段。PV 片段位置按项目保存；试听循环和文件写入句柄属于本次会话。导出页画面设置与公共预览设置共享。
 
 ## 导出预览行为
 
@@ -26,7 +26,7 @@
 
 成片时间沿用原生逐帧导出计划：从头导出包含 2 秒前置段与所选片头，中途导出包含 1.5 秒预载段。预览进度条右端表示内容终点。
 
-## v2 额外持久化项目，供审阅
+## v2 额外持久化项目
 
 | 项目 | v2 字段或源码依据 |
 | --- | --- |
@@ -39,6 +39,18 @@
 | 封面输出偏好与模板 | `CoverExportPreferences.h`：封面输出、卡片、背景、字体与模板相关偏好 |
 | PV 片头亮度、片头音效文件与输出模式 | `VideoExportSettings.cpp` 的 `intro_pv_brightness`、`output_mode`；`EditorDisplay.cpp` 的 `intro_sound_file` |
 
+以上八组设置接入本地偏好与项目记录。播放倍率、时间轴选项和判定参数在渲染器初始化时恢复；谱面整理复用原生标准化接口，操作入口位于编辑菜单，参数位于偏好设置的谱面整理页。
+
+启动恢复默认启用，保存上次项目、编辑标签、难度和统一谱师模式；偏好设置的编辑器页提供开关。统一谱师模式依照谱面内容恢复。最近文档展示十项，关闭项目后启动进入欢迎页。
+
+文件选择器使用按用途区分的浏览器目录标识；项目图片、视频和元数据音频以项目标识隔离。文件夹句柄存入 IndexedDB，浏览器提供文件选择 API 时恢复相应目录；文件输入控件沿用浏览器管理的选择历史。
+
+封面全局默认保存尺寸、卡片、背景样式、字体和布局，保留布局使用的素材字节；输出文件与自定义背景保存在对应项目。模板管理沿用 IndexedDB 的预设接口。
+
+片头音效文件保存在 IndexedDB，预览与导出读取同一素材；PV 片头亮度作用于视频和静态背景，卡片与转场保留各自亮度。输出模式沿用 `mp4`、`wav`、`mp4_and_wav`，视频采用浏览器支持的容器，WAV 使用 48 kHz 双声道 16 位 PCM。
+
+片头几何复用 v2 `PreviewQuickExportSession::applyIntroGeometry`：以 1920×1080 创作画布按输出高度缩放，水平居中，4:3 和 1:1 使用中心裁切。烟花亮度参考 GitHub `Team-MiaCode/MiaCode` 的 `dev` 提交 `8917e58cde5f8e1767aea01be602e74e6fd3fec3`，接入核心光线、光晕与大彩球的亮度参数及 50%–120% 控制；构建时生成 Web 适配源码和着色器。
+
 ## 验证入口
 
-`npm run test:export-preview` 覆盖导出实时设置、负时间定位、PV 素材时间换算、范围播放、难度隔离、退出恢复与刷新持久化。`npm run test:intro-audition` 覆盖选定帧试听、循环、淡出、片段修改与独立试听接口。功能验收包含 Chromium、Firefox 和软件视频解码路径，浏览器测试使用静音启动参数。
+`node tests/persistence-core-smoke.mjs` 覆盖八组偏好、刷新恢复、画面控件宽度与烟花亮度；`node tests/video-export-core-smoke.mjs` 验证 WAV、双格式输出及片头在多种分辨率下的几何。`npm run test:export-preview` 覆盖导出实时设置、负时间定位、PV 素材时间换算、范围播放、难度隔离、退出恢复与刷新持久化。`npm run test:intro-audition` 覆盖选定帧试听、循环、淡出、片段修改与独立试听接口。功能验收包含 Chromium、Firefox 和软件视频解码路径，浏览器测试使用静音启动参数。

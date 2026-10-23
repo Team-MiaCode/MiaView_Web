@@ -1,3 +1,4 @@
+import { observeFilePicker } from "./helpers/file-picker.mjs";
 import { launchPreviewBrowser } from "./preview-browser.mjs";
 import { waitForAsync } from "./helpers/wait-async.mjs";
 import assert from "node:assert/strict";
@@ -16,6 +17,7 @@ try {
   const errors=[];page.on("pageerror",error=>errors.push(error.message));
   const command=(id,args)=>page.evaluate(({id,args})=>document.getElementById("workbench").editor.command(id,args),{id,args});
   const state=()=>page.evaluate(()=>document.getElementById("workbench").editor.preview.getState());
+  await observeFilePicker(page);
   await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);await page.locator(".welcome-title").waitFor();await page.evaluate(()=>document.getElementById("workbench").editor.ready);
   const defaults=await page.evaluate(()=>document.getElementById("workbench").editor.preview.normalizeBackground());
   assert.equal(defaults.opacity,.2);assert.equal(defaults.panelAlpha,200);
@@ -52,7 +54,7 @@ try {
   const invalid=page.evaluate(async()=>{try{await document.getElementById("workbench").editor.command("background.choose");return false;}catch{return true;}});
   await(await invalidPicker).setFiles({name:"invalid.png",mimeType:"image/png",buffer:Buffer.from("invalid")});assert.equal(await invalid,true);
   assert.equal(await page.locator(".workbench").evaluate(node=>getComputedStyle(node,"::before").backgroundImage),appearance.url);
-  await page.reload();await page.locator(".welcome-title").waitFor();await page.evaluate(()=>document.getElementById("workbench").editor.ready);
+  await page.reload();await page.waitForFunction(() => document.getElementById("workbench")?.editor);await page.evaluate(()=>document.getElementById("workbench").editor.ready);
   assert.equal(await page.locator(".workbench").evaluate(node=>node.classList.contains("app-background-active")),true);
   await command("page.preferences");await page.locator('.settings-tabs [data-page="background"]').click();
   await page.getByRole("button",{name:"清除",exact:true}).click();
@@ -96,7 +98,7 @@ try {
   assert.equal(invalidFont,true);assert.equal((await state()).settings.hudFontPaths.chart_info,first);
   const font=await page.evaluate(()=>document.getElementById("workbench").editor.preview.importFont(new URL("vendor/MiaCode/src/intro/assets/fonts/ResourceHanRoundedCN-Bold.ttf",location.href).href,"same-font.otf"));
   assert.equal(font.path,first);
-  await page.reload();await page.locator(".welcome-title").waitFor();await page.evaluate(()=>document.getElementById("workbench").editor.ready);
+  await page.reload();await page.waitForFunction(() => document.getElementById("workbench")?.editor);await page.evaluate(()=>document.getElementById("workbench").editor.ready);
   const restored=await state();assert.equal(restored.settings.hudFontPaths.chart_info,first);
   assert.equal(await page.evaluate(()=>document.getElementById("workbench").editor.workbench.documentSession.userFonts.length),1);
   assert.deepEqual(errors,[]);

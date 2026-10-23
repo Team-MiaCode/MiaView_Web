@@ -3,6 +3,7 @@ const keys = new Set([
   "showObjectStatsHud", "showChartInfoHud", "introEnabled", "introPvPreview", "introBackgroundModeIndex",
   "introCustomBackgroundPath", "introModeIndex", "introBlurBackground", "introCardShadow", "introLevelTextRender",
   "introFontDisplayPath", "introFontBodyPath",
+  "introPvBrightness", "outputMode",
 ]);
 
 // Range, source clip, output handle and audition state belong to the open session.

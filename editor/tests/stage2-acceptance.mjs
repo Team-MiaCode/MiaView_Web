@@ -14,10 +14,10 @@ const common = ["document-fields", "editor-core", "editor-ime", "project-files",
   "analysis-core", "preview-settings-core", "touch-authoring", "audio-settings-core", "latency-core", "audio-info-core",
   "shortcuts-core", "preferences-core", "editor-preferences", "appearance-core", "intro-audition-core", "cover-canvas",
   "cover-files-core", "cover-chart-frame", "cover-pv", "video-export-core", "video-export-workbench", "video-export-long",
-  "preview-window", "performance-core", "video-geometry", "creation-workflow", "timeline-playback", "timeline-interaction", "export-preview"];
+  "preview-window", "performance-core", "video-geometry", "creation-workflow", "timeline-playback", "timeline-interaction", "export-preview", "persistence-core"];
 const firefox = ["latency-core", "audio-info-core", "shortcuts-core", "preferences-core", "editor-preferences", "appearance-core",
   "intro-audition-core", "cover-canvas", "cover-files-core", "cover-chart-frame", "cover-pv", "video-export-core",
-  "preview-window", "performance-core", "video-geometry", "timeline-playback", "timeline-interaction", "export-preview"];
+  "preview-window", "performance-core", "video-geometry", "timeline-playback", "timeline-interaction", "export-preview", "persistence-core"];
 const cases = (browser === "chromium" ? common : firefox).map(name => ({ name, software: false }));
 for (const name of ["intro-audition-core", "cover-pv", "video-export-core", "preview-window", "timeline-interaction", "export-preview"])
   cases.push({ name, software: true });

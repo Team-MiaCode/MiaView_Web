@@ -154,6 +154,13 @@ export function normalizeSettings(settings) {
         if (!["chart_info", "timestamp", "center_display", "object_stats", "debug_info"].includes(area) || typeof path !== "string")
           throw new Error("Unknown HUD font area or path");
       }
+    } else if (name === "fireworkBrightness") {
+      if (!Number.isFinite(value) || value < .5 || value > 1.2) throw new Error("fireworkBrightness must be between 0.5 and 1.2");
+    } else if (name === "handRadiusPx" || name === "staticTapOnSlideThresholdMs") {
+      const [min, max] = name === "handRadiusPx" ? [0, 60] : [150, 250];
+      if (!Number.isInteger(value) || value < min || value > max) throw new Error(`${name} must be between ${min} and ${max}`);
+    } else if (["showSlideTracks", "showJudgeMarkers", "showTouchTrail", "wifiNeedC"].includes(name)) {
+      if (typeof value !== "boolean") throw new Error(`${name} must be a boolean`);
     } else if (name === "outerBrightness" || name === "innerBrightness") {
       if (!Number.isFinite(value) || value < 0 || value > 1)
         throw new Error(`${name} must be between 0 and 1`);

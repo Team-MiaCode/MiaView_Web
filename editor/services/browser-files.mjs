@@ -2,16 +2,37 @@ import { relocatePath } from "./chart-resources.mjs";
 import { projectArchive } from "./zip-store.mjs";
 
 export class BrowserFiles {
-  constructor({ readDirectory, pickDirectory = browserPicker("showDirectoryPicker"), pickSaveFile = browserPicker("showSaveFilePicker"), download = downloadText } = {}) {
+  constructor({ readDirectory, pickDirectory = browserPicker("showDirectoryPicker"), pickSaveFile = browserPicker("showSaveFilePicker"), pickOpenFile = browserPicker("showOpenFilePicker"), assets, download = downloadText } = {}) {
     this.readDirectory = readDirectory;
     this.pickDirectory = pickDirectory;
     this.pickSaveFile = pickSaveFile;
     this.download = download;
+    this.pickOpenFile = pickOpenFile;
+    this.assets = assets;
+  }
+  async openFiles({ accept, multiple = false, purpose, projectId, fallback }) {
+    if (!this.pickOpenFile) return fallback();
+    // Browser picker IDs retain their own directory history across sessions.
+    const id = `${purpose}-${projectId || "global"}`.slice(0, 32);
+    try {
+      const extensions = accept.split(",").filter(Boolean);
+      const handles = await this.pickOpenFile({ id, multiple,
+        ...(extensions.length ? { types: [{ description: "素材文件", accept: { "application/octet-stream": extensions } }] } : {}) });
+      return Promise.all(handles.map(handle => handle.getFile()));
+    } catch (error) {
+      if (error.name === "AbortError") return [];
+      if (error.name === "SecurityError") return fallback();
+      throw error;
+    }
   }
   async openFolder({id="miacode-project",mode="readwrite"}={}) {
     if (!this.pickDirectory) return { files: await this.readDirectory(), handles: new Map() };
     let directoryHandle;
-    try { directoryHandle = await this.pickDirectory({ id, mode }); }
+    try {
+      const prior = await this.assets?.get(`file-dialog:${id}`);
+      directoryHandle = await this.pickDirectory({ id, mode, ...(prior?.handle ? { startIn: prior.handle } : {}) });
+      await this.assets?.put({ id: `file-dialog:${id}`, kind: "file-dialog", handle: directoryHandle });
+    }
     catch (error) {
       if (error.name === "AbortError") return null;
       if (error.name === "SecurityError") return { files: await this.readDirectory(), handles: new Map() };

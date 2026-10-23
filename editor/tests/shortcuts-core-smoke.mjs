@@ -92,7 +92,7 @@ try {
   await page.getByRole("dialog",{name:"录制快捷键"}).getByRole("button",{name:"保存",exact:true}).click();
   await page.waitForFunction(()=>JSON.parse(localStorage.getItem("miacode.web.preferences")).shortcuts?.["transform.mirror_lr"]==="Ctrl+Alt+Q");
   await selectAll(); await editor.press("Control+Alt+q"); await page.waitForFunction(()=>document.querySelector(".source-input").value.includes("8,7"));
-  await page.reload(); await page.locator(".welcome-title").waitFor(); await load(); await selectAll();
+  await page.reload(); await page.waitForFunction(() => document.getElementById("workbench")?.editor); await load(); await selectAll();
   await editor.press("Control+Alt+q"); await page.waitForFunction(()=>document.querySelector(".source-input").value.includes("8,7"));
   await command("page.preferences"); await page.locator('.settings-tabs [data-page="shortcuts"]').click();
   await mirror().click(); await page.keyboard.press("Escape"); assert.equal(await page.locator('dialog[open]').count(),0);

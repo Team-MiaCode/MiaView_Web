@@ -17,7 +17,7 @@ import { updateAudioSettings } from "./audio-settings.mjs";
 
 const menus = {
   文件: [["新建谱面", "file.new", "Ctrl+Alt+N"], ["打开谱面文件夹", "file.open", "Ctrl+Shift+O"], ["打开示例", "file.demo"], null, ["保存", "file.save", "Ctrl+S"], ["保存全部", "file.saveAll", "Ctrl+Shift+S"], ["另存为", "file.saveAs"], ["恢复自动保存", "file.restore"], ["关闭谱面", "file.close"]],
-  编辑: [["撤销", "edit.undo", "Ctrl+Z"], ["重做", "edit.redo", "Ctrl+Y"], null, ["剪切", "edit.cut", "Ctrl+X"], ["复制", "edit.copy", "Ctrl+C"], ["粘贴", "edit.paste", "Ctrl+V"], ["全选", "edit.selectAll", "Ctrl+A"], ["查找替换", "edit.find", "Ctrl+F"], ["添加书签", "edit.bookmark"]],
+  编辑: [["撤销", "edit.undo", "Ctrl+Z"], ["重做", "edit.redo", "Ctrl+Y"], null, ["剪切", "edit.cut", "Ctrl+X"], ["复制", "edit.copy", "Ctrl+C"], ["粘贴", "edit.paste", "Ctrl+V"], ["全选", "edit.selectAll", "Ctrl+A"], ["查找替换", "edit.find", "Ctrl+F"], ["添加书签", "edit.bookmark"], ["谱面整理", "edit.normalizeChart"]],
   调整: [["左右镜像", "transform.mirror_lr"], ["上下镜像", "transform.mirror_ud"], ["旋转 180°", "transform.rotate_180"], ["顺时针旋转 45°", "transform.rotate_cw_45"], ["逆时针旋转 45°", "transform.rotate_ccw_45"], null, ["细分拍 +1", "transform.subdivision_up"], ["细分拍 −1", "transform.subdivision_down"], ["切换 Break", "transform.toggle_break"], ["切换 EX", "transform.toggle_ex"], ["切换烟花", "transform.toggle_firework"], ["重置摆键", "transform.reset_tap_notes"]],
   视图: [["侧栏", "view.sidebar", "Ctrl+B"], ["底部面板", "view.bottom"], ["预览位置", "view.swap"], ["编辑 / 预览", "view.preview"], ["谱面信息", "page.metadata"], ["偏好设置", "page.preferences"]],
   工具: [["导入音乐", "media.audio"], ["BPM 与延迟", "page.latency"], ["视频导出", "page.export"], ["封面编辑", "page.cover"], ["预览设置", "page.preview-settings"], ["音频设置", "page.audio-settings"]],
