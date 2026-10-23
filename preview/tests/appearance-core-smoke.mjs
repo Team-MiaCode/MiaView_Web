@@ -33,7 +33,9 @@ try {
   const upload = async (id, files) => {
     const picker = page.waitForEvent("filechooser");
     await page.evaluate(id => { window.importing = document.getElementById("workbench").editor.command(id); }, id);
-    await (await picker).setFiles(files); return page.evaluate(() => importing);
+    const chooser = await picker;
+    assert.equal(await chooser.element().evaluate(input => input.isConnected), true, "Picker input remains attached during directory and file imports");
+    await chooser.setFiles(files); return page.evaluate(() => importing);
   };
   result.skin = await upload("skin.import", folder);
   assert.match(result.skin.skinDirectoryName, /^skin-[a-f0-9]{64}$/);

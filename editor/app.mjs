@@ -244,15 +244,17 @@ export function createWorkbench(container, options = {}) {
     canvasSize = key;
     await preview.setCanvasSize(size);
   }
+  const fileInput = document.createElement("input");
+  fileInput.type = "file"; fileInput.hidden = true;
+  workbench.root.append(fileInput);
   const reader = async (accept, multiple = false, directory = false, purpose = "asset", chartScoped = false) => {
     const fallback = () => {
-      const input = document.createElement("input");
-      input.type = "file"; input.accept = accept; input.multiple = multiple;
-      if (directory) input.setAttribute("webkitdirectory", "");
+      fileInput.value = ""; fileInput.accept = accept; fileInput.multiple = multiple;
+      fileInput.toggleAttribute("webkitdirectory", directory);
       return new Promise(resolve => {
-        input.addEventListener("change", () => resolve([...input.files]), { once: true });
-        input.addEventListener("cancel", () => resolve([]), { once: true });
-        input.click();
+        fileInput.onchange = () => resolve([...fileInput.files]);
+        fileInput.oncancel = () => resolve([]);
+        fileInput.click();
       });
     };
     return !directory && fileService?.openFiles
