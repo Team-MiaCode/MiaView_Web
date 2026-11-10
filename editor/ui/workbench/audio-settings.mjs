@@ -4,7 +4,7 @@ import { translate } from "../components/translate.mjs";
 
 const channels = [["global", "global"], ["track", "track"], ["answer", "answer"], ["tap", "tap"], ["ex", "ex"], ["break", "break"], ["breakSlide", "break_slide"], ["slide", "slide"], ["touch", "touch"], ["firework", "firework"], ["intro", "intro"]];
 
-export function createAudioSettings({ viewState, documentSession, command }) {
+export function createAudioSettings({ viewState, documentSession, command, close = () => command("editor.close", { key: "audio-settings" }) }) {
   const values = documentSession.audio?.channels || {};
   const t = key => translate(key, viewState.preferences.languageToken || "zh");
   const root = h("div", { className: "audio-settings native-form" });
@@ -22,7 +22,7 @@ export function createAudioSettings({ viewState, documentSession, command }) {
     mixer.append(h("div", { className: "audio-channel", dataset: { channel: key } }, h("span", { className: "form-label" }, label), mute, control));
   }
   root.append(mixer, toggle(t("qml.mute_break_star_tail_judgement_sound"), documentSession.audio?.breakSlideTailCheerMuted ?? false, value => command("audio.breakSlideTailCheerMuted", { value }), "audio-tail-cheer"),
-    h("div", { className: "action-row" }, button(t("qml.set_as_local_default"), () => command("audio.saveAsSoftwareDefault")), button(t("qml.restore_local_defaults"), () => command("audio.restoreSoftwareDefault")), button(t("action.close"), () => command("editor.close", { key: "audio-settings" }))));
+    h("div", { className: "action-row" }, button(t("qml.set_as_local_default"), () => command("audio.saveAsSoftwareDefault")), button(t("qml.restore_local_defaults"), () => command("audio.restoreSoftwareDefault")), button(t("action.close"), close)));
   return root;
 }
 

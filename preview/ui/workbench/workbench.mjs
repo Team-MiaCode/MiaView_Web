@@ -3,8 +3,7 @@ import { SourceEditor } from "./source-editor.mjs";
 import { DifficultyHeader } from "./difficulty-header.mjs";
 import { EditorTabs } from "./editor-tabs.mjs";
 import { openDesignerSlots } from "./designer-slots.mjs";
-import { NoteStatistics } from "./note-statistics.mjs";
-import { PreviewTransport } from "./preview-transport.mjs";
+import { createPreviewPanel } from "./preview-panel.mjs";
 import { createAnalysisPanel, analysisCount } from "./analysis-panel.mjs";
 import { createChartSidebar } from "./chart-sidebar.mjs";
 import { TimelineView } from "./timeline-view.mjs";
@@ -158,12 +157,13 @@ export class Workbench extends EventTarget {
     const bottomPanel = h("section", { className: "bottom-panel", "aria-label": "时间轴与分析" }, this.bottomTabs, this.bottomBody);
     const bottomHandle = h("div", { className: "split-handle horizontal bottom-divider", role: "separator", tabIndex: 0, "aria-label": "底部面板高度", "aria-orientation": "horizontal" });
     this.editorHost = h("div", { className: "editor-host" }, editorPanel, bottomHandle, bottomPanel);
-    this.previewContainer = h("div", { className: "preview-container" }, h("div", { className: "preview-empty" }, "选择谱面查看预览"));
-    const previewHeader = h("h2", { className: "panel-heading" }, "预览", h("span", { className: "spacer" }), button("预览设置", () => state.openEditor("preview-settings"), { symbol: "preview-settings", className: "chrome", iconOnly: true }));
-    this.noteStatistics = new NoteStatistics(() => state.preferences.languageToken || "zh");
-    this.previewTransport = new PreviewTransport((id, args) => this.command(id, args), (trigger, items) => this.showMenu(trigger, items), state);
-    this.previewTransport.setDocument(this.documentSession);
-    const previewHost = h("section", { className: "preview-host", "aria-label": "谱面预览" }, previewHeader, this.previewContainer, this.previewTransport.root, this.noteStatistics.root);
+    const { root: previewHost, container, transport, statistics } = createPreviewPanel({
+      viewState: state, command: (id, args) => this.command(id, args),
+      menu: (trigger, items) => this.showMenu(trigger, items), openSettings: () => state.openEditor("preview-settings"),
+    });
+    this.previewContainer = container;
+    this.previewTransport = transport;
+    this.noteStatistics = statistics;
     const previewHandle = h("div", { className: "split-handle vertical preview-divider", role: "separator", tabIndex: 0, "aria-label": "预览宽度", "aria-orientation": "vertical" });
     this.mainSplit = h("div", { className: "main-split" }, this.editorHost, previewHandle, previewHost);
     const workspace = h("div", { className: "workspace" }, activity, this.sidebar, sidebarHandle, this.mainSplit);

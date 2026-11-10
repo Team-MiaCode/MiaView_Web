@@ -7,7 +7,7 @@ import { element as h } from "./ui/components/dom.mjs";
 import { translate, formatMessage } from "./ui/components/translate.mjs";
 import { BrowserFiles } from "./services/browser-files.mjs";
 import { ProjectStore } from "./services/project-store.mjs";
-import { previewSettingsFromValues, previewValuesFromSettings } from "./services/preview-appearance.mjs";
+import { HUD_AREAS, previewSettingsFromValues, previewValuesFromSettings } from "./services/preview-appearance.mjs";
 import { stageResource, relocatePath, resourceFile, resolveChartResource, resolveChartMedia, inputPaths, hydrateProjectResources } from "./services/chart-resources.mjs";
 import { decodeMaidata } from "./renderer/runtime.mjs";
 import { WorkbenchShortcuts } from "./services/shortcuts.mjs";
@@ -26,7 +26,6 @@ import { TIMELINE_ZOOM_PRESETS } from "./ui/workbench/timeline-controls.mjs";
 import { exportPreferences } from "./services/export-preferences.mjs";
 import { coverPreferences } from "./services/cover-preferences.mjs";
 
-const HUD_AREAS = ["chart_info", "timestamp", "center_display", "object_stats", "debug_info"];
 const MURI_SETTINGS = ["previewMode", "handRadiusPx", "wifiNeedC", "staticTapOnSlideThresholdMs"];
 
 const SAMPLE = "&title=MiaCode Example\n&artist=MiaCode\n&first=0\n&lv_5=12\n&des_5=MiaCode\n&inote_5=(120){4}\n1,2,3,4,5,6,7,8,\n1b,2x,3h[4:1],4-8[4:1],\nA1,B2,C,D3,E4,E\n";

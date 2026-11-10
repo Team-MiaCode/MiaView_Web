@@ -3,7 +3,7 @@ import { select, range, check, toggle, formRow } from "../components/forms.mjs";
 import { settingsTabs } from "../components/settings-tabs.mjs";
 import { translate } from "../components/translate.mjs";
 
-export function previewAppearanceSections({ viewState, documentSession, command }) {
+export function previewAppearanceSections({ viewState, documentSession, command, touchPadAuthoring = true }) {
   const values = documentSession.previewValues ||= {};
   const settings = documentSession.previewSettings || {};
   const t = key => translate(key, viewState.preferences.languageToken || "zh");
@@ -34,7 +34,7 @@ export function previewAppearanceSections({ viewState, documentSession, command 
       choice("scaleMode", label("video.scale_mode"), [[0, label("video.scale.fill")], [1, label("video.scale.fit")], [2, label("video.scale.square_fit")], [3, label("video.scale.inner_circle_fit_outer_fill")]], 0),
       switchRow("smoothBrightness", label("video.smooth_brightness"), true),
       switchRow("showTimestamp", t("dialog.video_export.option.show_timestamp"), true),
-      switchRow("touchPadAuthoringShortcut", label("video.touch_pad_authoring_shortcut"), false),
+      ...(touchPadAuthoring ? [switchRow("touchPadAuthoringShortcut", label("video.touch_pad_authoring_shortcut"), false)] : []),
       switchRow("forceLabeledJudgeLineWhenPaused", label("gameplay.force_labeled_judge_line_when_paused"), false),
       switchRow("showDebugInfo", label("preview.debug"), false),
     ] },

@@ -8,14 +8,17 @@
   <link rel="stylesheet" href="page.css">
 </head>
 <body>
-  <header>
+  <header class="source-bar">
     <h1>MiaView Web</h1>
     <label class="folder">打开谱面文件夹<input id="files" type="file" webkitdirectory multiple disabled></label>
+    <label class="folder">打开谱面<input id="maidata" type="file" accept=".txt,text/plain" disabled></label>
     <select id="project" aria-label="谱面文件夹" hidden></select>
     <select id="difficulty" aria-label="难度" disabled></select>
+    <button id="media" type="button" aria-haspopup="menu" disabled>媒体</button>
     <output id="status" role="status">预览初始化中…</output>
   </header>
   <main id="preview" aria-label="谱面预览"></main>
+  <input id="asset" type="file" hidden>
   <template id="local-server-help"><main class="local-server-help"><h1>MiaView Web</h1><p>预览通过 HTTP 服务加载。请在本目录运行：</p><pre><code>npm run dev</code></pre><a href="http://127.0.0.1:3030/index.html">打开本地预览</a></main></template>
   <script>
     if (location.protocol === "file:") document.body.replaceChildren(document.getElementById("local-server-help").content.cloneNode(true));

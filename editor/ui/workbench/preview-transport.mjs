@@ -3,7 +3,7 @@ import { translate } from "../components/translate.mjs";
 import { PLAYBACK_RATES } from "../../renderer/playback.mjs";
 
 export class PreviewTransport {
-  constructor(command, menu, viewState) {
+  constructor(command, menu, viewState, trailingAction) {
     this.state = { currentTime: 0, duration: 0, playing: false, rate: 1 };
     this.viewState = viewState;
     this.loaded = false;
@@ -31,8 +31,8 @@ export class PreviewTransport {
       [t("preview.canvas.free_aspect"), "preview.toggleFreeAspect", "", {}, { role: "menuitemcheckbox", checked: Boolean(viewState.preferences.previewCanvasFreeAspect) }],
       [t("preview.canvas.hide_pv"), "preview.toggleHidePv", "", {}, { role: "menuitemcheckbox", checked: Boolean(viewState.preferences.previewHidePv) }],
     ]), { symbol: "preview-settings", iconOnly: true, className: "chrome", "aria-haspopup": "menu" });
-    this.detach = button(t("preview.window.detach"), () => command("preview.detach"), { symbol: "preview-detach", iconOnly: true, className: "chrome" });
-    this.row = h("div", { className: "preview-control-row" }, this.stop, this.play, this.time, this.range, this.rate, this.canvas, this.detach);
+    this.trailingAction = trailingAction ?? button(t("preview.window.detach"), () => command("preview.detach"), { symbol: "preview-detach", iconOnly: true, className: "chrome" });
+    this.row = h("div", { className: "preview-control-row" }, this.stop, this.play, this.time, this.range, this.rate, this.canvas, this.trailingAction);
     this.root = h("div", { className: "preview-transport", "aria-label": "播放控制", role: "group" }, this.seek, this.row);
     this.update(this.state);
   }
@@ -43,9 +43,9 @@ export class PreviewTransport {
   }
   setExportMode(enabled) { this.range.hidden = !this.loaded || !enabled; }
   setDetached(detached) {
-    this.detach.setAttribute("aria-pressed", String(detached));
+    this.trailingAction.setAttribute("aria-pressed", String(detached));
     const text = detached ? "嵌回预览" : translate("preview.window.detach", this.viewState.preferences.languageToken || "zh");
-    this.detach.setAttribute("aria-label", text); this.detach.title = text;
+    this.trailingAction.setAttribute("aria-label", text); this.trailingAction.title = text;
   }
   paintTime(second, duration) {
     const format = value => `${value < 0 ? "-" : ""}${String(Math.floor(Math.abs(value) / 60)).padStart(2, "0")}:${String(Math.floor(Math.abs(value) % 60)).padStart(2, "0")}`;

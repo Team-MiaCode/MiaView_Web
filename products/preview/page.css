@@ -1,14 +1,33 @@
-* { box-sizing: border-box; }
-[hidden] { display: none !important; }
+@import url("ui/components/preview-controls.css");
+
 html, body { width: 100%; height: 100%; margin: 0; }
-body { display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--background-surface); color: var(--text-primary); font: 13px/1.45 "Microsoft YaHei UI", system-ui, sans-serif; }
-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; background: var(--background-panel); }
+body { display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--background-surface); color: var(--text-primary); font: var(--ui-font-size, 13px)/1.45 "Microsoft YaHei UI", system-ui, sans-serif; }
+.source-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; background: var(--background-panel); }
 h1 { margin: 0 8px 0 0; font-size: 16px; }
-select, .folder { max-width: 100%; border: 1px solid var(--border-control); border-radius: 5px; padding: 6px 10px; background: var(--background-control); color: inherit; font: inherit; }
-.folder { position: relative; cursor: pointer; }
+.source-bar > select { width: auto; max-width: 100%; appearance: auto; }
+.folder { position: relative; cursor: pointer; max-width: 100%; border: 1px solid var(--border-control); border-radius: 5px; padding: 6px 10px; background: var(--background-control); }
 .folder:has(input:disabled) { cursor: wait; opacity: .65; }
 .folder input { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
 .folder:focus-within, select:focus-visible { outline: 2px solid var(--accent-primary); }
 #status { min-width: 0; overflow-wrap: anywhere; color: var(--text-secondary); }
 #preview { min-width: 0; min-height: 0; }
+.preview-host { height: 100%; display: grid; grid-template-rows: 34px minmax(120px, 1fr) auto auto; overflow: auto; background: var(--background-panel); }
+.preview-surface { background: #000; }
+.preview-settings-overlay {
+  position: absolute;
+  inset: auto 0 0;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--background-panel) 88%, transparent);
+  border-top: 1px solid var(--border-normal);
+}
+.preview-overlay-heading { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 12px; }
+.preview-overlay-heading h3 { margin: 0; font-size: inherit; }
+.preview-overlay-body { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 8px 12px 12px; }
+.preview-overlay-body > .native-form { max-width: 640px; margin-inline: auto; }
+@container (max-width: 420px) {
+  .preview-overlay-body .form-row.with-action { grid-template-columns: minmax(0, 1fr) auto; }
+  .preview-overlay-body .form-row.with-action > .form-label { grid-column: 1 / -1; }
+}
 .local-server-help { padding: 24px; }
