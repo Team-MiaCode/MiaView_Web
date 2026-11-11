@@ -121,6 +121,7 @@ build-devtools/pages/
 ├── examples/
 ├── sdk/
 ├── renderer/
+├── wasm/
 ├── ui/
 ├── services/
 └── .nojekyll
@@ -148,7 +149,7 @@ Windows 使用 `python` 代替 `python3`。打开 <http://localhost:8080>，不�
 
 ### 放置静态资源
 
-从 `miaview-preview` 或本地构建结果中，将同一版本的四个目录一起复制到网站静态目录：
+下载 `standalone-preview` 对应提交的 `miaview-preview` 或 `miaview-preview-standalone`，也可通过 `npm run sync:products -- --runtime` 生成独立预览包。将同一版本的四个目录一起复制到网站静态目录：
 
 ```text
 public/

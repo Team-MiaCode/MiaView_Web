@@ -13,7 +13,7 @@
 | `ui/` | 播放面板、设置组件、样式、字体及图标 |
 | `services/` | 播放器使用的共享资源与设置服务 |
 
-若构建产物过期，可对同一提交重新运行工作流，或按[仓库构建说明](../README.md#开发与构建)构建原生运行时，再执行 `npm run build:pages -- build-devtools/miaview-site`，从输出根目录提取这四个目录。若手头是 `miaview-preview-standalone`，也可从解压根目录提取同名目录。
+若构建产物过期，可对同一提交重新运行工作流，或按[仓库构建说明](../README.md#开发与构建)构建原生运行时，再执行 `npm run sync:products -- --runtime`，从 `build-devtools/products/preview` 提取这四个目录。`miaview-preview-standalone` 的解压根目录也提供同名目录。
 
 部署时保留目录内的文件和相对路径，四个目录按同一版本一起更新。`.mjs` 使用 JavaScript MIME 类型，`.wasm` 使用 `application/wasm`。确认 `/miaview/sdk/index.mjs`、`/miaview/renderer/index.html` 和 `/miaview/renderer/build-identity.json` 可访问。示例采用网站同源 HTTPS 和 `diagnostics: false`，这组配置只需静态文件。
 
@@ -174,6 +174,6 @@ const detach = attachChart({
 
 ## 分支与交付物
 
-当前分支包含完整的 **MiaCode Web 网页编辑器源码**。仓库根目录提供工作台，`editor/` 提供独立编辑器，`preview/` 提供独立预览。部署网页编辑器选择 `miaview-editor`。网站详情页接入播放器选择 `miaview-preview` 的四个静态目录，生成的 Qt JS/WASM 随构建产物提供。
+当前分支包含完整的 **MiaCode Web 网页编辑器源码**。仓库根目录提供工作台及共享源码，Pages 输出的 `editor/` 和 `preview/` 分别提供独立编辑器和预览入口。部署完整编辑器选择 `miaview-editor`。网站详情页接入播放器可使用 `miaview-preview` 的四个静态目录，生成的 Qt JS/WASM 随构建产物提供。
 
 仓库另有 [HTML 示例](../examples/pages.html)、[React 示例](../examples/react-preview.jsx)和[网站资源适配器](../examples/chart-website-adapter.mjs)。

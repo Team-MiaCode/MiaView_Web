@@ -10,12 +10,12 @@ const sha256 = async (bytes) =>
 // Disk only: don't retain a second in-memory copy of videos or engine bytes.
 // Cache failures (private browsing/quota) must never prevent playback.
 export class PreviewByteCache {
-  constructor(name, maxBytes, maxEntries = 64, storage = globalThis.caches) {
+  constructor(name, maxBytes, maxEntries = 64, storage = globalThis.caches, locks = globalThis.navigator?.locks) {
     this.name = name;
     this.maxBytes = maxBytes;
     this.maxEntries = maxEntries;
     this.storage = storage;
-    this.writes = Promise.resolve();
+    this.locks = locks;
   }
   key(hash, size, scope = "engine") {
     return `https://miacode-cache.invalid/${encodeURIComponent(scope)}/${hash}/${size}`;
@@ -29,7 +29,6 @@ export class PreviewByteCache {
       if (!response) return null;
       const bytes = await response.arrayBuffer();
       if (bytes.byteLength !== size || (await sha256(bytes)) !== hash) {
-        await cache.delete(key);
         return null;
       }
       return bytes;
@@ -38,8 +37,9 @@ export class PreviewByteCache {
     }
   }
   async write(hash, bytes, scope) {
-    if (!this.storage || bytes.byteLength > this.maxBytes) return;
-    const write = async () => {
+    // Each renderer has its own JavaScript realm, but CacheStorage is shared.
+    if (!this.storage || !this.locks || bytes.byteLength > this.maxBytes) return;
+    await this.locks.request(`miacode-cache:${this.name}`, async () => {
       const cache = await this.storage.open(this.name);
       const key = this.key(hash, bytes.byteLength, scope);
       await cache.delete(key);
@@ -68,18 +68,28 @@ export class PreviewByteCache {
           headers: { "x-miacode-size": String(bytes.byteLength) },
         }),
       );
-    };
-    this.writes = this.writes.then(write).catch(() => {});
-    await this.writes;
+    }).catch(() => {});
   }
 }
 
 const engineCache = new PreviewByteCache(
   "miacode-engine-v1",
-  64 * 1024 * 1024,
+  160 * 1024 * 1024,
   2,
 );
 const assetCache = new PreviewByteCache("miacode-assets-v1", 128 * 1024 * 1024);
+
+export function rendererAssetUrl(baseUrl, file, version) {
+  if (file.url !== undefined) {
+    const suffix = `wasm/${file.sha256}.wasm`;
+    if (!file.path.endsWith(".wasm") || ![`../${suffix}`, `../../${suffix}`].includes(file.url))
+      throw new Error("播放器资源地址无效");
+    return new URL(file.url, baseUrl);
+  }
+  const url = new URL(file.path, baseUrl);
+  url.searchParams.set("build", version);
+  return url;
+}
 
 // Bind glue and WASM to one inventory. Mixed cached builds can have different
 // minified export/import indices and trap even before the Qt window starts.
@@ -119,8 +129,7 @@ export async function loadPreviewRuntime(
     const entries = manifest.files.filter((file) => file?.path === path);
     if (entries.length !== 1 || !/^[a-f0-9]{64}$/.test(entries[0].sha256))
       throw mismatch();
-    const url = new URL(path, baseUrl);
-    url.searchParams.set("build", identity.version);
+    const url = rendererAssetUrl(baseUrl, entries[0], identity.version);
     const integrity =
       "sha256-" +
       btoa(
@@ -287,8 +296,7 @@ export class PreviewMediaCache {
   constructor({ videoTimeoutMs = 30000, onVideoTimeout = () => {} } = {}) {
     this.videoTimeoutMs = previewPvTimeout(videoTimeoutMs);
     this.onVideoTimeout = onVideoTimeout;
-    this.skippedVideoUrls = new Set();
-    this.skippedVideoBlobs = new WeakSet();
+    this.resetVideoTimeout();
   }
   videoKey(resource) {
     return JSON.stringify([resource.url, resource.sha256, resource.byteSize]);
@@ -298,7 +306,8 @@ export class PreviewMediaCache {
     signal?.throwIfAborted();
     const local = resource instanceof Blob;
     const key = local ? resource : this.videoKey(resource);
-    const skipped = local ? this.skippedVideoBlobs : this.skippedVideoUrls;
+    const scope = this.videoTimeoutScope;
+    const skipped = local ? scope.blobs : scope.urls;
     if (skipped.has(key)) return null;
     const controller = new AbortController();
     const cancelled = () => controller.abort(signal.reason);
@@ -331,7 +340,10 @@ export class PreviewMediaCache {
       ]);
     } catch (error) {
       if (!timedOut) throw error;
-      skipped.add(key);
+      if (scope === this.videoTimeoutScope) {
+        this.resetVideoTimeout();
+        (local ? this.videoTimeoutScope.blobs : this.videoTimeoutScope.urls).add(key);
+      }
       this.onVideoTimeout();
       return null;
     } finally {
@@ -341,7 +353,12 @@ export class PreviewMediaCache {
   }
   clear() {
     this.entry = null;
+    this.resetVideoTimeout();
   }
+  resetVideoTimeout() {
+    this.videoTimeoutScope = { urls: new Set(), blobs: new WeakSet() };
+  }
+  get skippedVideoUrls() { return this.videoTimeoutScope.urls; }
   load(
     resources,
     context,
@@ -362,11 +379,13 @@ export class PreviewMediaCache {
         a.cacheScope === b.cacheScope);
     if (
       this.entry &&
+      (!this.entry.videoTimedOut || signal === this.entry.signal) &&
       (this.entry.complete || !this.entry.signal?.aborted) &&
       kinds.every((kind) => same(resources[kind], this.entry.resources[kind]))
     ) {
       const cached = this.entry;
       if (!prepareVideo) return cached;
+      this.resetVideoTimeout();
       return {
         ...cached,
         video: this.loadVideo(
@@ -377,6 +396,7 @@ export class PreviewMediaCache {
         ),
       };
     }
+    this.resetVideoTimeout();
     const resourceNames = {
       maidata: "谱面",
       audio: "音乐",
@@ -435,6 +455,7 @@ export class PreviewMediaCache {
     );
     const media = Promise.all([music, video]).then(
       ([{ track, coverBytes }, videoBlob]) => {
+        entry.videoTimedOut = Boolean(resource && !videoBlob);
         entry.mediaReady = true;
         entry.complete = !!entry.textReady;
         return { track, coverBytes, videoBlob };

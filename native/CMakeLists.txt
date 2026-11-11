@@ -47,6 +47,29 @@ target_sources(miacode_preview_quick PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/firework-layer.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/firework-layer.h")
 
+# Build the shared font lookup and the Web release operation in the same unit.
+set(upstream_hud_source "${MIACODE_SOURCE_DIR}/src/core/scene/PreviewHudState.cpp")
+set_property(SOURCE "${upstream_hud_source}" TARGET_DIRECTORY miacode_scene PROPERTY HEADER_FILE_ONLY ON)
+file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/web-hud-font-cache.cpp" CONTENT [=[
+#include "core/scene/PreviewHudState.cpp"
+
+void webReleaseHudFont(const QString& path)
+{
+    auto& cache = hudFontCache();
+    const QMutexLocker lock(&cache.mutex);
+    const auto entry = cache.fonts.take(QFileInfo(path).absoluteFilePath());
+    if (entry.fontId >= 0) QFontDatabase::removeApplicationFont(entry.fontId);
+}
+
+int webHudFontCacheEntries()
+{
+    auto& cache = hudFontCache();
+    const QMutexLocker lock(&cache.mutex);
+    return static_cast<int>(cache.fonts.size());
+}
+]=] @ONLY)
+target_sources(miacode_scene PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/web-hud-font-cache.cpp")
+
 add_library(miaview_timeline STATIC
     "${MIACODE_SOURCE_DIR}/src/timeline/TimelineNoteAssets.cpp"
     "${MIACODE_SOURCE_DIR}/src/timeline/TimelineQuickModel.cpp"

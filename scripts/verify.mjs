@@ -13,6 +13,8 @@ assert.ok(existsSync(new URL("renderer/artifact-manifest.json", root)),
   const manifest = JSON.parse(readFileSync(new URL("renderer/artifact-manifest.json", root)));
   const paths = new Set();
   for (const file of manifest.files) {
+    if (file.path === "miacode-preview.wasm")
+      assert.ok(file.byteSize <= 80 * 1024 * 1024, "Preview WASM must fit two versions in the application cache");
     assert.ok(!file.path.includes("..") && !file.path.startsWith("/") && !file.path.includes("\\"));
     assert.ok(!paths.has(file.path), `Duplicate artifact: ${file.path}`);
     paths.add(file.path);

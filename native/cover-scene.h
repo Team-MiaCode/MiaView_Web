@@ -26,7 +26,7 @@ public:
     void setOutputSize(const QSize& size);
     void setVisible(bool visible);
     void setEditable(bool editable);
-    void setChartState(const miacode::preview::scene::PreviewFrameState& state, double duration);
+    void setChartState(const miacode::preview::scene::PreviewFrameState& state, double duration, const QString& appearanceKey);
     bool setPvFrame(const QString& key, const QImage& image, double seconds);
     bool isVisible() const { return item_ && item_->isVisible(); }
     Q_INVOKABLE void selectLayerKey(const QString& key);
@@ -57,6 +57,7 @@ private:
     int modeDifficulty_ = 0;
     QString detectedMode_ = QStringLiteral("Standard");
     miacode::preview::scene::PreviewFrameState chartState_;
+    QString chartAppearanceKey_;
     miacode::cover_export::CoverFramePlaybackController playback_;
     QElapsedTimer playbackPublishClock_;
     QElapsedTimer playbackClock_;

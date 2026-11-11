@@ -24,6 +24,7 @@ export const commands = new Set([
   "importFont",
   "importSkin",
   "importJudgeLine",
+  "releaseUnusedAppearance",
   "getExportCapabilities",
   "startExport",
   "setIntroAudition",

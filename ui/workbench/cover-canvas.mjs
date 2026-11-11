@@ -1,6 +1,7 @@
 import { createPreview } from "../../sdk/index.mjs";
 import { previewSettingsFromValues } from "../../services/preview-appearance.mjs";
-import { restorePreviewAppearance } from "../../services/user-appearance.mjs";
+import { UserAppearance } from "../../services/user-appearance.mjs";
+import { leaseAppearanceAssets } from "../../services/appearance-assets.mjs";
 import { PreferenceAssets } from "../../services/preference-assets.mjs";
 import { COVER_RESOLUTIONS, coverResolution, coverValuesFromComposition, coverAssetPaths, remapCoverAssets, portableCoverLayout } from "../../services/cover-files.mjs";
 
@@ -12,9 +13,11 @@ export class CoverCanvas {
     this.preferences = preferences;
     this.assets = new PreferenceAssets();
     this.imported = new Set();
-    this.importedAppearance = new Set();
+    this.activeFonts = [];
     this.thumbnailURLs = new Map();
     this.preview = createPreview(container, { resolution: { width: 1080, height: 1080 }, layout: "fit", diagnostics: false, theme });
+    this.appearance = new UserAppearance(this.preview, this.assets);
+    this.fontLease = leaseAppearanceAssets(this.preview);
     this.preview.on("error", value => { if (!this.destroyed) error?.(value.message); });
     this.preview.on("coverChanged", changed);
     this.preview.on("coverPlaybackChanged", state => {
@@ -29,16 +32,23 @@ export class CoverCanvas {
     this.ready.catch(value => { if (!this.destroyed) error?.(value.message); });
   }
   run(action) {
-    const result = this.pending.then(() => {
+    const result = this.pending.then(async () => {
       if (this.destroyed) throw new DOMException("封面编辑器关闭", "AbortError");
-      return action();
+      try { return await action(); }
+      finally {
+        if (this.fontLeaseDirty && !this.destroyed) {
+          this.fontLeaseDirty = false;
+          await this.fontLease.release(this.activeFonts);
+        }
+      }
     });
     this.pending = result.catch(() => {});
     return result;
   }
   command(id, args = {}) { return this.run(async () => {
     if (id === "cover.addChartFrameLayer") { await this.ensureChart(); await this.configure(); }
-    return this.preview.coverCommand(id, args);
+    await this.ensureFonts([args.fontPath]);
+    return this.retainCompositionFonts(await this.preview.coverCommand(id, args));
   }); }
   async ensureChart() {
     const doc = this.document;
@@ -47,11 +57,9 @@ export class CoverCanvas {
     const video = doc.folderFiles?.get(doc.metadataResolvedVideoPath);
     const settings = previewSettingsFromValues(this.preferences.previewValues || {}), key = JSON.stringify(settings);
     if (this.chartSource === doc.sourceText && this.chartDifficulty === difficulty && this.chartSettings === key && this.chartDuration === doc.duration && this.chartVideo === video) return;
-    await this.ensureFonts(Object.values(settings.hudFontPaths || {}));
-    await restorePreviewAppearance(this.preview,this.assets,settings,this.importedAppearance);
     await this.preview.setPerformance({ videoDecodePrefersSoftware: this.preferences.videoDecodePrefersSoftware ?? false,
       canvasFrameRateMode: this.preferences.canvasFrameRateMode ?? 1, stageMediaFrameRateMode: this.preferences.stageMediaFrameRateMode ?? 1 });
-    await this.preview.setSettings(settings);
+    await this.appearance.apply(settings);
     await this.preview.setCoverChart({ maidata: doc.sourceText, difficulty, filePath: doc.filePath, video }, { duration: doc.duration });
     this.chartSource = doc.sourceText; this.chartDifficulty = difficulty; this.chartSettings = key; this.chartDuration = doc.duration; this.chartVideo = video;
   }
@@ -69,17 +77,24 @@ export class CoverCanvas {
   }
   async loadAsset(file) {
     const kind = /\.(ttf|otf)$/i.test(file.name) ? "font" : "image";
-    const asset = kind === "font" ? await this.preview.importFont(file, file.name) : await this.preview.importCoverImage(file);
-    this.imported.add(asset.path);
+    const asset = kind === "font" ? await this.fontLease.importFont(file, file.name) : await this.preview.importCoverImage(file);
+    if (kind === "font") this.fontLeaseDirty = true;
+    else this.imported.add(asset.path);
     return { ...asset, kind, file };
   }
   async ensureFonts(paths) {
-    for (const path of paths.filter(Boolean)) {
-      if (this.imported.has(path)) continue;
+    for (const path of new Set(paths.filter(Boolean))) {
+      if (this.activeFonts.includes(path)) continue;
       const record = this.document.coverFiles?.find(asset => asset.path === path) || await this.assets.get(`font:${path}`);
       if (!record) throw new Error(`请导入字体素材：${path}`);
       await this.loadAsset(record.file);
     }
+  }
+  retainCompositionFonts(result) {
+    const paths = coverAssetPaths(result.composition).filter(path => path.startsWith("/web-fonts/"));
+    this.fontLeaseDirty ||= this.activeFonts.some(path => !paths.includes(path));
+    this.activeFonts = paths;
+    return result;
   }
   importFile(file) { return this.run(async () => {
     const record = await this.loadAsset(file);
@@ -114,7 +129,7 @@ export class CoverCanvas {
     this.document.coverFiles = imported;
     Object.assign(this.document.coverValues, coverValuesFromComposition(result.composition));
     await this.preview.setCoverComposition({});
-    return result;
+    return this.retainCompositionFonts(result);
   }); }
   exportImage(options) { return this.run(() => this.preview.exportCover(options)); }
   update() { return this.run(() => this.configure()); }
@@ -124,7 +139,7 @@ export class CoverCanvas {
     if (doc.coverLayers?.some(layer => layer.kind === "chartFrame")) await this.ensureChart();
     const chart = doc.charts?.find(chart => chart.id === (values.selectedDifficultyId ?? doc.activeDifficultyId));
     const [outputWidth, outputHeight] = coverResolution(values);
-    for (const record of doc.coverFiles || []) if (!this.imported.has(record.path)) await this.loadAsset(record.file);
+    for (const record of doc.coverFiles || []) if (record.kind === "image" && !this.imported.has(record.path)) await this.loadAsset(record.file);
     await this.ensureFonts([values.cardFontDisplayPath, values.cardFontBodyPath, ...(doc.coverLayers || []).map(layer => layer.fontPath)]);
     if (this.jacketSource !== doc.metadataCoverSource) {
       this.jacketSource = doc.metadataCoverSource;
@@ -155,7 +170,7 @@ export class CoverCanvas {
       outputFile: values.outputFile ?? "card.jpg",
     });
     this.configured = true;
-    return result;
+    return this.retainCompositionFonts(result);
   }
   destroy() {
     this.destroyed = true; this.preview.destroy(); void this.assets.close();
