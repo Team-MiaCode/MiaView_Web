@@ -9,6 +9,12 @@ on:
         required: false
         type: string
         default: ''
+      editor_run_id:
+        description: Successful editor deployment supplying the Main and editor Pages
+        type: string
+      sdk_preview_run_id:
+        description: Successful standalone-preview run supplying the SDK Pages
+        type: string
 
 permissions:
   contents: read
@@ -29,6 +35,7 @@ jobs:
 
   build-preview:
     needs: source-checks
+    if: ${{ !inputs.editor_run_id }}
     outputs:
       source_sha: ${{ steps.source.outputs.sha }}
     runs-on: ubuntu-24.04
@@ -216,7 +223,7 @@ jobs:
   build-alternate-pages:
     needs: source-checks
     if: >-
-      github.event_name != 'pull_request' &&
+      github.event_name != 'pull_request' && !inputs.editor_run_id &&
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/web-editor-migration')
     strategy:
       fail-fast: false
@@ -264,7 +271,7 @@ jobs:
 
   reuse-main-pages:
     needs: source-checks
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feature/web-editor-migration' && inputs.main_run_id != ''
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feature/web-editor-migration' && !inputs.editor_run_id && inputs.main_run_id != ''
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -335,7 +342,8 @@ jobs:
           CURRENT_SHA: ${{ needs.build-preview.outputs.source_sha }}
         run: |
           alternate_sha=$(cat build-devtools/alternate/source-revision.txt)
-          export SDK_PREVIEW_SHA=$(cat build-devtools/sdk-preview/source-revision.txt)
+          SDK_PREVIEW_SHA=$(cat build-devtools/sdk-preview/source-revision.txt)
+          export SDK_PREVIEW_SHA
           rm build-devtools/alternate/source-revision.txt
           if [ "$GITHUB_REF" = refs/heads/main ]; then
             MAIN_SHA="$CURRENT_SHA" FEATURE_SHA="$alternate_sha" node scripts/compose-pages.mjs build-devtools/current build-devtools/alternate build-devtools/sdk-preview build-devtools/deploy
@@ -346,13 +354,86 @@ jobs:
         with:
           path: build-devtools/deploy
 
+  prepare-verified-pages:
+    needs: source-checks
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feature/web-editor-migration' && inputs.editor_run_id != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - id: source
+        uses: actions/github-script@v7
+        env:
+          EDITOR_RUN_ID: ${{ inputs.editor_run_id }}
+          SDK_PREVIEW_RUN_ID: ${{ inputs.sdk_preview_run_id }}
+        with:
+          script: |
+            for (const [name, branch, value] of [
+              ['editor', 'feature/web-editor-migration', process.env.EDITOR_RUN_ID],
+              ['sdk_preview', 'standalone-preview', process.env.SDK_PREVIEW_RUN_ID],
+            ]) {
+              const run_id = Number(value);
+              if (!Number.isSafeInteger(run_id) || run_id <= 0) throw new Error(`Invalid ${name} run ID`);
+              const { data: run } = await github.rest.actions.getWorkflowRun({ ...context.repo, run_id });
+              if (run.path !== '.github/workflows/web.yml' || run.head_branch !== branch ||
+                  !['push', 'workflow_dispatch'].includes(run.event) || run.conclusion !== 'success' ||
+                  run.head_repository?.full_name !== context.payload.repository.full_name)
+                throw new Error(`Expected a successful Web preview run from ${branch}`);
+              core.setOutput(`${name}_sha`, run.head_sha);
+            }
+      - name: Confirm the editor sources match the validated deployment
+        env:
+          EDITOR_SHA: ${{ steps.source.outputs.editor_sha }}
+        run: git diff --exit-code "$EDITOR_SHA" HEAD -- . ':(exclude).github/workflows/web.yml' ':(exclude)scripts/compose-pages.mjs'
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.editor_run_id }}
+          name: github-pages
+          path: build-devtools/validated-editor
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.sdk_preview_run_id }}
+          name: miaview-pages
+          path: build-devtools/sdk-preview
+      - name: Compose the validated editor and SDK sites
+        env:
+          FEATURE_SHA: ${{ steps.source.outputs.editor_sha }}
+          SDK_PREVIEW_SHA: ${{ steps.source.outputs.sdk_preview_sha }}
+        run: |
+          mkdir -p build-devtools/published
+          tar -xf build-devtools/validated-editor/artifact.tar -C build-devtools/published
+          MAIN_SHA=$(node -e '
+            const { main, feature } = require("./build-devtools/published/deployment.json");
+            if (feature?.commit !== process.env.FEATURE_SHA || !/^[0-9a-f]{40}$/.test(main?.commit))
+              throw new Error("Deployment manifest does not match the validated editor run");
+            console.log(main.commit);
+          ')
+          if [ "$MAIN_SHA" != "$(git rev-parse origin/main)" ]; then
+            echo "The validated deployment does not contain the current Main revision" >&2
+            exit 1
+          fi
+          mv build-devtools/published/feature build-devtools/feature
+          MAIN_SHA="$MAIN_SHA" node scripts/compose-pages.mjs build-devtools/published build-devtools/feature build-devtools/sdk-preview build-devtools/deploy
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: build-devtools/deploy
+
   deploy-pages:
-    needs: [prepare-pages, ui-acceptance, functional-acceptance]
+    needs: [prepare-pages, prepare-verified-pages, ui-acceptance, functional-acceptance]
     if: >-
       always() && !cancelled() && github.event_name != 'pull_request' &&
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/web-editor-migration') &&
-      needs.prepare-pages.result == 'success' && needs.ui-acceptance.result == 'success' &&
-      needs.functional-acceptance.result == 'success'
+      (needs.prepare-verified-pages.result == 'success' ||
+      (needs.prepare-pages.result == 'success' && needs.ui-acceptance.result == 'success' && needs.functional-acceptance.result == 'success'))
     runs-on: ubuntu-24.04
     permissions:
       pages: write
