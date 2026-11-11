@@ -1,4 +1,4 @@
-import { cpSync, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { cpSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sourcePin } from "./source-pin.mjs";
@@ -7,38 +7,31 @@ import { writeRendererInventory } from "./update-artifacts.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const runtime = process.argv.includes("--runtime");
+const output = resolve(root, process.argv.find(arg => arg.startsWith("--output="))?.slice(9) ?? "build-devtools/products");
+if (existsSync(output)) throw new Error(`Use an empty product output directory: ${output}`);
 const generated = new Set(["miacode-preview.js", "miacode-preview.wasm", "miacode-analysis.js", "miacode-analysis.wasm", "qtloader.js", "theme.css", "build-identity.json", "artifact-manifest.json", "LICENSE", "LICENSE_SCOPE.md", "THIRD_PARTY_NOTICES.md", "sfx"]);
 const rootOnly = new Set(["scripts/sync-products.mjs", "tests/editor-template-smoke.mjs", "tests/products-smoke.mjs", "tests/product-closure.mjs", "tests/product-builds.mjs"]);
 const configuration = sourcePin(root);
 const packageSource = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-function sameFile(source, target) {
-  if (!existsSync(target)) return false;
-  const from = lstatSync(source), to = lstatSync(target);
-  return from.isFile() && to.isFile() && from.size === to.size && readFileSync(source).equals(readFileSync(target));
-}
-function copy(source, target) {
-  if (!sameFile(source, target)) { mkdirSync(dirname(target), { recursive: true }); copyFileSync(source, target); }
-}
 for (const product of ["editor", "preview"]) {
-  const destination = join(root, product);
+  const destination = join(output, product);
   mkdirSync(destination, { recursive: true });
   const excluded = new Set(rootOnly);
   if (product === "preview") for (const path of ["sdk/editor.mjs", "sdk/editor.d.mts", "renderer/editor.html", "renderer/editor.mjs", "examples/editor.html", "examples/editor-demo.mjs", "tests/types-editor.ts"]) excluded.add(path);
   for (const name of ["sdk", "renderer", "services", "ui", "native", "scripts", "dev", "tests", "examples", "backend", "docs", ".assets"]) {
-    cpSync(join(root, name), join(destination, name), { recursive: true, filter: (path, target) => {
+    cpSync(join(root, name), join(destination, name), { recursive: true, filter: path => {
       const relative = path.slice(root.length + 1).replaceAll("\\", "/");
       const local = relative.slice(name.length + 1);
       if (excluded.has(relative) || relative.split("/").includes("__pycache__") || relative.endsWith(".pyc")) return false;
       if (name === "native" && ["build", "build-release", "build-dev-refactor-release"].includes(local.split("/")[0])) return false;
       if (name === "renderer" && !runtime && (generated.has(local.split("/")[0]) || /\.(br|gz)$/.test(local))) return false;
-      return !sameFile(path, target);
+      return true;
     } });
   }
-  for (const path of [...excluded, "ui/workbench/media-tools.mjs"]) rmSync(join(destination, path), { force: true });
   for (const name of ["index.html", "app.mjs", "page.css", "preview-window.html", "tsconfig.json"])
-    copy(join(root, product === "preview" && ["index.html", "app.mjs", "page.css"].includes(name) ? "products/preview" : "", name), join(destination, name));
-  copy(join(root, "examples/pages.html"), join(destination, "examples/index.html"));
-  copy(join(root, "products", product, "README.md"), join(destination, "README.md"));
+    copyFileSync(join(root, product === "preview" && ["index.html", "app.mjs", "page.css"].includes(name) ? "products/preview" : "", name), join(destination, name));
+  copyFileSync(join(root, "examples/pages.html"), join(destination, "examples/index.html"));
+  copyFileSync(join(root, "products", product, "README.md"), join(destination, "README.md"));
   const productPackage = { ...packageSource, name: `miacode-web-${product}`, description: product === "editor" ? "MiaCode Web Editor" : "MiaView Web Preview", scripts: { ...packageSource.scripts }, exports: { ...packageSource.exports } };
   for (const command of ["sync:products", "test:editor-template", "test:products", "check:products"]) delete productPackage.scripts[command];
   if (product === "editor") {

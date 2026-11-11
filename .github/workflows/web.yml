@@ -65,7 +65,7 @@ jobs:
       - run: npm install --no-save --package-lock=false playwright@1.62.1
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser && npm run test:ui && npm run test:pages
-      - run: npm run build:pages
+      - run: npm run build:pages && npm run sync:products -- --runtime && npm run check:products
       - name: Validate feature Pages prefix
         env:
           MIACODE_PAGES_PREFIX: /MiaView_Web/feature/
@@ -89,21 +89,21 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: miaview-editor
-          path: editor
+          path: build-devtools/products/editor
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
           name: miaview-preview-standalone
-          path: preview
+          path: build-devtools/products/preview
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
           name: miaview-pages
-          path: artifacts/pages
+          path: build-devtools/pages
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
@@ -254,11 +254,11 @@ jobs:
           version=$(node -p "JSON.parse(require('fs').readFileSync('native/toolchain.json')).emscriptenVersion")
           .deps/emsdk/emsdk install "$version"
           .deps/emsdk/emsdk activate "$version"
-      - run: npm run check:repo && npm test && npm run build:native && npm run check:source && npm run build:pages
+      - run: npm run check:repo && npm test && npm run build:native && npm run check:source && npm run build:pages -- build-devtools/pages
       - uses: actions/upload-artifact@v4
         with:
           name: miaview-alternate-pages
-          path: artifacts/pages
+          path: build-devtools/pages
           if-no-files-found: error
           retention-days: 14
 
@@ -295,11 +295,11 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.main_run_id }}
           name: miaview-pages
-          path: artifacts/pages
+          path: build-devtools/pages
       - uses: actions/upload-artifact@v4
         with:
           name: miaview-alternate-pages
-          path: artifacts/pages
+          path: build-devtools/pages
           if-no-files-found: error
           retention-days: 14
 
@@ -319,24 +319,24 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: miaview-pages
-          path: artifacts/current
+          path: build-devtools/current
       - uses: actions/download-artifact@v4
         with:
           name: miaview-alternate-pages
-          path: artifacts/alternate
+          path: build-devtools/alternate
       - name: Compose main and feature sites
         env:
           MAIN_SHA: ${{ github.ref == 'refs/heads/main' && needs.build-preview.outputs.source_sha || needs.reuse-main-pages.outputs.source_sha || needs.build-alternate-pages.outputs.source_sha }}
           FEATURE_SHA: ${{ github.ref == 'refs/heads/main' && needs.build-alternate-pages.outputs.source_sha || needs.build-preview.outputs.source_sha }}
         run: |
           if [ "$GITHUB_REF" = refs/heads/main ]; then
-            node scripts/compose-pages.mjs artifacts/current artifacts/alternate artifacts/deploy
+            node scripts/compose-pages.mjs build-devtools/current build-devtools/alternate build-devtools/deploy
           else
-            node scripts/compose-pages.mjs artifacts/alternate artifacts/current artifacts/deploy
+            node scripts/compose-pages.mjs build-devtools/alternate build-devtools/current build-devtools/deploy
           fi
       - uses: actions/upload-pages-artifact@v4
         with:
-          path: artifacts/deploy
+          path: build-devtools/deploy
 
   deploy-pages:
     needs: [prepare-pages, ui-acceptance, functional-acceptance]

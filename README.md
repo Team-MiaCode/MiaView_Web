@@ -13,7 +13,7 @@ MiaView_Web 提供 maimai 谱面编辑工作台与实时预览 SDK，支持 Sima
 
 本项目通过 `vendor/MiaCode` 子模块跟进 MiaCode `dev`，并固定确切提交。解析、分析和预览场景复用上游代码；浏览器宿主、音视频接入、JavaScript SDK 和网页界面由本仓维护。更新上游需要显式更新子模块并重建播放器。
 
-编辑器的阶段要求与验收记录见[迁移计划](docs/WEB_EDITOR_MIGRATION_PLAN_ZH.md)和[UI 验收计划](docs/WEB_EDITOR_UI_ACCEPTANCE_ZH.md)。[editor/](editor/README.md) 提供独立编辑器页面和 `createEditor` SDK，[preview/](preview/README.md) 提供独立预览页面和 `createPreview` SDK。两个子项目包含自身源码、界面、服务、构建脚本与源版本配置，运行和构建以对应目录为根。
+编辑器的阶段要求与验收记录见[迁移计划](docs/WEB_EDITOR_MIGRATION_PLAN_ZH.md)和[UI 验收计划](docs/WEB_EDITOR_UI_ACCEPTANCE_ZH.md)。[编辑器入口说明](products/editor/README.md)和[预览入口说明](products/preview/README.md)对应两个独立部署包。工作台、编辑器 SDK 与预览 SDK 共用根目录源码。运行 `npm run sync:products -- --runtime` 可生成 `build-devtools/products/editor` 和 `build-devtools/products/preview`。
 
 ## 功能一览
 
@@ -113,24 +113,28 @@ npm run build:pages
 输出目录为：
 
 ```text
-artifacts/pages/
+build-devtools/pages/
 ├── index.html
+├── editor/
+├── preview/
 ├── examples/
 ├── sdk/
 ├── renderer/
+├── ui/
+├── services/
 └── .nojekyll
 ```
 
 部署该目录内的全部内容，保留相对目录结构及生成的 `.nojekyll`。网站可以放在域名根目录，也可以放在项目子路径。打包要求输出目录不存在；重复打包可换一个目录：
 
 ```sh
-npm run build:pages -- artifacts/site-v2
+npm run build:pages -- build-devtools/site-v2
 ```
 
 本地验证静态输出可以使用 Python：
 
 ```sh
-python3 -m http.server 8080 --bind 127.0.0.1 --directory artifacts/pages
+python3 -m http.server 8080 --bind 127.0.0.1 --directory build-devtools/pages
 ```
 
 Windows 使用 `python` 代替 `python3`。打开 <http://localhost:8080>，不要直接双击 HTML 使用 `file://` 访问。

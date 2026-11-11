@@ -1,5 +1,0 @@
-{
-  "qtVersion": "6.11.1",
-  "emscriptenVersion": "4.0.7",
-  "wasmArch": "wasm_singlethread"
-}
