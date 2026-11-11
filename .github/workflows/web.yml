@@ -15,6 +15,9 @@ on:
       sdk_preview_run_id:
         description: Successful standalone-preview run supplying the SDK Pages
         type: string
+      sdk_demo_sha:
+        description: Standalone-preview commit containing demo-only changes
+        type: string
 
 permissions:
   contents: read
@@ -404,10 +407,22 @@ jobs:
           run-id: ${{ inputs.sdk_preview_run_id }}
           name: miaview-pages
           path: build-devtools/sdk-preview
+      - name: Update demo files with the validated SDK runtime
+        if: inputs.sdk_demo_sha != ''
+        env:
+          SDK_PREVIEW_SHA: ${{ steps.source.outputs.sdk_preview_sha }}
+          SDK_DEMO_SHA: ${{ inputs.sdk_demo_sha }}
+        run: |
+          [[ "$SDK_DEMO_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git merge-base --is-ancestor "$SDK_PREVIEW_SHA" "$SDK_DEMO_SHA"
+          git merge-base --is-ancestor "$SDK_DEMO_SHA" origin/standalone-preview
+          git diff --exit-code "$SDK_PREVIEW_SHA" "$SDK_DEMO_SHA" -- . ':(exclude)README.md' ':(exclude)examples/sdk-preview'
+          rm -r -- build-devtools/sdk-preview/examples/sdk-preview
+          git archive "$SDK_DEMO_SHA" examples/sdk-preview | tar -xf - -C build-devtools/sdk-preview
       - name: Compose the validated editor and SDK sites
         env:
           FEATURE_SHA: ${{ steps.source.outputs.editor_sha }}
-          SDK_PREVIEW_SHA: ${{ steps.source.outputs.sdk_preview_sha }}
+          SDK_PREVIEW_SHA: ${{ inputs.sdk_demo_sha || steps.source.outputs.sdk_preview_sha }}
         run: |
           mkdir -p build-devtools/published
           tar -xf build-devtools/validated-editor/artifact.tar -C build-devtools/published
