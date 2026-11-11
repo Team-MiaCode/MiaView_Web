@@ -385,7 +385,6 @@ export class PreviewMediaCache {
     ) {
       const cached = this.entry;
       if (!prepareVideo) return cached;
-      this.resetVideoTimeout();
       return {
         ...cached,
         video: this.loadVideo(
@@ -396,7 +395,7 @@ export class PreviewMediaCache {
         ),
       };
     }
-    this.resetVideoTimeout();
+    if (!same(resources.video, this.entry?.resources.video)) this.resetVideoTimeout();
     const resourceNames = {
       maidata: "谱面",
       audio: "音乐",

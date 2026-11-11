@@ -21,6 +21,13 @@
         <label class="file-button">打开谱面文件<input id="maidata" type="file" accept=".txt,text/plain"></label>
         <label id="project-row" hidden>谱面<select id="project"></select></label>
         <label>难度<select id="difficulty" disabled></select></label>
+        <label>画面比例
+          <select id="canvas-aspect">
+            <option value="1080">1:1（1080 × 1080）</option>
+            <option value="1440">4:3（1440 × 1080）</option>
+            <option value="1920">16:9（1920 × 1080）</option>
+          </select>
+        </label>
         <fieldset id="media" disabled>
           <legend>替换媒体</legend>
           <label class="file-button">选择音乐<input id="audio" type="file" accept="audio/*,.flac,.ogg,.m4a"></label>

@@ -152,6 +152,28 @@ test("PV times out at 30 seconds, aborts only its request, and never retries tha
   assert.equal(prepared, 0, "Late completion must not attach the timed-out PV");
 });
 
+test("Reloading a chart skips the same timed-out PV and accepts a replacement", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const cache = new PreviewMediaCache();
+  const video = { url: "https://example.com/slow.mp4" };
+  const resources = { maidata: new Blob(["chart"]), video };
+  let videoReads = 0;
+  const read = async resource => {
+    if (resource instanceof Blob) return resource.arrayBuffer();
+    if (++videoReads === 1) return new Promise(() => {});
+    return new ArrayBuffer(1);
+  };
+  const load = input => cache.load(input, {}, read, new AbortController().signal, undefined, async () => {});
+  const first = load(resources);
+  t.mock.timers.tick(30000);
+  assert.equal((await first.media).videoBlob, null);
+  assert.equal((await load({ ...resources, video: { ...video } }).media).videoBlob, null);
+  assert.equal(videoReads, 1);
+  const replacement = await load({ ...resources, video: { url: "https://example.com/new.mp4" } }).media;
+  assert.equal(replacement.videoBlob.size, 1);
+  assert.equal(videoReads, 2);
+});
+
 test("PV preparation shares the same deadline and parent cancellation is not a timeout", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const cache = new PreviewMediaCache();

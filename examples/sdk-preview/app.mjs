@@ -8,13 +8,17 @@ const sources = element("sources");
 const project = element("project");
 const difficulty = element("difficulty");
 const media = element("media");
+const canvasAspect = element("canvas-aspect");
+const canvasHeight = 1080;
+let canvasWidth = 1080;
+canvasAspect.value = String(canvasWidth);
 const lifetime = new AbortController();
 const { signal } = lifetime;
 const preview = createPreview(element("preview"), {
   layout: "fit",
   panelLayout: "fill",
   diagnostics: false,
-  resolution: { width: 1080, height: 1080 },
+  resolution: { width: canvasWidth, height: canvasHeight },
 });
 let projects = [];
 let loaded = false;
@@ -88,6 +92,17 @@ difficulty.addEventListener("change", () => {
       await preview.selectDifficulty(Number(difficulty.value));
     } finally {
       difficulty.value = String((await preview.getState()).difficultyId);
+    }
+  });
+}, { signal });
+
+canvasAspect.addEventListener("change", () => {
+  void run(async () => {
+    try {
+      const resolution = await preview.setCanvasSize({ width: Number(canvasAspect.value), height: canvasHeight });
+      canvasWidth = resolution.width;
+    } finally {
+      canvasAspect.value = String(canvasWidth);
     }
   });
 }, { signal });
