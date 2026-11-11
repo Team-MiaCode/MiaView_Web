@@ -4,6 +4,8 @@
 
 也可单独打开谱面文件，通过“媒体”选择音乐、背景图和 PV。预览区包含进度条、播放控制和音符统计。标题栏的预览设置按钮与播放控制右侧的音频设置按钮，在进度条上方打开半透明设置面板。
 
+在本目录运行 `npm run dev` 后，打开[独立预览示例页](http://127.0.0.1:3030/index.html?demo=1)。页面载入内置谱面。静态部署时，在预览入口的 `index.html` 后加上 `?demo=1` 即可打开同一个示例。
+
 ## 运行与构建
 
 在本目录执行，Node.js 22+：
@@ -20,22 +22,37 @@ npm run dev
 
 ## 嵌入网页
 
-部署整个目录，接入示例为 `examples/index.html`：
+部署同一版本的 `sdk/`、`renderer/`、`ui/` 和 `services/`。基础示例为 `examples/index.html`，React 组件示例为 `examples/react-preview.jsx`。
 
 ```html
-<div id="preview" style="height:70vh"></div>
+<div id="preview" style="height:min(70dvh, 100vw * 865 / 741)"></div>
 <script type="module">
   import { createPreview } from './sdk/index.mjs';
-  const preview = createPreview(document.getElementById('preview'), { layout: 'fit' });
+  const preview = createPreview(document.getElementById('preview'), { layout: 'fit', diagnostics: false });
+  const stop = preview.on('playing', event => console.log(event.elapsedMs));
   await preview.ready;
   await preview.load({ maidata: '&title=Example\n&lv_5=12\n&inote_5=(120){4}1,2,3,4,E' });
-  preview.on('timeupdate', state => console.log(state.currentTime));
-  await preview.play();
-  await preview.pause();
-  // 页面卸载或移除组件时调用 preview.destroy()。
+  window.addEventListener('pagehide', event => {
+    if (event.persisted) return;
+    stop();
+    preview.destroy();
+  });
 </script>
 ```
 
-`maidata` 接受正文、File/Blob 或 `{ url }`；`audio`、`cover`、`video` 接受 File/Blob 或 HTTP(S) 资源。播放、难度、倍率、帧率、主题、设置、状态与事件沿用 `sdk/index.d.mts`。每个 iframe 拥有自身预览引擎，SDK 校验来源、窗口与会话，支持子路径部署、多实例及跨来源宿主。
+`controls` 默认为 `true`，在 iframe 中显示画面、统计、进度条、播放控制和设置覆盖层。设为 `false` 时由宿主组装控制区。`layout: "fit"` 采用容器高度，面板宽高比为 741∶865。容器较窄时可调整分配给播放器的高度。
+
+| 接口 | 输入与结果 |
+| --- | --- |
+| `ready` | 渲染器、运行时和面板设置就绪后兑现。加载失败时拒绝 |
+| `load()` | `maidata` 接受正文、File/Blob 或 `{ url }`。`audio`、`cover`、`video` 接受 File/Blob 或 HTTP(S) 资源。成功返回标题、难度和时长 |
+| `selectDifficulty(id)` | 使用加载结果中的难度 ID，成功后可用 `getState()` 读取当前难度 |
+| `play()`、`pause()`、`seek(seconds)`、`restart()` | 操作当前谱面，返回预览状态。时间以秒计 |
+| `on(type, listener)` | 返回取消订阅函数。`progress.progress` 取值 0 到 1。`loaded` 在当前谱面加载完成时返回 `ChartInfo`。`error` 提供错误代码和描述。`playing` 在实际开始播放时触发，`elapsedMs` 以毫秒计 |
+| `destroy()` | 移除实例、释放订阅，等待中的调用随实例关闭而拒绝 |
+
+连续调用 `load()` 时采用最新资源，先前请求以 `AbortError` 结束。媒体权限由宿主处理。需要登录的资源可由宿主获取为 Blob，再传给播放器。面板设置默认保留在实例内，传入 `preferencesKey` 可按渲染器来源和存储键持久化。自定义皮肤、判定线和字体资源保存在渲染器来源的素材库。
+
+网站案例见 `examples/chart-website-adapter.mjs`。在 React 示例中，以稳定的 `loadResources(chartId, signal)` 回调查询作品信息，并把 `{ id, bgExt, hasVideo, difficulty }` 交给案例适配器。它将文件接口映射为 SDK 的四种资源。网站可通过 `onPlaying(chartId, event)` 接收播放通知，浏览量规则由网站定义。
 
 验证入口为 `npm test`、`npm run check:source` 和 `npm run build:pages`。协议、控件、渲染适配器与原生桥接源码沿用主项目文件名和公共字段。

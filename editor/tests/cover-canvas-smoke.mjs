@@ -52,7 +52,7 @@ try {
   results.push({ cardModes: modes.map(({ resolved, stored }) => ({ resolved, stored })) });
   await page.locator('.cover-layer-row[data-key="card"]').waitFor();
   const frame = page.frameLocator("iframe");
-  assert.equal(await frame.locator("#transport").isVisible(), false);
+  assert.equal(await frame.locator(".preview-transport").isVisible(), false);
   assert.equal(await frame.locator("#fps").isVisible(), false);
   async function checkCanvas(width = 1080, height = 1080) {
     const outer = await page.locator(".cover-canvas-pane").boundingBox();
@@ -184,7 +184,7 @@ try {
   assert.equal(rejected, true);
   results.push(await checkCanvas());
   await page.evaluate(() => document.querySelector(".cover-editor").coverRenderer.preview.load({ maidata: "&title=Cover return\n&inote_5=(120){4}1,2,E" }));
-  assert.equal(await frame.locator("#transport").isVisible(), true);
+  assert.equal(await frame.locator(".preview-transport").isVisible(), true);
   assert.equal(await frame.locator("body").evaluate(node => node.classList.contains("cover-view")), false);
   assert.equal((await page.evaluate(() => document.querySelector(".cover-editor").coverRenderer.preview.getState())).resolution.width, 1080);
   const intrinsic = await page.evaluate(async () => {

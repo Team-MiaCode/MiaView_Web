@@ -6,6 +6,7 @@ import { openDialog } from "./ui/components/dialog.mjs";
 import { element as h } from "./ui/components/dom.mjs";
 import { translate, formatMessage } from "./ui/components/translate.mjs";
 import { BrowserFiles } from "./services/browser-files.mjs";
+import { DEMO_CHART } from "./services/demo-chart.mjs";
 import { ProjectStore } from "./services/project-store.mjs";
 import { HUD_AREAS, previewSettingsFromValues, previewValuesFromSettings } from "./services/preview-appearance.mjs";
 import { stageResource, relocatePath, resourceFile, resolveChartResource, resolveChartMedia, inputPaths, hydrateProjectResources } from "./services/chart-resources.mjs";
@@ -28,7 +29,6 @@ import { coverPreferences } from "./services/cover-preferences.mjs";
 
 const MURI_SETTINGS = ["previewMode", "handRadiusPx", "wifiNeedC", "staticTapOnSlideThresholdMs"];
 
-const SAMPLE = "&title=MiaCode Example\n&artist=MiaCode\n&first=0\n&lv_5=12\n&des_5=MiaCode\n&inote_5=(120){4}\n1,2,3,4,5,6,7,8,\n1b,2x,3h[4:1],4-8[4:1],\nA1,B2,C,D3,E4,E\n";
 export function createWorkbench(container, options = {}) {
   const viewState = new ViewState(options.storage ?? localStorage);
   const workbench = new Workbench(container, viewState);
@@ -1085,7 +1085,7 @@ export function createWorkbench(container, options = {}) {
         await command("document.selectDifficulty", { difficulty: Number(key.slice(11)) });
       return;
     }
-    if (id === "file.demo") { if (await confirmDocumentChange()) return open({ maidata: SAMPLE }); return; }
+    if (id === "file.demo") { if (await confirmDocumentChange()) return open({ maidata: DEMO_CHART }); return; }
     if (id === "file.new") { if (await confirmDocumentChange()) return open({ maidata: "&title=新谱面\n&artist=\n&first=0\n&lv_5=\n&inote_5=(120){4}E\n" }); return; }
     if (id === "file.close") {
       if (!await confirmDocumentChange()) return;

@@ -32,41 +32,44 @@ try {
     await preview.seek(1.5);
   }, readFileSync(resolve(root, "tests/fixtures/maidata.txt"), "utf8"));
   const frame = page.frameLocator("#one iframe");
-  await frame.locator("#play:not([disabled])").waitFor();
+  const settings = frame.getByRole("button", { name: "预览设置", exact: true });
+  const closeSettings = frame.getByRole("button", { name: "关闭设置", exact: true });
+  const overlay = frame.locator("#preview-settings-overlay");
+  const stage = frame.locator("#stage");
+  const seek = frame.getByRole("slider", { name: "播放位置", exact: true });
+  await seek.waitFor();
   await page.locator("#one iframe").screenshot({ path: resolve(output, "desktop-dark.png") });
-  await frame.locator("#settings-toggle").click();
-  const desktop = await frame.locator("body").evaluate(() => {
-    const stage = document.getElementById("stage").getBoundingClientRect();
-    const panel = document.getElementById("settings-panel").getBoundingClientRect();
-    return { beside: panel.left >= stage.right, visible: panel.height > 0 };
-  });
-  assert.deepEqual(desktop, { beside: true, visible: true });
+  await settings.click();
+  assert.deepEqual(await overlay.boundingBox(), await stage.boundingBox());
+  assert.ok((await seek.boundingBox()).y >= (await stage.boundingBox()).y + (await stage.boundingBox()).height);
   await page.locator("#one iframe").screenshot({ path: resolve(output, "desktop-settings.png") });
-  await frame.locator("#theme-toggle").click();
-  assert.equal(await frame.locator("html").getAttribute("data-theme"), "light");
+  await frame.getByRole("tab", { name: "播放", exact: true }).click();
+  await frame.getByRole("combobox", { name: "主题", exact: true }).selectOption("light");
+  await page.waitForFunction(() => document.querySelector("#one iframe").contentDocument.documentElement.dataset.theme === "light");
   await page.locator("#one iframe").screenshot({ path: resolve(output, "desktop-light.png") });
-  await frame.locator("#settings-close").click();
-  await frame.locator("#fullscreen").click();
+  await closeSettings.click();
+  await frame.getByRole("button", { name: "全屏", exact: true }).click();
   await page.waitForFunction(() => !!document.fullscreenElement);
-  await frame.locator("#fullscreen").click();
+  await frame.getByRole("button", { name: "退出全屏", exact: true }).click();
   await page.waitForFunction(() => !document.fullscreenElement);
-  await frame.locator("#theme-toggle").click();
-  await page.evaluate(() => document.getElementById("one").style.width = "320px");
+  await page.evaluate(async () => {
+    await preview.setTheme("dark");
+    document.getElementById("one").style.width = "320px";
+  });
   await page.setViewportSize({ width: 360, height: 740 });
   const mobile = await frame.locator("body").evaluate(() => ({
     width: document.documentElement.clientWidth,
     content: document.documentElement.scrollWidth,
-    transportHeight: document.getElementById("transport").getBoundingClientRect().height,
+    panel: document.querySelector(".preview-host").getBoundingClientRect().toJSON(),
   }));
   assert.equal(mobile.content, mobile.width, "320px player must not overflow horizontally");
-  assert.equal(mobile.transportHeight, 80);
+  assert.ok(Math.abs(mobile.panel.width - mobile.panel.height * 741 / 865) < 1);
   await page.locator("#one iframe").screenshot({ path: resolve(output, "mobile-dark.png") });
-  await frame.locator("#settings-toggle").click();
-  assert.ok(await frame.locator("#settings-panel").evaluate(panel =>
-    panel.getBoundingClientRect().top >= document.getElementById("transport").getBoundingClientRect().bottom));
+  await frame.getByRole("button", { name: "音频设置", exact: true }).click();
+  assert.deepEqual(await overlay.boundingBox(), await stage.boundingBox());
   await page.locator("#one iframe").screenshot({ path: resolve(output, "mobile-settings.png") });
-  await frame.locator("#settings-close").click();
-  assert.equal(await frame.locator("#settings-panel").isVisible(), false);
+  await closeSettings.click();
+  assert.equal(await overlay.isVisible(), false);
   assert.equal((await page.evaluate(() => preview.getState())).currentTime, 1.5);
   await page.evaluate(() => preview.destroy());
   assert.deepEqual(errors, []);

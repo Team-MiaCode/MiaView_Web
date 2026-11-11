@@ -9,6 +9,8 @@
 
 Feature 测试版通过“打开”选择谱面文件夹，载入其中的 `maidata.txt`、`track.*`、`bg.*` 和 PV。文件在浏览器中读取。各入口随对应分支的阶段提交更新。
 
+在 `standalone-preview` 分支按[本地运行](#本地运行)启动服务后，打开[独立预览示例页](http://127.0.0.1:3030/preview/index.html?demo=1)。页面载入内置谱面，点击播放可体验进度条、音符统计以及预览和音频设置。
+
 MiaView_Web 提供 maimai 谱面编辑工作台与实时预览 SDK，支持 Simai 格式。它基于 [MiaCode](https://github.com/Team-MiaCode/MiaCode) 的原生解析器和预览场景，通过 WebAssembly、Qt Quick 和 WebGL 2 绘制画面，通过 WebAudio 播放音乐与判定音效。工作台采用 HTML/CSS 与原生 ES modules，入口为 `index.html`。
 
 本项目通过 `vendor/MiaCode` 子模块跟进 MiaCode `dev`，并固定确切提交。解析、分析和预览场景复用上游代码；浏览器宿主、音视频接入、JavaScript SDK 和网页界面由本仓维护。更新上游需要显式更新子模块并重建播放器。
@@ -61,7 +63,7 @@ Git 仓库和源码 ZIP 只包含源码，不包含运行所需的生成 JS / WA
 
 | 产物 | 内容 | 使用入口 |
 | --- | --- | --- |
-| `miaview-preview` | `sdk/`、完整 `renderer/`、`backend/` 和 README | 见[本地运行](#本地运行)或[网站集成](#集成到你的网站) |
+| `miaview-preview` | `sdk/`、`renderer/`、`ui/`、`services/`、`backend/` 和 README | 见[本地运行](#本地运行)或[网站集成](#集成到你的网站) |
 | `miaview-pages` | `index.html`、`examples/`、`sdk/` 和完整 `renderer/` | 见[部署预览网站](#部署预览网站) |
 
 CI 产物保留 14 天。产物过期或没有对应运行时，可以在有权限的仓库中手动运行工作流，或自行构建。当前未发布 npm 包；接入时直接部署产物中的静态目录。
@@ -141,13 +143,15 @@ Windows 使用 `python` 代替 `python3`。打开 <http://localhost:8080>，不�
 
 ### 放置静态资源
 
-从 `miaview-preview` 或本地构建结果中，将完整 `sdk/` 与 `renderer/` 一起复制到网站静态目录，例如：
+从 `miaview-preview` 或本地构建结果中，将同一版本的四个目录一起复制到网站静态目录：
 
 ```text
 public/
 └── miaview/
     ├── sdk/
-    └── renderer/
+    ├── renderer/
+    ├── ui/
+    └── services/
 ```
 
 部署后应能访问 `/miaview/sdk/index.mjs` 和 `/miaview/renderer/index.html`。保留播放器内的 JS、WASM、音效、主题、构建清单和许可文件。纯静态接入不需要 `backend/`，创建播放器时设置 `diagnostics: false` 即可。
@@ -155,7 +159,7 @@ public/
 ### 创建播放器
 
 ```html
-<div id="preview" style="width: 100%; max-width: 960px"></div>
+<div id="preview" style="height: min(72dvh, 100vw * 865 / 741)"></div>
 <p id="status" role="status"></p>
 
 <script type="module">
@@ -164,7 +168,8 @@ public/
   const status = document.getElementById("status");
   const preview = createPreview(document.getElementById("preview"), {
     rendererUrl: "/miaview/renderer/index.html",
-    resolution: { width: 1920, height: 1080 },
+    layout: "fit",
+    resolution: { width: 1080, height: 1080 },
     maxFps: 60,
     theme: "dark",
     pvTimeoutMs: 30000,
@@ -204,8 +209,11 @@ public/
 | `theme` | `"dark"` 或 `"light"`，默认深色，播放器内可切换 |
 | `pvTimeoutMs` | PV 下载、校验和首帧准备共用的预算，默认 30000；支持不小于 10000 的整数或 `"unlimited"` |
 | `diagnostics` | 默认开启；纯静态托管设置为 `false` |
+| `controls` | 默认为 `true`，iframe 内显示完整面板。设为 `false` 时由宿主提供控制区 |
+| `layout` | `fit` 使用宿主指定的高度，面板以 741∶865 计算宽度。`intrinsic` 由 SDK 提供初始高度 |
+| `preferencesKey` | 可选的渲染器来源本地存储键。省略时面板设置保留在实例内 |
 
-修改分辨率、最大帧率等创建选项需要销毁并重新创建实例。SDK 会自动为播放控制区预留 80px 高度。
+接入示例见 [HTML 示例](examples/pages.html)与 [React 示例](examples/react-preview.jsx)。React 示例演示作品切换、难度同步、播放事件与组件卸载。
 
 ### 加载资源与控制播放
 

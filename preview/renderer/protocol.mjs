@@ -3,11 +3,12 @@ export const HOST_SOURCE = "MiaCodePreviewHost";
 export const FRAME_SOURCE = "MiaCodePreview";
 const immediateWorkbenchCommands = new Set(["preview.toggle", "preview.pause", "preview.stop", "timeline.pause"]);
 export function isImmediateCommand(type, payload) {
-  return type === "pause" || type === "workbenchCommand" && immediateWorkbenchCommands.has(payload?.id);
+  return type === "pause" || type === "cancelLoad" || type === "workbenchCommand" && immediateWorkbenchCommands.has(payload?.id);
 }
 export const commands = new Set([
   "initialize",
   "load",
+  "cancelLoad",
   "play",
   "pause",
   "seek",

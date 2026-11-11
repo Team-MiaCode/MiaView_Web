@@ -229,7 +229,6 @@ export function createPlayerEngine(view) {
   const updateTransport = (force = true) => {
     const currentTime = exportPreview?.position() ?? audio?.currentSecond() ?? 0;
     const duration = audio?.duration ?? 0;
-    view.transport?.(currentTime, duration, exportPreview?.minimum ?? 0);
     const now = performance.now();
     if (force || now - lastTimeUpdate >= 100) {
       lastTimeUpdate = now;
@@ -392,13 +391,11 @@ export function createPlayerEngine(view) {
       playbackDiagnostics.record("renderWork", now - renderStarted);
       lastPresentation = now;
     };
-    view.settings(defaultSettings);
     // Qt renders asynchronously. Wait for a presented transparent firework draw,
     // including its real pipeline and mipmapped ball, before accepting playback.
     while (!call("miacode_firework_ready", "number", [], [])) {
       await nextAnimationFrame(lifetime.signal);
     }
-    $("settings-toggle").disabled = false;
     fpsSampleTime = performance.now();
     fpsSampleFrames = call("miacode_frame_count", "number", [], []);
     ready = true;
@@ -438,9 +435,7 @@ export function createPlayerEngine(view) {
     video.pause();
     if (ready && chart) {
       call("miacode_seek", null, ["number"], [audio.offset]);
-      $("seek").value = String(audio.offset);
     }
-    $("play").textContent = "播放";
     updateTransport();
     emit("paused", { elapsedMs: elapsed() });
   }
@@ -474,7 +469,6 @@ export function createPlayerEngine(view) {
       call("miacode_set_playing", null, ["number"], [1]);
       playbackDiagnostics.setEnabled(diagnostics.enabled);
       status("");
-      $("play").textContent = "暂停";
       emit("playing", { elapsedMs: elapsed() });
       updateTransport();
     } catch (error) {
@@ -496,7 +490,6 @@ export function createPlayerEngine(view) {
     audio.seek(second);
     call("miacode_seek", null, ["number"], [audio.offset]);
     if (video.src && !performanceOptions.videoDecodePrefersSoftware) positionVideo(audio.offset);
-    $("seek").value = String(audio.offset);
     updateTransport();
   }
   function clearInput() {
@@ -518,8 +511,6 @@ export function createPlayerEngine(view) {
     loadedAudioResource = undefined;
     view.chart?.(null);
     updateTransport();
-    for (const id of ["play", "restart", "seek"])
-      $(id).disabled = true;
     if (module) {
       call("miacode_latency_samples", null, ["number", "number", "number"], [0, 0, 0]);
       call("miacode_background", "number", ["number", "number"], [0, 0]);
@@ -614,12 +605,19 @@ export function createPlayerEngine(view) {
     const token = generation;
     try {
       const result = await pending;
+      if (token !== generation) throw new DOMException("谱面加载已取消", "AbortError");
       diagnostics.flush();
       return result;
     } catch (error) {
       if (token === generation) abort?.abort();
       throw error;
     }
+  }
+  function cancelLoad() {
+    if (phase !== "chart-load") return;
+    ++generation;
+    abort?.abort(new DOMException("谱面加载已取消", "AbortError"));
+    phase = "ready";
   }
   async function loadChart(resources, difficultyId) {
     previewDeferred = false;
@@ -691,7 +689,6 @@ export function createPlayerEngine(view) {
     if (parsed.error) throw new Error(parsed.error);
     if (document.body.classList.contains("cover-view")) {
       document.body.classList.remove("cover-view");
-      $("transport").hidden = false;
       const resolution = resolutionFromSearch(location.search);
       setSurfaceSize(resolution.width, resolution.height);
     }
@@ -739,10 +736,10 @@ export function createPlayerEngine(view) {
       video.hidden = hidePv;
       if (hidePv) await setBackground(coverBytes);
     }
+    if (token !== generation) return;
     loadedCover = coverBytes;
     loadedAudioResource = resources.audio;
     chart = parsed;
-    view.chart?.(parsed);
     audio.track = track;
     audio.events = audioSettings.breakSlideTailCheerMuted ? parsed.sfxMutedTail : parsed.sfx;
     audio.segments = parsed.touchholdSegments;
@@ -752,16 +749,11 @@ export function createPlayerEngine(view) {
     playback.exportEndSeconds = audio.duration;
     emit("playbackChanged", { ...playback });
     updateTransport();
-    $("seek").max = String(audio.duration);
-    $("seek").value = "0";
-    $("play").textContent = "播放";
     phase = "ready";
+    view.chart?.(parsed);
     emit("progress", { stage: "资源已就绪", progress: 1 });
     status("");
     emit("paused", { elapsedMs: 0 });
-    if (token !== generation) return;
-    for (const id of ["play", "restart", "seek"])
-      $(id).disabled = false;
   }
 
   async function prepareEffects(parsed) {
@@ -793,15 +785,13 @@ export function createPlayerEngine(view) {
     if (parsed.error && next.onPage) throw new Error(parsed.error);
     latency = next;
     if (audio) audio.setMix(activeAudioGains());
-    if (parsed.error) { chart = null; audio.replaceTimeline([], []); }
+    if (parsed.error) { chart = null; view.chart?.(null); audio.replaceTimeline([], []); }
     else {
       await prepareEffects(parsed); chart = parsed; view.chart?.(parsed);
       audio.duration = next.onPage ? parsed.duration : Math.max(parsed.duration, audio.track?.duration ?? 0);
       audio.replaceTimeline(audioSettings.breakSlideTailCheerMuted ? parsed.sfxMutedTail : parsed.sfx, parsed.touchholdSegments);
       if (changedPage) seek(Math.min(second, audio.duration));
     }
-    $("seek").max = String(audio.duration);
-    for (const id of ["play", "restart", "seek"]) $(id).disabled = !chart;
     updateTransport(); return previewState();
   }
   async function detectLatency(request) {
@@ -871,6 +861,7 @@ export function createPlayerEngine(view) {
     const parsed = latency.onPage ? latencyScene(latency) : result.preview;
     if (parsed.error) {
       chart = undefined;
+      view.chart?.(null);
       if (audio) { audio.events = []; audio.segments = []; }
       result.previewError = parsed.error;
       updateTransport();
@@ -889,7 +880,6 @@ export function createPlayerEngine(view) {
       }
     }
     delete result.preview;
-    for (const id of ["play", "restart", "seek"]) $(id).disabled = !chart;
     if (notify) emit("documentChanged", result.document);
     return result;
   }
@@ -974,7 +964,6 @@ export function createPlayerEngine(view) {
     audio.duration = Math.max(chart?.duration ?? 0, nextTrack?.duration ?? 0);
     playback.exportStartSeconds = Math.min(playback.exportStartSeconds, audio.duration);
     playback.exportEndSeconds = Math.max(playback.exportStartSeconds, Math.min(playback.exportEndSeconds, audio.duration));
-    $("seek").max = String(audio.duration);
     audio.seek(Math.min(second, audio.duration));
     if (chart) seek(audio.offset);
     video.playbackRate = playback.rate;
@@ -1020,7 +1009,6 @@ export function createPlayerEngine(view) {
         playbackDiagnostics.measure("audioSchedule", () => audio.schedule());
         playbackDiagnostics.measure("wasmTick", () =>
           call("miacode_tick", null, ["number"], [second]));
-        $("seek").value = String(second);
         updateTransport(false);
         const end = playback.rangePlaybackEnabled ? playback.exportEndSeconds : audio.duration;
         if (second >= end) {
@@ -1076,6 +1064,7 @@ export function createPlayerEngine(view) {
   function clear() {
     if (disposed) return;
     disposed = true;
+    view.destroy?.();
     previewDeferred = false;
     lifetime.abort(new DOMException("播放器关闭", "AbortError"));
     cancelAnimationFrame(frameRequest);
@@ -1304,7 +1293,6 @@ export function createPlayerEngine(view) {
             frame:index=>playbackDiagnostics.measure("wasmTick",()=>exportCall("miacode_export_frame",["number"],[index])),
             still:enabled=>call("miacode_export_still",null,["number"],[Number(enabled)]),
             changed:state=>{
-              $("play").textContent=state.playing?"暂停":"播放";
               if(introWasPlaying!==state.playing){introWasPlaying=state.playing;playbackDiagnostics.setEnabled(diagnostics.enabled&&state.playing);}
               emit("introAuditionChanged",state);
             },
@@ -1384,6 +1372,7 @@ export function createPlayerEngine(view) {
   }
 
   return {
+    cancelLoad,
     boot,
     setIntroAudition,
     setPerformance: async changes => {
@@ -1590,6 +1579,7 @@ export function createPlayerEngine(view) {
         audio.seek(second);
         if (playing) audio.start();
       }
+      view.audio?.(result);
       return result;
     },
     setCanvasSize: size => {
@@ -1630,7 +1620,7 @@ export function createPlayerEngine(view) {
       updateTransport();
       return { ...result };
     },
-    setTheme: theme => { view.theme?.(theme); return theme; },
+    setTheme: theme => { document.documentElement.dataset.theme = theme; view.theme?.(theme); return theme; },
     setCoverComposition: async composition => {
       if (coverState?.chartFramePlaying) exportCall("miacode_cover_state");
       pause();
@@ -1639,7 +1629,6 @@ export function createPlayerEngine(view) {
         coverState = result;
         await coverPv.update(result);
         document.body.classList.add("cover-view");
-        $("transport").hidden = true;
         setSurfaceSize(result.outputWidth, result.outputHeight);
       }
       return result;
@@ -1675,7 +1664,7 @@ export function createPlayerEngine(view) {
         appearance = result;
         if (exportPreviewSaved) exportPreviewSaved.settings = result;
         if (exportPreview) { exportPreview.lastFrame = null; exportPreview.tick(); }
-        videoPresentation.invalidatePlacement(); view.settings(result);
+        videoPresentation.invalidatePlacement();
       }
       return result;
     },

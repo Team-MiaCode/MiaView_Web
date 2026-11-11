@@ -1,17 +1,20 @@
 export class PreferenceAssets {
-  constructor(factory = globalThis.indexedDB) {
-    this.database = new Promise((resolve,reject) => {
-      const request = factory.open("miacode.web.assets",2);
+  constructor(factory) {
+    this.factory = factory;
+    this.pending = Promise.resolve();
+  }
+  open() {
+    return this.database ??= new Promise((resolve,reject) => {
+      const request = (this.factory ?? globalThis.indexedDB).open("miacode.web.assets",2);
       request.onupgradeneeded = event => {
         const store = event.oldVersion ? request.transaction.objectStore("assets") : request.result.createObjectStore("assets",{keyPath:"id"});
         store.createIndex("kind", "kind");
       };
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
-    this.pending = Promise.resolve();
   }
   async transaction(mode, action) {
-    const database = await this.database;
+    const database = await this.open();
     return new Promise((resolve,reject) => {
       const transaction = database.transaction("assets",mode), request = action(transaction.objectStore("assets"));
       transaction.oncomplete = () => resolve(request.result);
@@ -28,5 +31,5 @@ export class PreferenceAssets {
   }
   put(asset) { return this.write(store=>store.put(asset)); }
   delete(id) { return this.write(store=>store.delete(id)); }
-  async close() { await this.pending; (await this.database).close(); }
+  async close() { await this.pending; (await this.database)?.close(); }
 }

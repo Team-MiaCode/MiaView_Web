@@ -24,6 +24,8 @@ for (const name of ["index.html", "app.mjs", "page.css", "preview-window.html"])
 mkdirSync(resolve(output, "examples"));
 copyFileSync(resolve(root, "examples/pages.html"), resolve(output, "examples/index.html"));
 copyFileSync(resolve(root, "examples/pages-demo.mjs"), resolve(output, "examples/pages-demo.mjs"));
+copyFileSync(resolve(root, "examples/react-preview.jsx"), resolve(output, "examples/react-preview.jsx"));
+copyFileSync(resolve(root, "examples/chart-website-adapter.mjs"), resolve(output, "examples/chart-website-adapter.mjs"));
 if (existsSync(resolve(root, "examples/editor.html"))) {
   copyFileSync(resolve(root, "examples/editor.html"), resolve(output, "examples/editor.html"));
   copyFileSync(resolve(root, "examples/editor-demo.mjs"), resolve(output, "examples/editor-demo.mjs"));

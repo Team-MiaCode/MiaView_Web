@@ -161,6 +161,7 @@ try {
       for (const name of [
         "ready",
         "progress",
+        "loaded",
         "playing",
         "paused",
         "ended",
@@ -212,8 +213,10 @@ try {
   assert.equal(state.resolution.showChartInfoHud, true);
   assert.equal(state.resolution.showObjectStatsHud, true);
   assert.equal(state.resolution.showTimestamp, true);
-  assert.equal(await firstFrame.locator("#play").textContent(), "播放");
+  assert.equal(await firstFrame.getByRole("button", { name: "播放", exact: true }).isEnabled(), true);
   assert.ok((await page.evaluate(() => window.info.noteCount)) > 0);
+  assert.deepEqual(await page.evaluate(() => events.filter(event => event.name === "loaded").map(event => event.payload)),
+    [await page.evaluate(() => info)]);
   assert.notEqual(
     new URL(await page.locator("#one iframe").getAttribute("src")).origin,
     new URL(base).origin,
@@ -348,18 +351,21 @@ try {
   assert.equal(state.settings.previewMode, "maimuri_dx_style");
   // Component UI and host API must share the same state and event boundary.
   await page.evaluate(() => { window.events.length = 0; });
-  await firstFrame.locator("#tap-speed").evaluate((input) => {
+  await firstFrame.getByRole("button", { name: "预览设置", exact: true }).click();
+  await firstFrame.getByRole("tab", { name: "游戏设置", exact: true }).click();
+  await firstFrame.getByRole("slider", { name: /^Tap\s*流速$/ }).evaluate((input) => {
     input.value = "8.5";
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
   await page.waitForFunction(() => events.some((e) => e.name === "settingsChanged" && e.payload.tapFlowSpeed === 8.5));
   assert.equal((await page.evaluate(() => first.getState())).settings.tapFlowSpeed, 8.5);
-  await firstFrame.locator("#seek").evaluate((input) => {
+  await firstFrame.getByRole("slider", { name: "播放位置", exact: true }).evaluate((input) => {
     input.value = "2";
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
   await page.waitForFunction(() => events.some((e) => e.name === "seeked" && e.payload.currentTime === 2));
   assert.equal((await page.evaluate(() => first.getState())).currentTime, 2);
+  await firstFrame.getByRole("button", { name: "关闭设置", exact: true }).click();
   await page.evaluate(() => first.setSettings({ tapFlowSpeed: 8.25 }));
   await page.evaluate(() => first.seek(1.5));
   for (const previewMode of ["erase_by_area", "native", "maimuri_dx_style"]) {
@@ -531,14 +537,15 @@ try {
   });
   const bounds = await secondFrame.locator("body").evaluate(() => {
     const stage = document.getElementById("stage").getBoundingClientRect(),
-      transport = document.getElementById("transport").getBoundingClientRect();
+      transport = document.querySelector(".preview-transport").getBoundingClientRect(),
+      panel = document.querySelector(".preview-host").getBoundingClientRect();
     return {
-      width: stage.width,
-      height: stage.height,
+      width: panel.width,
+      height: panel.height,
       below: transport.top >= stage.bottom,
     };
   });
-  assert.ok(Math.abs(bounds.width - bounds.height) < 1);
+  assert.ok(Math.abs(bounds.width - bounds.height * 741 / 865) < 1);
   assert.equal(bounds.below, true);
   await page.evaluate(() => second.seek(2));
   assert.equal(
@@ -612,7 +619,7 @@ try {
   finishSlowTrack();
   await page.waitForFunction(() => streamEvents.includes("正在准备背景视频"));
   assert.equal(await page.evaluate(() => streamLoadDone), false);
-  assert.equal(await firstFrame.locator("#play").isDisabled(), true);
+  assert.equal(await firstFrame.locator(".preview-transport > input").isDisabled(), true);
   assert.equal(
     await firstFrame.locator("#stage-video").getAttribute("src"),
     null,
@@ -667,7 +674,7 @@ try {
     null,
   );
   assert.equal(await firstFrame.locator("#stage-video").isVisible(), false);
-  assert.equal(await firstFrame.locator("#play").isDisabled(), false);
+  assert.equal(await firstFrame.locator(".preview-transport > input").isDisabled(), false);
   const timeoutDiagnostics = await page.evaluate(() => first.getDiagnostics());
   assert.ok(
     timeoutDiagnostics.reports.some((r) => r.counters.videoLoadTimeouts === 1),
@@ -774,10 +781,10 @@ try {
   await page.waitForFunction(() => document.getElementById("performance-output").textContent.includes("PV 首帧准备"));
   const panelText = await page.locator("#performance-output").textContent();
   assert.ok(terminalLogs.some((text) => panelText.includes(text)));
-  await devFrame.locator("#play").click();
-  await devFrame.locator("#play").filter({ hasText: "暂停" }).waitFor();
-  await devFrame.locator("#play").click();
-  await devFrame.locator("#play").filter({ hasText: "播放" }).waitFor();
+  await devFrame.getByRole("button", { name: "播放", exact: true }).click();
+  await devFrame.getByRole("button", { name: "暂停", exact: true }).waitFor();
+  await devFrame.getByRole("button", { name: "暂停", exact: true }).click();
+  await devFrame.getByRole("button", { name: "播放", exact: true }).waitFor();
   const logFiles = readdirSync(logDirectory);
   assert.equal(logFiles.length, 1);
   const backendReports = readFileSync(join(logDirectory, logFiles[0]), "utf8").trim().split("\n").map(JSON.parse);

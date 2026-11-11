@@ -68,6 +68,11 @@ class MiaCodePreview {
     this.url.searchParams.set("maxFps", String(maxFps));
     this.url.searchParams.set("theme", theme);
     this.url.searchParams.set("controls", this.controls ? "1" : "0");
+    if (options.preferencesKey !== undefined) {
+      if (typeof options.preferencesKey !== "string" || !options.preferencesKey.trim())
+        throw new Error("preferencesKey must be a nonempty string");
+      this.url.searchParams.set("preferencesKey", options.preferencesKey);
+    }
     this.url.searchParams.set("pvTimeoutMs", String(this.pvTimeoutMs));
     this.url.searchParams.set(
       "diagnostics",
@@ -273,10 +278,30 @@ class MiaCodePreview {
   }
   load(chart) {
     try {
-      return this.command(
-        "load",
-        normalizeChart(chart, this.wrapper.ownerDocument.baseURI),
-      ).then(value => { this.exportPreviewMinimum = 0; this.setIntrinsicSurface(this.resolution, false); return value; });
+      const input = normalizeChart(chart, this.wrapper.ownerDocument.baseURI);
+      const load = this.latestLoad = {};
+      const cancelled = () => new DOMException("Chart load superseded", "AbortError");
+      if (this.activeLoad && !this.destroyed) void this.request("cancelLoad").catch(() => {});
+      const operation = this.queue.then(async () => {
+        await this.ready;
+        if (this.failed) throw this.failed;
+        if (this.latestLoad !== load) throw cancelled();
+        this.activeLoad = load;
+        try {
+          const value = await this.request("load", input);
+          if (this.latestLoad !== load) throw cancelled();
+          this.exportPreviewMinimum = 0;
+          this.setIntrinsicSurface(this.resolution, false);
+          this.emit("loaded", value);
+          return value;
+        } catch (error) {
+          throw this.latestLoad === load ? error : cancelled();
+        } finally {
+          this.activeLoad = null;
+        }
+      });
+      this.queue = operation.catch(() => {});
+      return operation;
     } catch (error) {
       return Promise.reject(error);
     }

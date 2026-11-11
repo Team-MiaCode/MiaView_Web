@@ -14,6 +14,7 @@ const preview: MiaCodePreview = createPreview(document.createElement("div"), {
   maxFps: 120,
   theme: "light",
   layout: "fit",
+  preferencesKey: "preview-test",
 });
 void preview.setTheme("legacy_light");
 // @ts-expect-error Only original theme tokens are accepted.
@@ -34,6 +35,7 @@ createPreview(document.createElement("div"), { theme: "system" });
 // @ts-expect-error Numeric strings are not frame rates.
 createPreview(document.createElement("div"), { maxFps: "120" });
 preview.on("paused", (event) => event.elapsedMs);
+preview.on("loaded", (event) => event.difficultyId);
 preview.destroy();
 // @ts-expect-error Judgment effects are fixed and not configurable.
 void preview.setSettings({ showJudgeEffects: false });

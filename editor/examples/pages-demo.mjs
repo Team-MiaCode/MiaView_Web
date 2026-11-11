@@ -17,8 +17,8 @@ function mount() {
   preview?.destroy();
   enable(false);
   const [width, height] = $("resolution").value.split("x").map(Number);
-  $("preview").style.maxWidth = width === height ? "720px" : "960px";
   preview = createPreview($("preview"), {
+    layout: "fit",
     diagnostics: false,
     resolution: { width, height },
     maxFps: $("max-fps").value === "unlimited"

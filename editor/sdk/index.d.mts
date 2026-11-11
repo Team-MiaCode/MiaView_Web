@@ -408,8 +408,10 @@ export interface PreviewOptions {
   theme?: "dark" | "light" | "legacy" | "legacy_light";
   /** Intrinsic aspect ratio, or fill a workbench container with its own height. */
   layout?: "intrinsic" | "fit";
-  /** Render the built-in transport; default true. A workbench can supply its own controls. */
+  /** Show the full player panel. Default true. False leaves a render surface for host controls. */
   controls?: boolean;
+  /** Optional localStorage key on the renderer origin for panel preferences. */
+  preferencesKey?: string;
   /** Initialization/load logs and playback-only performance reports sent to the renderer backend. Default true. */
   diagnostics?: boolean;
   resolution?: Resolution;
@@ -434,6 +436,7 @@ export interface PreviewEvents {
   performance: PerformanceReport;
   ready: { playerVersion: string; sourceRevision: string };
   progress: { stage: string; progress: number };
+  loaded: ChartInfo;
   playing: { elapsedMs: number };
   paused: { elapsedMs: number };
   ended: { elapsedMs: number };

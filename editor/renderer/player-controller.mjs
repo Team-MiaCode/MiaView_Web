@@ -166,6 +166,7 @@ export function createPlayerController(engine) {
     },
     execute(type, payload) {
       if (type === "pause") { ++playbackRequest; return executeCommand(type, payload); }
+      if (type === "cancelLoad") return Promise.resolve(engine.cancelLoad());
       const request = playbackRequest;
       const pending = queue.then(() => (type === "play" || type === "restart") && request !== playbackRequest ? engine.state() : executeCommand(type, payload, request));
       if (type !== "getAnalysis") queue = pending.catch(() => {});
