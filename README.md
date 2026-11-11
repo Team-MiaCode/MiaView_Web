@@ -1,8 +1,13 @@
 # MiaView Web 预览 SDK
 
+- [预览测试接入版](https://team-miacode.github.io/MiaView_Web/standalone-preview/examples/sdk-preview/index.html)
+- [完整版编辑器](https://team-miacode.github.io/MiaView_Web/feature/editor/)
+
 ## 预览测试站
 
-测试页左侧选择谱面文件夹、谱面文件、音乐、封面和 PV，右侧通过 `createPreview()` 挂载播放器。测试页使用 `panelLayout: "fill"`，预览面板填满右侧容器。浏览器读取本地文件。
+左侧选择谱面文件夹、谱面文件、音乐、封面和 PV，右侧通过 `createPreview()` 挂载播放器。测试页使用 `panelLayout: "fill"`，预览面板填满右侧容器。浏览器读取本地文件。[测试页源码](examples/sdk-preview/index.html)
+
+左侧「画面比例」对应视频导出的 1:1、4:3、16:9 画幅，通过 `setCanvasSize()` 切换右侧画布。
 
 ![预览 SDK 测试页，左侧选择谱面和媒体，右侧显示播放器](.assets/sdk-preview-demo.png)
 
@@ -14,7 +19,7 @@ cd build-devtools/sdk-preview-demo
 python examples/sdk-preview/serve.py
 ```
 
-服务启动后打开 [本地测试页](http://localhost:3031/examples/sdk-preview/index.html)。也可将整个输出目录复制到静态站点，访问 `examples/sdk-preview/index.html`。在源码目录使用 `npm run dev` 时，入口为 [3030 端口的测试页](http://localhost:3030/examples/sdk-preview/index.html)。
+服务启动后访问终端显示的地址。部署到静态站点时，上传整个输出目录，测试页路径为 `examples/sdk-preview/index.html`。在源码目录运行 `npm run dev` 时使用同一路径。
 
 ## 接入须知
 
