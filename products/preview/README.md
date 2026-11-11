@@ -40,7 +40,7 @@ npm run dev
 </script>
 ```
 
-`controls` 默认为 `true`，在 iframe 中显示画面、统计、进度条、播放控制和设置覆盖层。设为 `false` 时由宿主组装控制区。`layout: "fit"` 采用容器高度，面板宽高比为 741∶865。容器较窄时可调整分配给播放器的高度。
+`controls` 默认为 `true`，在 iframe 中显示画面、统计、进度条、播放控制和设置覆盖层。设为 `false` 时由宿主组装控制区。`layout: "fit"` 让 iframe 填满容器。完整面板默认按 741∶865 布局。设置 `panelLayout: "fill"` 后，面板填满 iframe，宿主可分别指定容器宽度和高度。
 
 | 接口 | 输入与结果 |
 | --- | --- |

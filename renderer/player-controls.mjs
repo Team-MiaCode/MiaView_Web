@@ -3,7 +3,7 @@ import { DATABASE_UPGRADE_MESSAGE } from "../services/database.mjs";
 import { HUD_AREAS, previewSettingsFromValues, previewValuesFromSettings } from "../services/preview-appearance.mjs";
 import { UserAppearance } from "../services/user-appearance.mjs";
 import { UserFonts } from "../services/user-fonts.mjs";
-import { element as h, button } from "../ui/components/dom.mjs";
+import { element as h, button, icon } from "../ui/components/dom.mjs";
 import { formRow, number, select, toggle } from "../ui/components/forms.mjs";
 import { PopupHost } from "../ui/components/popup-host.mjs";
 import { settingsTabs } from "../ui/components/settings-tabs.mjs";
@@ -28,18 +28,20 @@ export function attachPlayerControls(controller, engine, parameters) {
   const lifetime = new AbortController();
   const { signal } = lifetime;
   const audioButton = button("音频设置", () => toggleSettings("audio-settings", audioButton),
-    { symbol: "audio-settings", className: "chrome", iconOnly: true });
-  const panel = createPreviewPanel({ viewState, command, trailingAction: audioButton,
+    { symbol: "audio-settings", className: "chrome", iconOnly: true, disabled: true });
+  const fullscreen = button("全屏", () => command("preview.fullscreen"),
+    { symbol: "fullscreen", className: "chrome", iconOnly: true });
+  const panel = createPreviewPanel({ viewState, command, transportActions: [audioButton, fullscreen],
     menu: (trigger, items) => popups.showMenu(trigger, items, { above: true, alignEnd: true }),
     openSettings: () => toggleSettings("preview-settings", panel.settingsButton) });
   const { root, container, transport, statistics } = panel;
+  root.classList.toggle("preview-host-fill", parameters.get("panelLayout") === "fill");
   document.body.prepend(root);
   panel.settingsButton.disabled = true;
-  const fullscreen = button("全屏", () => command("preview.fullscreen"), { className: "chrome" });
-  panel.settingsButton.before(fullscreen);
   document.addEventListener("fullscreenchange", () => {
-    const label = document.fullscreenElement ? "退出全屏" : "全屏";
-    fullscreen.textContent = label;
+    const active = Boolean(document.fullscreenElement);
+    const label = active ? "退出全屏" : "全屏";
+    fullscreen.replaceChildren(icon(active ? "fullscreen-exit" : "fullscreen"));
     fullscreen.setAttribute("aria-label", label);
     fullscreen.title = label;
   }, { signal });
@@ -108,7 +110,7 @@ export function attachPlayerControls(controller, engine, parameters) {
     trigger.setAttribute("aria-expanded", "true");
     const context = { viewState, documentSession, command, close: closeSettings };
     const content = key === "audio-settings" ? createAudioSettings(context) : settingsTabs([
-      ...previewAppearanceSections({ ...context, touchPadAuthoring: false }),
+      ...previewAppearanceSections({ ...context, touchPadAuthoring: false, videoControls }),
       { key: "playback", label: "播放", render: playbackSettings },
     ], viewState.previewSettingsPage, page => { viewState.previewSettingsPage = page; });
     settingsBody.replaceChildren(content);
@@ -121,6 +123,14 @@ export function attachPlayerControls(controller, engine, parameters) {
   }, { signal });
 
   let playback = {};
+  function videoControls() {
+    return [
+      toggle("自由比例", Boolean(preferences.previewCanvasFreeAspect),
+        enabled => command("preview.toggleFreeAspect", { enabled })),
+      toggle("隐藏 PV", engine.state().media.hidePv,
+        hidePv => command("preview.toggleHidePv", { hidePv })),
+    ];
+  }
   function playbackSettings() {
     const { duration } = transport.state;
     return [
@@ -242,10 +252,10 @@ export function attachPlayerControls(controller, engine, parameters) {
       case "preview.range": return preview.setPlayback({ exportEndSeconds: playback.exportEndSeconds || transport.state.duration, ...args });
       case "preview.fullscreen": return document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
       case "preview.toggleFreeAspect":
-        savePreferences({ previewCanvasFreeAspect: !preferences.previewCanvasFreeAspect });
+        savePreferences({ previewCanvasFreeAspect: args.enabled });
         return fitCanvas();
       case "preview.toggleHidePv": {
-        const hidePv = !preferences.previewHidePv;
+        const { hidePv } = args;
         await preview.setMediaSettings({ hidePv });
         savePreferences({ previewHidePv: hidePv });
         return;
@@ -319,7 +329,6 @@ export function attachPlayerControls(controller, engine, parameters) {
     audio: updateAudio,
     chart(chart) {
       transport.setDocument({ hasDocument: Boolean(chart) });
-      audioButton.disabled = panel.settingsButton.disabled;
       if (activeSettings === "preview-settings" && viewState.previewSettingsPage === "playback")
         settingsBody.firstElementChild.refresh();
     },

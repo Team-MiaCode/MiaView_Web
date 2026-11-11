@@ -1,0 +1,58 @@
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px;
+  background: var(--surface);
+  color: var(--text);
+  font: 14px/1.5 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+}
+h1 { margin: 0 0 20px; font-size: 24px; }
+h2 { margin: 0; font-size: 16px; }
+.test-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 290px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.file-panel {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.hint { margin: 6px 0 16px; color: var(--muted); }
+fieldset {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+legend { margin: 8px 0 6px; padding: 0; color: var(--muted); }
+select, .file-button {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--control-border);
+  border-radius: 5px;
+  background: var(--control);
+  color: inherit;
+  font: inherit;
+}
+select { margin-top: 4px; }
+.file-button { position: relative; cursor: pointer; }
+.file-button:hover { background: var(--hover); }
+.file-button:has(input:disabled) { color: var(--disabled); cursor: default; }
+.file-button:focus-within, select:focus-visible { outline: 2px solid var(--accent); }
+.file-button input { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
+#status { margin: 14px 0 0; color: var(--muted); overflow-wrap: anywhere; }
+.preview-region { min-width: 0; }
+#preview { height: 78dvh; }
+@media (max-width: 700px) {
+  body { padding: 14px; }
+  .test-layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  #preview { height: 60dvh; }
+}

@@ -3,7 +3,7 @@ import { select, range, check, toggle, formRow } from "../components/forms.mjs";
 import { settingsTabs } from "../components/settings-tabs.mjs";
 import { translate } from "../components/translate.mjs";
 
-export function previewAppearanceSections({ viewState, documentSession, command, touchPadAuthoring = true }) {
+export function previewAppearanceSections({ viewState, documentSession, command, touchPadAuthoring = true, videoControls }) {
   const values = documentSession.previewValues ||= {};
   const settings = documentSession.previewSettings || {};
   const t = key => translate(key, viewState.preferences.languageToken || "zh");
@@ -32,6 +32,7 @@ export function previewAppearanceSections({ viewState, documentSession, command,
       slider("fireworkBrightness", "烟花亮度", (settings.fireworkBrightness ?? 1) * 100, 50, 120),
       slider("layoutSquareScale", label("video.layout_square_scale"), 95, 50, 100, 5),
       choice("scaleMode", label("video.scale_mode"), [[0, label("video.scale.fill")], [1, label("video.scale.fit")], [2, label("video.scale.square_fit")], [3, label("video.scale.inner_circle_fit_outer_fill")]], 0),
+      ...(videoControls?.() ?? []),
       switchRow("smoothBrightness", label("video.smooth_brightness"), true),
       switchRow("showTimestamp", t("dialog.video_export.option.show_timestamp"), true),
       ...(touchPadAuthoring ? [switchRow("touchPadAuthoringShortcut", label("video.touch_pad_authoring_shortcut"), false)] : []),

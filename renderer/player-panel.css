@@ -10,6 +10,7 @@ body:has(> .preview-host) { background: var(--background-surface); }
   overflow: auto;
   background: var(--background-panel);
 }
+.preview-host-fill { width: 100%; }
 .preview-host .preview-container { container-type: inline-size; }
 .cover-view .preview-host { width: 100%; grid-template-rows: minmax(0, 1fr); }
 .cover-view .preview-host > :not(.preview-container) { display: none; }
@@ -26,6 +27,9 @@ body:has(> .preview-host) { background: var(--background-surface); }
 .preview-overlay-heading h3 { margin: 0; font-size: inherit; }
 .preview-overlay-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 8px 12px 12px; }
 .preview-overlay-body > .native-form { max-width: 640px; margin-inline: auto; }
+@container (max-width: 280px) {
+  .preview-host .preview-control-row { flex-wrap: wrap; height: auto; }
+}
 @container (max-width: 420px) {
   .preview-overlay-body .form-row.with-action { grid-template-columns: minmax(0, 1fr) auto; }
   .preview-overlay-body .form-row.with-action > .form-label { grid-column: 1 / -1; }

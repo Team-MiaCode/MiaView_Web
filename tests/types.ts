@@ -14,6 +14,7 @@ const preview: MiaCodePreview = createPreview(document.createElement("div"), {
   maxFps: 120,
   theme: "light",
   layout: "fit",
+  panelLayout: "fill",
   preferencesKey: "preview-test",
 });
 void preview.setTheme("legacy_light");
@@ -21,6 +22,8 @@ void preview.setTheme("legacy_light");
 void preview.setTheme("system");
 // @ts-expect-error Unknown layout modes are rejected.
 createPreview(document.createElement("div"), { layout: "fluid" });
+// @ts-expect-error Unknown panel layout modes are rejected.
+createPreview(document.createElement("div"), { panelLayout: "fluid" });
 void preview.load(chart);
 void preview.seek(1);
 void preview.setSettings({ tapFlowSpeed: 8, noteSkin: "SD" });

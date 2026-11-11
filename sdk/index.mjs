@@ -40,6 +40,9 @@ class MiaCodePreview {
     const theme = previewTheme(options.theme);
     const layout = options.layout ?? "intrinsic";
     if (layout !== "intrinsic" && layout !== "fit") throw new Error("layout must be intrinsic or fit");
+    const panelLayout = options.panelLayout ?? "proportional";
+    if (panelLayout !== "proportional" && panelLayout !== "fill")
+      throw new Error("panelLayout must be proportional or fill");
     this.layout = layout;
     this.resolution = resolution;
     this.controls = options.controls ?? true;
@@ -68,6 +71,7 @@ class MiaCodePreview {
     this.url.searchParams.set("maxFps", String(maxFps));
     this.url.searchParams.set("theme", theme);
     this.url.searchParams.set("controls", this.controls ? "1" : "0");
+    this.url.searchParams.set("panelLayout", panelLayout);
     if (options.preferencesKey !== undefined) {
       if (typeof options.preferencesKey !== "string" || !options.preferencesKey.trim())
         throw new Error("preferencesKey must be a nonempty string");

@@ -3,7 +3,7 @@ import { translate } from "../components/translate.mjs";
 import { PLAYBACK_RATES } from "../../renderer/playback.mjs";
 
 export class PreviewTransport {
-  constructor(command, menu, viewState, trailingAction) {
+  constructor(command, menu, viewState, transportActions) {
     this.state = { currentTime: 0, duration: 0, playing: false, rate: 1 };
     this.viewState = viewState;
     this.loaded = false;
@@ -27,18 +27,24 @@ export class PreviewTransport {
     this.range = button(t("preview.range_mode"), () => command("preview.rangeMode", { enabled: !this.rangeEnabled }), { symbol: "range-play", iconOnly: true, className: "chrome", "aria-pressed": "false", hidden: true });
     this.rate = button("1x", () => menu(this.rate, PLAYBACK_RATES.map(rate => [`${rate}x`, "preview.rate", "", { rate }, { role: "menuitemradio", checked: rate === this.state.rate }])), { className: "chrome preview-rate", "aria-label": t("qml.playback_speed"), "aria-haspopup": "menu" });
     this.rate.replaceChildren(h("span", { className: "preview-rate-label" }, "1x"), icon("chevron-down", 12));
-    this.canvas = button(t("preview.canvas.menu_tooltip"), () => menu(this.canvas, [
-      [t("preview.canvas.free_aspect"), "preview.toggleFreeAspect", "", {}, { role: "menuitemcheckbox", checked: Boolean(viewState.preferences.previewCanvasFreeAspect) }],
-      [t("preview.canvas.hide_pv"), "preview.toggleHidePv", "", {}, { role: "menuitemcheckbox", checked: Boolean(viewState.preferences.previewHidePv) }],
-    ]), { symbol: "preview-settings", iconOnly: true, className: "chrome", "aria-haspopup": "menu" });
-    this.trailingAction = trailingAction ?? button(t("preview.window.detach"), () => command("preview.detach"), { symbol: "preview-detach", iconOnly: true, className: "chrome" });
-    this.row = h("div", { className: "preview-control-row" }, this.stop, this.play, this.time, this.range, this.rate, this.canvas, this.trailingAction);
+    this.documentControls = [this.seek, this.stop, this.play, this.range, this.rate];
+    if (!transportActions) {
+      const canvas = button(t("preview.canvas.menu_tooltip"), () => menu(canvas, [
+        [t("preview.canvas.free_aspect"), "preview.toggleFreeAspect", "", {}, { role: "menuitemcheckbox", checked: Boolean(viewState.preferences.previewCanvasFreeAspect) }],
+        [t("preview.canvas.hide_pv"), "preview.toggleHidePv", "", {}, { role: "menuitemcheckbox", checked: Boolean(viewState.preferences.previewHidePv) }],
+      ]), { symbol: "preview-settings", iconOnly: true, className: "chrome", "aria-haspopup": "menu" });
+      this.trailingAction = button(t("preview.window.detach"), () => command("preview.detach"),
+        { symbol: "preview-detach", iconOnly: true, className: "chrome" });
+      transportActions = [canvas, this.trailingAction];
+      this.documentControls.push(...transportActions);
+    }
+    this.row = h("div", { className: "preview-control-row" }, this.stop, this.play, this.time, this.range, this.rate, ...transportActions);
     this.root = h("div", { className: "preview-transport", "aria-label": "播放控制", role: "group" }, this.seek, this.row);
     this.update(this.state);
   }
   setDocument(doc) {
     this.loaded = Boolean(doc.hasDocument);
-    for (const node of this.root.querySelectorAll("button,input")) if (node.disabled === this.loaded) node.disabled = !this.loaded;
+    for (const node of this.documentControls) node.disabled = !this.loaded;
     this.setExportMode(this.viewState.activeEditorKey === "export");
   }
   setExportMode(enabled) { this.range.hidden = !this.loaded || !enabled; }

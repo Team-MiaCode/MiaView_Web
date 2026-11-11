@@ -38,6 +38,7 @@ for (const name of ["index.html", "app.mjs", "page.css", "preview-window.html"])
 mkdirSync(resolve(output, "examples"));
 copyFileSync(resolve(root, "examples/pages.html"), resolve(output, "examples/index.html"));
 copyFileSync(resolve(root, "examples/pages-demo.mjs"), resolve(output, "examples/pages-demo.mjs"));
+cpSync(resolve(root, "examples/sdk-preview"), resolve(output, "examples/sdk-preview"), { recursive: true });
 for (const name of ["react-preview.jsx", "chart-website-adapter.mjs"]) {
   if (existsSync(resolve(root, "examples", name)))
     copyFileSync(resolve(root, "examples", name), resolve(output, "examples", name));

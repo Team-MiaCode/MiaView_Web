@@ -412,6 +412,8 @@ export interface PreviewOptions {
   theme?: "dark" | "light" | "legacy" | "legacy_light";
   /** Intrinsic aspect ratio, or fill a workbench container with its own height. */
   layout?: "intrinsic" | "fit";
+  /** Full panel sizing inside the iframe. Default "proportional" uses 741:865. "fill" uses the iframe width and height. */
+  panelLayout?: "proportional" | "fill";
   /** Show the full player panel. Default true. False leaves a render surface for host controls. */
   controls?: boolean;
   /** Optional localStorage key on the renderer origin for panel preferences. */

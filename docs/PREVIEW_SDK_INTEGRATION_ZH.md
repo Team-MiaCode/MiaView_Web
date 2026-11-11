@@ -27,7 +27,7 @@
 </div>
 ```
 
-`layout: "fit"` 使用宿主容器高度，面板按 `741∶865` 计算宽度。上面的容器高度上限让面板在窄卡片中保持比例。
+`layout: "fit"` 让 iframe 填满宿主容器。完整面板默认按 `741∶865` 布局，上面的容器高度上限让面板适合窄卡片。宿主也可以分别指定容器的宽和高，并在创建选项中加入 `panelLayout: "fill"`，使面板填满容器。画布分辨率通过 `resolution` 或 `setCanvasSize()` 设置。
 
 将以下模块保存为网站自己的 `chart-player.mjs`。入口采用浏览器 ES module，可与现有 React 或 Next.js 页面配合使用。
 

@@ -34,6 +34,7 @@ export function createPlayerEngine(view) {
     HEIGHT = DEFAULT_RESOLUTION.height;
 
   const $ = (id) => document.getElementById(id);
+  const fpsBadge = $("fps");
   const embedded = window.parent !== window;
   document.body.classList.toggle("embedded", embedded);
   document.body.classList.toggle("external-controls", new URLSearchParams(location.search).get("controls") === "0");
@@ -371,6 +372,7 @@ export function createPlayerEngine(view) {
     defaultSettings = JSON.parse(call("miacode_settings", "string", [], []));
     audioSettings = JSON.parse(call("miacode_audio_command", "string", ["string"], [JSON.stringify({ id: "audio.getSettings" })]));
     appearance = defaultSettings;
+    fpsBadge.hidden = !appearance.showDebugInfo;
     // Qt's queued window geometry can outlive a caller resize. The renderer
     // owns this single frameless surface; keep its DOM and framebuffer at the
     // caller's logical size while the outer viewport handles browser scaling.
@@ -1028,7 +1030,7 @@ export function createPlayerEngine(view) {
   function render(now) {
     if (ready && now - fpsSampleTime >= 1000) {
       const frames = call("miacode_frame_count", "number", [], []);
-      $("fps").textContent =
+      fpsBadge.textContent =
         `FPS: ${Math.round(((frames - fpsSampleFrames) * 1000) / (now - fpsSampleTime))}`;
       fpsSampleFrames = frames;
       fpsSampleTime = now;
@@ -1731,6 +1733,7 @@ export function createPlayerEngine(view) {
       );
       if (!result.error) {
         appearance = result;
+        fpsBadge.hidden = !appearance.showDebugInfo;
         if (exportPreviewSaved) exportPreviewSaved.settings = result;
         if (exportPreview) { exportPreview.lastFrame = null; exportPreview.tick(); }
         videoPresentation.invalidatePlacement();

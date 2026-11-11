@@ -27,6 +27,7 @@
   ],
   "scripts": {
     "build:pages": "node scripts/build-pages.mjs",
+    "build:sdk-preview-demo": "node scripts/build-sdk-preview-demo.mjs",
     "dev": "node scripts/serve.mjs",
     "test": "node --test tests/*.spec.mjs",
     "check": "node scripts/verify.mjs",

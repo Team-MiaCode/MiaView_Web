@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MiaView Web · SDK 接入测试</title>
+  <link rel="icon" href="../../ui/components/icons/chart.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../../renderer/theme.css">
+  <link rel="stylesheet" href="./page.css">
+</head>
+<body>
+  <header>
+    <h1>预览 SDK 接入测试</h1>
+  </header>
+  <main class="test-layout">
+    <aside class="file-panel" aria-labelledby="file-heading">
+      <h2 id="file-heading">谱面与媒体</h2>
+      <p class="hint">选择含 maidata.txt 的文件夹，或单独打开谱面和媒体文件。</p>
+      <fieldset id="sources" disabled>
+        <label class="file-button">打开谱面文件夹<input id="folder" type="file" webkitdirectory multiple></label>
+        <label class="file-button">打开谱面文件<input id="maidata" type="file" accept=".txt,text/plain"></label>
+        <label id="project-row" hidden>谱面<select id="project"></select></label>
+        <label>难度<select id="difficulty" disabled></select></label>
+        <fieldset id="media" disabled>
+          <legend>替换媒体</legend>
+          <label class="file-button">选择音乐<input id="audio" type="file" accept="audio/*,.flac,.ogg,.m4a"></label>
+          <label class="file-button">选择封面<input id="cover" type="file" accept="image/*"></label>
+          <label class="file-button">选择 PV<input id="video" type="file" accept="video/*,.mp4,.webm"></label>
+        </fieldset>
+      </fieldset>
+      <p id="status" role="status">正在初始化预览器…</p>
+    </aside>
+    <section class="preview-region" aria-label="SDK 播放器">
+      <div id="preview"></div>
+    </section>
+  </main>
+  <script type="module" src="./app.mjs"></script>
+</body>
+</html>

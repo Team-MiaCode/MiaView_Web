@@ -40,7 +40,7 @@ for (const product of ["editor", "preview"]) {
     productPackage.exports["."] = packageSource.exports["./editor"];
   } else {
     delete productPackage.exports["./editor"];
-    const previewScripts = new Set(["build:pages", "dev", "test", "check", "check:repo", "check:source", "check:types", "build:native", "sync:artifacts", "sync:ui", "sync:fonts", "sync:labels", "source:init", "runtime:fetch", "sync:media",
+    const previewScripts = new Set(["build:pages", "build:sdk-preview-demo", "dev", "test", "check", "check:repo", "check:source", "check:types", "build:native", "sync:artifacts", "sync:ui", "sync:fonts", "sync:labels", "source:init", "runtime:fetch", "sync:media",
       "test:browser", "test:firework", "test:ui", "test:video-geometry", "test:pv-sync", "test:analysis-worker", "test:preview-lifecycle", "test:preview-resources", "test:preview-benchmark", "test:preview-parity"]);
     productPackage.scripts = Object.fromEntries(Object.entries(productPackage.scripts).filter(([name]) => previewScripts.has(name)));
   }
