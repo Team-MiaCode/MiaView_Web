@@ -5,7 +5,7 @@
 
 ## 预览测试站
 
-左侧选择谱面文件夹、谱面文件、音乐、封面和 PV，右侧通过 `createPreview()` 挂载播放器。测试页使用 `panelLayout: "fill"`，预览面板填满右侧容器。浏览器读取本地文件。[测试页源码](examples/sdk-preview/index.html)
+左侧选择谱面文件夹、谱面文件、音乐、封面和 PV，右侧通过 `createPreview()` 挂载播放器。测试页按 SDK 默认的 741∶865 显示预览面板。浏览器读取本地文件。[测试页源码](examples/sdk-preview/index.html)
 
 左侧「画面比例」对应视频导出的 1:1、4:3、16:9 画幅，通过 `setCanvasSize()` 切换右侧画布。
 

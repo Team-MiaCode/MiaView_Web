@@ -16,7 +16,6 @@ const lifetime = new AbortController();
 const { signal } = lifetime;
 const preview = createPreview(element("preview"), {
   layout: "fit",
-  panelLayout: "fill",
   diagnostics: false,
   resolution: { width: canvasWidth, height: canvasHeight },
 });

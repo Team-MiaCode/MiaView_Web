@@ -2,7 +2,7 @@
 
 左侧打开谱面文件夹或单独选择谱面、音乐、封面和 PV。右侧播放器由 `createPreview()` 挂载。文件由浏览器读取，播放控制和设置位于播放器内。
 
-测试页使用 `layout: "fit"` 和 `panelLayout: "fill"`，播放器填满右侧容器的宽度和高度。
+测试页使用 `layout: "fit"` 和 SDK 默认的 `panelLayout: "proportional"`，播放器面板按 741∶865 显示。
 
 左侧「画面比例」通过 `setCanvasSize()` 切换与视频导出对应的 1:1、4:3、16:9 画布，三种尺寸均为 1080 像素高。
 

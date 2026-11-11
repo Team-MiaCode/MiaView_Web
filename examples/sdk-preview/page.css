@@ -50,9 +50,14 @@ select { margin-top: 4px; }
 .file-button input { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
 #status { margin: 14px 0 0; color: var(--muted); overflow-wrap: anywhere; }
 .preview-region { min-width: 0; }
-#preview { height: 78dvh; }
+#preview {
+  --preview-height: 78dvh;
+  width: min(100%, calc(var(--preview-height) * 741 / 865));
+  aspect-ratio: 741 / 865;
+  margin-inline: auto;
+}
 @media (max-width: 700px) {
   body { padding: 14px; }
   .test-layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }
-  #preview { height: 60dvh; }
+  #preview { --preview-height: 60dvh; }
 }
