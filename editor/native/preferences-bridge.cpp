@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QRegularExpression>
 
 using namespace miacode::preview::scene;
 namespace {
@@ -38,8 +39,17 @@ QJsonObject webImportFont(const QByteArray& bytes, const QString& name) {
         file.close();
     }
     const auto family = previewHudFontFamilyForFile(path);
-    if (family.isEmpty()) { file.remove(); return {{"error", "字体解码失败"}}; }
+    if (family.isEmpty()) { webRemoveFont(path); return {{"error", "字体解码失败"}}; }
     return {{"path", path}, {"family", family}, {"sha256", hash}};
+}
+
+bool webRemoveFont(const QString& path) {
+    static const QRegularExpression font(QStringLiteral("^/web-fonts/[a-f0-9]{64}\\.(ttf|otf)$"));
+    if (!font.match(path).hasMatch()) return false;
+    QFile file(path);
+    if (file.exists() && !file.remove()) return false;
+    webReleaseHudFont(path);
+    return true;
 }
 
 QJsonObject webHudFontPaths(const PreviewHudFontSettings& settings) {

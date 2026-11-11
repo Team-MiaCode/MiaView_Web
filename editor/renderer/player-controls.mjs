@@ -1,4 +1,5 @@
 import { PreferenceAssets } from "../services/preference-assets.mjs";
+import { DATABASE_UPGRADE_MESSAGE } from "../services/database.mjs";
 import { HUD_AREAS, previewSettingsFromValues, previewValuesFromSettings } from "../services/preview-appearance.mjs";
 import { UserAppearance } from "../services/user-appearance.mjs";
 import { UserFonts } from "../services/user-fonts.mjs";
@@ -58,11 +59,22 @@ export function attachPlayerControls(controller, engine, parameters) {
     setPerformance: args => run("setPerformance", args),
     setTheme: theme => run("setTheme", { theme }),
     audioCommand: (id, args = {}) => run("audioCommand", { id, args }),
-    importFont: (font, name = font.name) => run("importFont", { font, name }),
-    importSkin: files => run("importSkin", { files }),
-    importJudgeLine: image => run("importJudgeLine", { image }),
+    importFont: (font, name = font.name, owner) => run("importFont", { font, name, owner }),
+    importSkin: (files, owner) => run("importSkin", { files, owner }),
+    importJudgeLine: (image, owner) => run("importJudgeLine", { image, owner }),
+    releaseUnusedAppearance: (owner, fontPaths) => run("releaseUnusedAppearance", { owner, fontPaths }),
   };
-  const assets = new PreferenceAssets();
+  let unblockBoot;
+  const upgradeBlocked = new Promise(resolve => { unblockBoot = resolve; });
+  const assets = new PreferenceAssets(undefined, (_, blocked) => {
+    if (signal.aborted) return;
+    if (blocked) {
+      engine.reportProgress(DATABASE_UPGRADE_MESSAGE);
+      unblockBoot();
+    } else {
+      engine.finishProgress(DATABASE_UPGRADE_MESSAGE, "本地数据已就绪");
+    }
+  });
   const appearance = new UserAppearance(preview, assets);
   const fonts = new UserFonts(preview, assets);
 
@@ -171,8 +183,8 @@ export function attachPlayerControls(controller, engine, parameters) {
       const area = HUD_AREAS[values.hudFontAreaIndex ?? 0];
       const changes = previewSettingsFromValues(args);
       if ("hudFontPath" in args) changes.hudFontPaths = { [area]: args.hudFontPath };
-      await appearance.restore(changes);
-      const settings = Object.keys(changes).length ? await preview.setSettings(changes) : documentSession.previewSettings;
+      const settings = Object.keys(changes).length ? await appearance.apply(changes) : documentSession.previewSettings;
+      await fonts.show([settings.hudFontPaths?.[area]]);
       const saved = { ...values, ...previewValuesFromSettings(settings), hudFontPaths: settings.hudFontPaths,
         hudFontPath: settings.hudFontPaths?.[area] ?? "" };
       Object.assign(documentSession.previewValues, saved);
@@ -188,7 +200,9 @@ export function attachPlayerControls(controller, engine, parameters) {
   root.append(assetInput);
   let chooseAsset;
   assetInput.addEventListener("change", () => {
-    if (assetInput.files.length) void chooseAsset(Array.from(assetInput.files)).catch(report);
+    const files = Array.from(assetInput.files);
+    assetInput.value = "";
+    if (files.length) void chooseAsset(files).catch(report);
   }, { signal });
   function pickAsset(accept, action, directory = false) {
     chooseAsset = action;
@@ -272,7 +286,7 @@ export function attachPlayerControls(controller, engine, parameters) {
   }
   function command(id, args = {}) { return execute(id, args).catch(report); }
 
-  const boot = engine.boot.then(async () => {
+  const restorePreferences = engine.boot.then(async () => {
     if (signal.aborted) return;
     const initial = engine.state();
     baseResolution = canvasSize = initial.resolution;
@@ -297,7 +311,7 @@ export function attachPlayerControls(controller, engine, parameters) {
     audioButton.disabled = false;
   });
   return {
-    boot,
+    boot: Promise.race([restorePreferences, engine.boot.then(() => upgradeBlocked)]),
     theme(theme) {
       document.documentElement.dataset.theme = theme;
       savePreferences({ theme });

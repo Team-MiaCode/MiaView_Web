@@ -53,12 +53,62 @@ void WebTimeline::load(const QString& text, double first, const miacode::simai::
     model_.rebuildFromText(text_, first, timing);
 }
 
-void WebTimeline::setWaveform(const float* samples, int count, double duration)
+void WebTimeline::beginWaveform(int sampleCount, double duration)
 {
-    if (!samples || count <= 0) { waveform_.reset(); return; }
-    QVector<float> mono(count);
-    std::copy(samples, samples + count, mono.begin());
-    waveform_ = miacode::waveform::buildWaveformDataFromSamples(QStringLiteral("/track"), count * sizeof(float), 0, mono, duration);
+    using namespace miacode::waveform;
+    waveform_.reset();
+    const int columns = sampleCount > 0 ? recommendedTopLevelColumnCount(duration) : 0;
+    if (columns <= 0) return;
+    waveformSampleCount_ = sampleCount;
+    waveformSampleIndex_ = 0;
+    waveformLastBucket_ = -1;
+    waveform_ = std::make_shared<WaveformData>();
+    waveform_->durationSeconds = duration;
+    WaveformLevel level;
+    level.secondsPerColumn = duration / columns;
+    level.columns.reserve(columns);
+    level.columns.resize(columns);
+    waveform_->levels.append(std::move(level));
+}
+
+void WebTimeline::addWaveformSamples(const float* samples, int count)
+{
+    if (!waveform_) return;
+    auto& columns = waveform_->levels.first().columns;
+    for (int i = 0; i < count; ++i, ++waveformSampleIndex_) {
+        const int bucket = static_cast<int>(qint64(waveformSampleIndex_) * columns.size() / waveformSampleCount_);
+        const float sample = qBound(-1.0f, samples[i], 1.0f);
+        auto& column = columns[bucket];
+        if (bucket != waveformLastBucket_) {
+            column = {sample, sample};
+            waveformLastBucket_ = bucket;
+        } else {
+            column.min = qMin(column.min, sample);
+            column.max = qMax(column.max, sample);
+        }
+    }
+}
+
+double WebTimeline::finishWaveform()
+{
+    if (!waveform_) return 0;
+    using namespace miacode::waveform;
+    auto& levels = waveform_->levels;
+    while (levels.constLast().columns.size() > 1) {
+        const auto& previous = levels.constLast();
+        WaveformLevel next;
+        next.secondsPerColumn = previous.secondsPerColumn * 2;
+        next.columns.reserve(previous.columns.size() / 2);
+        for (qsizetype i = 0; i < previous.columns.size(); i += 2) {
+            const auto& first = previous.columns[i];
+            const auto& second = previous.columns[i + 1];
+            next.columns.append(WaveformColumn{qMin(first.min, second.min), qMax(first.max, second.max)});
+        }
+        levels.append(std::move(next));
+    }
+    double bytes = 0;
+    for (const auto& level : std::as_const(levels)) bytes += double(level.columns.capacity()) * sizeof(WaveformColumn);
+    return bytes;
 }
 
 QJsonObject WebTimeline::build(const QJsonObject& options)

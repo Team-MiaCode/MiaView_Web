@@ -1,3 +1,5 @@
+import { rendererAssetUrl } from "./runtime.mjs";
+
 export class PreviewAnalysis {
   constructor(identity, manifest, { WorkerClass = Worker, baseUrl = import.meta.url } = {}) {
     this.pending = new Map(); this.sequence = 0;
@@ -6,7 +8,7 @@ export class PreviewAnalysis {
     const resources = ["miacode-analysis.js", "miacode-analysis.wasm"].map(path => {
       const file = manifest.files.find(file => file.path === path);
       if (!file) throw new Error("谱面分析运行时资源缺失");
-      const url = new URL(path, baseUrl); url.searchParams.set("build", identity.version);
+      const url = rendererAssetUrl(baseUrl, file, identity.version);
       return { url: url.href, sha256: file.sha256, byteSize: file.byteSize };
     });
     this.worker = new WorkerClass(workerUrl, { type: "module", name: "MiaCode analysis" });

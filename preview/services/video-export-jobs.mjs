@@ -1,4 +1,5 @@
 import {restorePreviewAppearance} from "./user-appearance.mjs";
+import {loadPreviewFonts} from "./user-fonts.mjs";
 import {createPreview} from "../sdk/index.mjs";
 
 export function videoFileName(name,extension) {
@@ -8,8 +9,8 @@ export function videoFileName(name,extension) {
 // Each export owns a renderer and an immutable document/resource snapshot.
 // The main workbench continues editing while the export consumes its snapshot.
 export class VideoExportJobs {
-  constructor({root,previewOptions,assets,fonts,changed,deliver}) {
-    Object.assign(this,{root,previewOptions,assets,fonts,changed,deliver});
+  constructor({root,previewOptions,assets,changed,deliver}) {
+    Object.assign(this,{root,previewOptions,assets,changed,deliver});
   }
   publish(value) {this.state={...this.state,...value};this.changed(this.state);}
   start(request,settings,snapshot) {
@@ -34,8 +35,8 @@ export class VideoExportJobs {
     const preview=this.preview=createPreview(host,{...this.previewOptions,resolution:{width:320,height:180},controls:false});
     try {
       await preview.ready;signal.throwIfAborted();
-      const fontPaths=new Set([...Object.values(snapshot.settings.hudFontPaths||{}),settings.introFontDisplayPath,settings.introFontBodyPath].filter(Boolean));
-      for(const font of (await this.fonts()).filter(font=>fontPaths.has(font.path))) {signal.throwIfAborted();await preview.importFont(font.file,font.file.name);}
+      await loadPreviewFonts(preview, this.assets, [...Object.values(snapshot.settings.hudFontPaths || {}),
+        settings.introFontDisplayPath, settings.introFontBodyPath]);
       await restorePreviewAppearance(preview,this.assets,snapshot.settings);
       await preview.setSettings({...snapshot.settings,pauseDisplayAltHoldActive:false,touchPadAuthoringContext:false});
       await preview.audioCommand("audio.restoreSettings",{settings:snapshot.audio});

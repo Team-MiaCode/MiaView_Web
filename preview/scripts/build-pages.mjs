@@ -1,5 +1,5 @@
-import { cpSync, copyFileSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { cpSync, copyFileSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { resolve, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
@@ -17,8 +17,27 @@ if (checked.error || checked.status !== 0)
 const output = resolve(root, process.argv[2] ?? "artifacts/pages");
 if (existsSync(output)) throw new Error(`Use an empty Pages output directory: ${output}`);
 mkdirSync(output, { recursive: true });
-for (const name of ["sdk", "renderer", "ui", "services"])
+const wasmFiles = new Map();
+function copyRenderer(source, target) {
+  const manifest = JSON.parse(readFileSync(resolve(source, "artifact-manifest.json"), "utf8"));
+  const binaries = new Map(manifest.files.filter(file => file.path.endsWith(".wasm")).map(file => [file.path, file.sha256]));
+  cpSync(source, target, { recursive: true, filter: path => !/\.wasm(?:\.(?:br|gz))?$/.test(relative(source, path)) });
+  for (const file of manifest.files) {
+    const match = /^(.*\.wasm)(\.(?:br|gz))?$/.exec(file.path);
+    if (!match) continue;
+    const path = resolve(output, "wasm", binaries.get(match[1]) + ".wasm" + (match[2] ?? ""));
+    if (!wasmFiles.has(path)) {
+      mkdirSync(dirname(path), { recursive: true });
+      copyFileSync(resolve(source, file.path), path);
+      wasmFiles.set(path, { byteSize: file.byteSize, sha256: file.sha256 });
+    }
+    Object.assign(file, wasmFiles.get(path), { url: relative(target, path).replaceAll("\\", "/") });
+  }
+  writeFileSync(resolve(target, "artifact-manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
+}
+for (const name of ["sdk", "ui", "services"])
   cpSync(resolve(root, name), resolve(output, name), { recursive: true });
+copyRenderer(resolve(root, "renderer"), resolve(output, "renderer"));
 for (const name of ["index.html", "app.mjs", "page.css", "preview-window.html"])
   copyFileSync(resolve(root, name), resolve(output, name));
 mkdirSync(resolve(output, "examples"));
@@ -34,8 +53,9 @@ for (const product of ["editor", "preview"]) {
   if (!existsSync(resolve(root, product, "source-config.json"))) continue;
   const target = resolve(output, product);
   mkdirSync(target, { recursive: true });
-  for (const name of ["sdk", "renderer", "ui", "services", "examples"])
+  for (const name of ["sdk", "ui", "services", "examples"])
     cpSync(resolve(root, product, name), resolve(target, name), { recursive: true });
+  copyRenderer(resolve(root, product, "renderer"), resolve(target, "renderer"));
   for (const name of ["index.html", "app.mjs", "page.css", "preview-window.html"])
     copyFileSync(resolve(root, product, name), resolve(target, name));
 }

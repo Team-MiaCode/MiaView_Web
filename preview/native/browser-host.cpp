@@ -12,6 +12,7 @@
 #include <QTemporaryFile>
 #include <QBuffer>
 #include <emscripten/emscripten.h>
+#include <malloc.h>
 #include "firework-layer.h"
 #include "cover-scene.h"
 #include "timeline-bridge.h"
@@ -435,6 +436,19 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_appearance_image(const char* source, co
 EMSCRIPTEN_KEEPALIVE const char* miacode_appearance_skin(const char* operation, const char* name) {
     return json(webSkinImport(QString::fromUtf8(operation), QString::fromUtf8(name)));
 }
+EMSCRIPTEN_KEEPALIVE int miacode_release_appearance(const char* type, const char* value) {
+    const auto kind = QString::fromUtf8(type), name = QString::fromUtf8(value);
+    if (kind == "skin") return name != skinDirectoryName && webRemoveAppearance(kind, name);
+    if (kind == "outline") return name != customOutlineFileName && webRemoveAppearance(kind, name);
+    if (kind == "font") {
+        for (const auto& path : state.hudFontSettings.paths) if (path == name) return 0;
+        return webRemoveFont(name);
+    }
+    return 0;
+}
+EMSCRIPTEN_KEEPALIVE int miacode_hud_font_cache_entries() {
+    return webHudFontCacheEntries();
+}
 EMSCRIPTEN_KEEPALIVE const char* miacode_settings() {
     if (!exportSavedState) return json(settings());
     const auto render = state.render;
@@ -490,6 +504,7 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_set_settings(const char* source) {
     const auto nextOutline = supplied.contains("customOutlineFileName") ? values.value("customOutlineFileName").toString()
         : supplied.contains("outlineIndex") ? QString() : customOutlineFileName;
     if (!nextOutline.isEmpty() && miacode::assets::customOutlinePathForFileName(nextOutline).isEmpty()) return json({{"error", "请导入所选判定线"}});
+    const bool appearanceChanged = skinDirectoryName != nextSkin || customOutlineFileName != nextOutline;
     if (skinDirectoryName != nextSkin) {
         const auto loaded = miacode::preview::runtime::PreviewSceneAssetLoader::load(skinPath, PreviewOutlineVariant::Line);
         if (loaded.skinAssets.tapImage.isNull()) return json({{"error", "皮肤目录需要 tap.png"}});
@@ -549,6 +564,7 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_set_settings(const char* source) {
         exportSavedState->muriAnalysisReport = state.muriAnalysisReport;
     }
     ++state.sceneContentRevision;
+    if (appearanceChanged && scene) scene->invalidateTextureCache();
     refresh();
     return json(settings());
 }
@@ -732,7 +748,8 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_cover_chart(double duration) {
     auto frame = state;
     frame.assets = miacode::preview::runtime::PreviewSceneAssetLoader::loadAssetState(
         selectedOutline, miacode::assets::customOutlinePathForFileName(customOutlineFileName));
-    coverScene->setChartState(frame, duration);
+    const auto appearanceKey = skinDirectoryName + '/' + customOutlineFileName + '/' + QString::number(int(selectedOutline));
+    coverScene->setChartState(frame, duration, appearanceKey);
     return json(coverScene->snapshot());
 }
 EMSCRIPTEN_KEEPALIVE const char* miacode_cover_state() {
@@ -777,8 +794,17 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_timeline_navigate(double x, double y) {
 EMSCRIPTEN_KEEPALIVE const char* miacode_timeline_follow(double second) {
     return json(timeline.follow(second));
 }
-EMSCRIPTEN_KEEPALIVE void miacode_waveform(const float* samples, int count, double duration) {
-    timeline.setWaveform(samples, count, duration);
+EMSCRIPTEN_KEEPALIVE void miacode_waveform_begin(int sampleCount, double duration) {
+    timeline.beginWaveform(sampleCount, duration);
+}
+EMSCRIPTEN_KEEPALIVE void miacode_waveform_add(const float* samples, int count) {
+    timeline.addWaveformSamples(samples, count);
+}
+EMSCRIPTEN_KEEPALIVE double miacode_waveform_finish() {
+    return timeline.finishWaveform();
+}
+EMSCRIPTEN_KEEPALIVE double miacode_allocated_bytes() {
+    return mallinfo().uordblks;
 }
 EMSCRIPTEN_KEEPALIVE const char* miacode_background_settings(const char* source) {
     const auto request = QJsonDocument::fromJson(QByteArray(source));
@@ -959,11 +985,13 @@ int main(int argc, char** argv) {
     QGuiApplication app(argc, argv);
     mountAssets();
     miacode::assets::setAssetRoot(QStringLiteral("/assets"));
-    const auto loaded = miacode::preview::runtime::PreviewSceneAssetLoader::load("/assets/skin/skinDX", PreviewOutlineVariant::Line);
-    state.assets = loaded.assetState;
-    state.skin = loaded.skinAssets;
-    state.judgeOverlay = loaded.judgeOverlayAssets;
-    state.judgeEffect = loaded.judgeEffectAssets;
+    {
+        const auto loaded = miacode::preview::runtime::PreviewSceneAssetLoader::load("/assets/skin/skinDX", PreviewOutlineVariant::Line);
+        state.assets = loaded.assetState;
+        state.skin = loaded.skinAssets;
+        state.judgeOverlay = loaded.judgeOverlayAssets;
+        state.judgeEffect = loaded.judgeEffectAssets;
+    }
     state.render.layoutSquareScale = 0.95;
     state.render.tapFlowSpeed = 7.5;
     state.render.touchFlowSpeed = 8.0;

@@ -1,12 +1,14 @@
 import { PreviewTransport } from "../ui/workbench/preview-transport.mjs";
 import { NoteStatistics } from "../ui/workbench/note-statistics.mjs";
 import { PopupHost } from "../ui/components/popup-host.mjs";
-import { restorePreviewAppearance } from "./user-appearance.mjs";
+import { UserAppearance } from "./user-appearance.mjs";
+import { loadPreviewFonts } from "./user-fonts.mjs";
+import { leaseAppearanceAssets } from "./appearance-assets.mjs";
 import { previewSettingsFromValues } from "./preview-appearance.mjs";
 
 const presentationEvents = new Set(["timeupdate", "playing", "paused", "ended", "seeked", "playbackChanged", "introAuditionChanged", "exportPreviewChanged", "shortcutInput", "touchPadAuthoring"]);
-const activeMethods = new Set(["getState", "play", "pause", "seek", "setIntroAudition", "setExportPreview", "detectLatency"]);
-const mirroredMethods = new Set(["setSettings", "setPlayback", "setPerformance", "setMediaSettings", "setLatency", "audioCommand", "importFont", "importSkin", "importJudgeLine", "setInputShortcuts", "setTheme"]);
+const activeMethods = new Set(["getState", "play", "pause", "seek", "detectLatency"]);
+const mirroredMethods = new Set(["setSettings", "setPlayback", "setPerformance", "setMediaSettings", "setLatency", "audioCommand", "setInputShortcuts", "setTheme"]);
 
 // The editor keeps its native document owner. The window owns playback while
 // detached, and receives chart transactions through the same public SDK.
@@ -16,6 +18,7 @@ export function createWorkbenchPreview(owner, options) {
     if (key === "windowRouter") return router;
     if (key === "iframe") return router.active.iframe;
     if (["load", "setResources", "setCanvasSize", "destroy", "on"].includes(key)) return router[key].bind(router);
+    if (key === "setIntroAudition" || key === "setExportPreview") return args => router.setIntro(router.active, key, args);
     if (activeMethods.has(key)) return (...args) => router.active[key](...args);
     if (mirroredMethods.has(key)) return (...args) => router.mirror(key, args);
     const value = Reflect.get(target, key); return typeof value === "function" ? value.bind(target) : value;
@@ -25,6 +28,7 @@ export function createWorkbenchPreview(owner, options) {
 class PreviewWindow {
   constructor(owner, options) {
     this.owner = owner; this.options = options; this.listeners = new Map(); this.pending = Promise.resolve();
+    this.introFontOwners = new WeakSet();
     owner.on("documentChanged", doc => { this.latestDocument = doc; this.updateDocument(); });
   }
   get active() { return this.presenting ? this.popup.preview : this.owner; }
@@ -47,13 +51,15 @@ class PreviewWindow {
       if (presentationEvents.has(type) || type === "error" || type === "progress") this.emit(type, value);
     });
   }
-  async prepare(preview, settings) {
-    const fonts = await this.options.assets.fonts();
-    for (const font of fonts) if (!this.popup.fonts.has(font.path)) {
-      await preview.importFont(font.file, font.file.name); this.popup.fonts.add(font.path);
-    }
-    await restorePreviewAppearance(preview, this.options.assets, settings, this.popup.appearance);
-    await preview.setSettings(settings);
+  async setIntro(preview, method, args = {}) {
+    const paths = [args.introFontDisplayPath, args.introFontBodyPath];
+    if (paths.some(Boolean)) this.introFontOwners.add(preview);
+    if (!this.introFontOwners.has(preview)) return preview[method](args);
+    const lease = leaseAppearanceAssets(preview);
+    try {
+      await loadPreviewFonts(lease, this.options.assets, paths);
+      return await preview[method](args);
+    } finally { await lease.release(); }
   }
   async load(input) {
     this.input = { ...input };
@@ -77,7 +83,7 @@ class PreviewWindow {
     const result = await this.owner[method](...args);
     const popup = this.popup;
     if (this.presenting && popup) {
-      if (method === "setSettings" && Object.keys(args[0]).some(key => key !== "touchPadAuthoringContext")) await this.prepare(popup.preview, result);
+      if (method === "setSettings" && Object.keys(args[0]).some(key => key !== "touchPadAuthoringContext")) await popup.appearance.apply(args[0]);
       else await popup.preview[method](...args);
     }
     return this.presenting && method === "setLatency" ? popup.preview.getState() : result;
@@ -120,7 +126,7 @@ class PreviewWindow {
     if (!this.input) throw new Error("请打开谱面工程");
     const window = globalThis.window.open(new URL("../preview-window.html", import.meta.url).href, "", "popup,width=800,height=900");
     if (!window) throw new Error("浏览器需要允许打开预览窗口");
-    const popup = this.popup = { window, abort: new AbortController(), fonts: new Set(), appearance: new Set() };
+    const popup = this.popup = { window, abort: new AbortController() };
     try {
       const [snapshot] = await Promise.all([
         this.owner.pause().then(state => { popup.snapshot = state; return state; }),
@@ -157,10 +163,11 @@ class PreviewWindow {
           this.options.changed(false);
         }
       }, { once: true });
-      if (snapshot.introAudition?.active) { await this.owner.setIntroAudition({ enabled: false }); await this.owner.pause(); }
-      if (snapshot.exportPreview?.active) await this.owner.setExportPreview({ enabled: false });
+      if (snapshot.introAudition?.active) { await this.setIntro(this.owner, "setIntroAudition", { enabled: false }); await this.owner.pause(); }
+      if (snapshot.exportPreview?.active) await this.setIntro(this.owner, "setExportPreview", { enabled: false });
       popup.preview = window.miacodePreviewWindow.createPreview(document.getElementById("preview-window-stage"), { ...this.options.preview,
         resolution: this.options.resolution, controls: false, layout: "fit", diagnostics: false, audioContextOwner: "opener", theme: this.options.viewState.activeThemeToken });
+      popup.appearance = new UserAppearance(popup.preview, this.options.assets);
       for (const type of this.listeners.keys()) this.listen(popup, type);
       popup.preview.on("timeupdate", state => {
         popup.clock = { ...state, observedAt: performance.now() };
@@ -177,7 +184,7 @@ class PreviewWindow {
       });
       popup.preview.on("settingsChanged", settings => { popup.settings = settings; });
       await popup.preview.ready;
-      await this.prepare(popup.preview, snapshot.settings);
+      await popup.appearance.apply(snapshot.settings);
       await popup.preview.setPerformance(snapshot.performance);
       this.latestDocument = await this.owner.getDocument();
       await popup.preview.load({ ...this.input, maidata: this.latestDocument.sourceText, difficulty: this.latestDocument.activeDifficultyId || null, filePath: this.latestDocument.filePath });
@@ -201,12 +208,12 @@ class PreviewWindow {
     }
   }
   async restore(preview, state) {
-    if (state.exportPreview?.active) await preview.setExportPreview({ ...this.options.exportSettings(), enabled: true });
-    else if ((await preview.getState()).exportPreview) await preview.setExportPreview({ enabled: false });
+    if (state.exportPreview?.active) await this.setIntro(preview, "setExportPreview", { ...this.options.exportSettings(), enabled: true });
+    else if ((await preview.getState()).exportPreview) await this.setIntro(preview, "setExportPreview", { enabled: false });
     if (state.latency?.onPage) await preview.setLatency(state.latency);
     await preview.setPlayback(state.playback);
     await preview.seek(state.currentTime);
-    if (state.introAudition?.active) await preview.setIntroAudition({ ...this.options.introSettings(),
+    if (state.introAudition?.active) await this.setIntro(preview, "setIntroAudition", { ...this.options.introSettings(),
       introPvStartSeconds: state.introAudition.introPvStartSeconds, introAuditionLoop: state.introAudition.introAuditionLoop,
       playing: false, elapsed: state.introAudition.elapsed });
   }
@@ -249,7 +256,7 @@ class PreviewWindow {
     } finally { this.attaching = false; }
   }
   closePopup(popup) {
-    popup.abort.abort(); popup.resize?.disconnect(); popup.menus?.destroy(); popup.preview?.destroy();
+    popup.abort.abort(); popup.resize?.disconnect(); popup.menus?.destroy(); popup.statistics?.destroy(); popup.preview?.destroy();
     if (!popup.window.closed) popup.window.close();
   }
   destroy() { this.destroyed = true; if (this.popup) this.closePopup(this.popup); this.popup = null; this.presenting = false; this.owner.destroy(); }

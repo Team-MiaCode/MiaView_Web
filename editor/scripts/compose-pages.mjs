@@ -6,7 +6,7 @@ if (!mainInput || !featureInput || !target) throw new Error("Usage: node scripts
 const main = resolve(mainInput), feature = resolve(featureInput), output = resolve(target);
 if (existsSync(output)) throw new Error(`Use an empty Pages output directory: ${output}`);
 for (const directory of [main, feature]) {
-  for (const file of ["index.html", "sdk/index.mjs", "renderer/index.html", "renderer/miacode-preview.wasm"])
+  for (const file of ["index.html", "sdk/index.mjs", "renderer/index.html", "renderer/artifact-manifest.json"])
     if (!existsSync(resolve(directory, file))) throw new Error(`Pages input is missing ${file}: ${directory}`);
 }
 mkdirSync(output, { recursive: true });

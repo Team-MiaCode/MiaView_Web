@@ -396,6 +396,10 @@ export interface DiagnosticsSnapshot {
   historyLimit: number;
   reports: PerformanceReport[];
   definitions: Record<string, string>;
+  wasmAllocatedBytes?: number;
+  hudFontCacheEntries?: number;
+  waveform?: { builds: number; retainedBytes: number; scratchPeakBytes: number };
+  appearance?: { skin: number; outline: number; font: number };
 }
 export interface PreviewOptions {
   /** Iframe Permissions Policy; default "autoplay; fullscreen". */
@@ -467,7 +471,7 @@ export interface MiaCodePreview {
   normalizeShortcuts(sequences: Record<string, string>): Promise<Record<string, ShortcutGesture>>;
   setInputShortcuts(sequences: Record<string, string>): Promise<Record<string, ShortcutGesture>>;
   normalizeBackground(settings?: Partial<AppBackgroundSettings>): Promise<AppBackgroundSettings>;
-  importFont(font: Resource, name?: string): Promise<ImportedFont>;
+  importFont(font: Resource, name?: string, owner?: string): Promise<ImportedFont>;
   getExportCapabilities(settings?: VideoExportOptions): Promise<VideoExportCapabilities>;
   setIntroAudition(settings?: IntroAuditionOptions): Promise<IntroAuditionState|null>;
   setExportPreview(settings?: VideoExportOptions & { enabled?: boolean; selectedDifficultyId?: number; stop?: boolean; cardDimmed?: boolean; introAuditionLoop?: boolean }): Promise<PreviewState>;
@@ -487,8 +491,9 @@ export interface MiaCodePreview {
   getCoverComposition(): Promise<CoverCompositionState>;
   setCoverChart(chart: ChartInput, options?: { duration?: number }): Promise<CoverCompositionState>;
   coverCommand(id: CoverCommandId, args?: CoverCommandArguments): Promise<CoverCompositionState>;
-  importSkin(files: SkinImageInput[]): Promise<ImportedSkin>;
-  importJudgeLine(image: Resource): Promise<ImportedJudgeLine>;
+  importSkin(files: SkinImageInput[], owner?: string): Promise<ImportedSkin>;
+  importJudgeLine(image: Resource, owner?: string): Promise<ImportedJudgeLine>;
+  releaseUnusedAppearance(owner: string, fontPaths?: string[]): Promise<void>;
   importCoverImage(image: Resource): Promise<ImportedCoverImage>;
   exportCover(options?: { type?: "image/png" | "image/jpeg"; quality?: number }): Promise<ExportedCoverImage>;
   selectDifficulty(difficulty: number): Promise<ChartInfo | DocumentSnapshot>;

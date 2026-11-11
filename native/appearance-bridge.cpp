@@ -53,3 +53,16 @@ QJsonObject webImportAppearanceImage(const QJsonObject& request, const QByteArra
         return {{"error", "外观素材写入失败"}};
     return {{"path", path}, {"customOutlineFileName", fileName}, {"width", image.width()}, {"height", image.height()}};
 }
+
+bool webRemoveAppearance(const QString& kind, const QString& name)
+{
+    static const QRegularExpression outline(QStringLiteral("^outline-[a-f0-9]{64}\\.png$"));
+    if (kind == "outline" && outline.match(name).hasMatch()) {
+        QFile file(QDir(miacode::assets::customOutlineRootPath()).filePath(name));
+        return !file.exists() || file.remove();
+    }
+    const auto directory = kind == "skin" ? webSkinDirectory(name) : QString();
+    if (!directory.startsWith("/web-appearance/skins/")) return false;
+    QDir skin(directory);
+    return !skin.exists() || skin.removeRecursively();
+}

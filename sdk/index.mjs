@@ -393,17 +393,20 @@ class MiaCodePreview {
   }
   cancelExport() { return this.command("cancelExport"); }
   getExportStatus() { return this.command("getExportStatus"); }
-  importFont(font, name = font?.name || "font.ttf") {
-    try { return this.command("importFont", { font: normalizeResources({audio:font},this.wrapper.ownerDocument.baseURI).audio, name }); }
+  importFont(font, name = font?.name || "font.ttf", owner) {
+    try { return this.command("importFont", { font: normalizeResources({audio:font},this.wrapper.ownerDocument.baseURI).audio, name, owner }); }
     catch (error) { return Promise.reject(error); }
   }
-  importSkin(files) {
-    try { return this.command("importSkin", { files: normalizeSkinFiles(files, this.wrapper.ownerDocument.baseURI) }); }
+  importSkin(files, owner) {
+    try { return this.command("importSkin", { files: normalizeSkinFiles(files, this.wrapper.ownerDocument.baseURI), owner }); }
     catch (error) { return Promise.reject(error); }
   }
-  importJudgeLine(image) {
-    try { return this.command("importJudgeLine", { image: normalizeResources({ cover: image }, this.wrapper.ownerDocument.baseURI).cover }); }
+  importJudgeLine(image, owner) {
+    try { return this.command("importJudgeLine", { image: normalizeResources({ cover: image }, this.wrapper.ownerDocument.baseURI).cover, owner }); }
     catch (error) { return Promise.reject(error); }
+  }
+  releaseUnusedAppearance(owner, fontPaths = []) {
+    return this.command("releaseUnusedAppearance", { owner, fontPaths });
   }
   getDocumentSaveText(section = 0) { return this.command("getDocumentSaveText", { section }); }
   setTheme(theme) {

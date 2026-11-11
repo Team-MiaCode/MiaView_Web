@@ -21,6 +21,7 @@ const assetInput = element("asset");
 let chooseMedia;
 assetInput.addEventListener("change", () => {
   const [file] = assetInput.files;
+  assetInput.value = "";
   if (file) void queueDocument(() => preview.setResources({ [chooseMedia]: file })).catch(report);
 }, { signal });
 preview.on("progress", event => status(event.stage));

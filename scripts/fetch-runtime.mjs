@@ -6,6 +6,7 @@ import { nativeInputsFingerprint } from "./build-identity.mjs";
 import { syncTheme } from "./sync-theme.mjs";
 import { writeArtifacts } from "../native/artifacts.mjs";
 import { sourcePin } from "./source-pin.mjs";
+import { rendererAssetUrl } from "../renderer/runtime.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const base = new URL(process.argv[2] || "https://team-miacode.github.io/MiaView_Web/renderer/");
@@ -28,7 +29,7 @@ for (let start = 0; start < files.length; start += 3) {
     const destination = resolve(root, "renderer", file.path);
     if (!destination.startsWith(resolve(root, "renderer") + "/") && !destination.startsWith(resolve(root, "renderer") + "\\")) throw new Error("Invalid runtime path");
     if (existsSync(destination) && createHash("sha256").update(readFileSync(destination)).digest("hex") === file.sha256) return;
-    const data = await bytes(file.path);
+    const data = await bytes(file.url === undefined ? file.path : rendererAssetUrl(base, file, identity.version));
     if (data.length !== file.byteSize || createHash("sha256").update(data).digest("hex") !== file.sha256) throw new Error(`Runtime checksum mismatch: ${file.path}`);
     mkdirSync(dirname(destination), { recursive: true });
     writeFileSync(destination, data);
