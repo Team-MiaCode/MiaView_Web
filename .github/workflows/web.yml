@@ -217,20 +217,19 @@ jobs:
     needs: source-checks
     if: >-
       github.event_name != 'pull_request' &&
-      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/web-editor-migration') &&
-      !(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feature/web-editor-migration' && inputs.main_run_id != '')
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/web-editor-migration')
+    strategy:
+      fail-fast: false
+      matrix:
+        site: ${{ fromJSON(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feature/web-editor-migration' && inputs.main_run_id != '' && '["sdk-preview"]' || '["alternate", "sdk-preview"]') }}
     runs-on: ubuntu-24.04
-    outputs:
-      source_sha: ${{ steps.source.outputs.sha }}
     env:
       MIACODE_BUILD_DIR: ${{ github.workspace }}/build-devtools
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref == 'refs/heads/main' && 'feature/web-editor-migration' || 'main' }}
+          ref: ${{ matrix.site == 'sdk-preview' && 'standalone-preview' || (github.ref == 'refs/heads/main' && 'feature/web-editor-migration' || 'main') }}
           submodules: true
-      - id: source
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -255,9 +254,10 @@ jobs:
           .deps/emsdk/emsdk install "$version"
           .deps/emsdk/emsdk activate "$version"
       - run: npm run check:repo && npm test && npm run build:native && npm run check:source && npm run build:pages -- build-devtools/pages
+      - run: git rev-parse HEAD > build-devtools/pages/source-revision.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: miaview-alternate-pages
+          name: miaview-${{ matrix.site }}-pages
           path: build-devtools/pages
           if-no-files-found: error
           retention-days: 14
@@ -269,8 +269,6 @@ jobs:
     permissions:
       contents: read
       actions: read
-    outputs:
-      source_sha: ${{ steps.source.outputs.sha }}
     steps:
       - id: source
         uses: actions/github-script@v7
@@ -296,6 +294,9 @@ jobs:
           run-id: ${{ inputs.main_run_id }}
           name: miaview-pages
           path: build-devtools/pages
+      - env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: printf '%s\n' "$SOURCE_SHA" > build-devtools/pages/source-revision.txt
       - uses: actions/upload-artifact@v4
         with:
           name: miaview-alternate-pages
@@ -309,7 +310,8 @@ jobs:
       always() && !cancelled() && github.event_name != 'pull_request' &&
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/web-editor-migration') &&
       needs.build-preview.result == 'success' &&
-      (needs.build-alternate-pages.result == 'success' || needs.reuse-main-pages.result == 'success')
+      needs.build-alternate-pages.result == 'success' &&
+      (needs.reuse-main-pages.result == 'success' || needs.reuse-main-pages.result == 'skipped')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -324,15 +326,21 @@ jobs:
         with:
           name: miaview-alternate-pages
           path: build-devtools/alternate
-      - name: Compose main and feature sites
+      - uses: actions/download-artifact@v4
+        with:
+          name: miaview-sdk-preview-pages
+          path: build-devtools/sdk-preview
+      - name: Compose main, feature and SDK preview sites
         env:
-          MAIN_SHA: ${{ github.ref == 'refs/heads/main' && needs.build-preview.outputs.source_sha || needs.reuse-main-pages.outputs.source_sha || needs.build-alternate-pages.outputs.source_sha }}
-          FEATURE_SHA: ${{ github.ref == 'refs/heads/main' && needs.build-alternate-pages.outputs.source_sha || needs.build-preview.outputs.source_sha }}
+          CURRENT_SHA: ${{ needs.build-preview.outputs.source_sha }}
         run: |
+          alternate_sha=$(cat build-devtools/alternate/source-revision.txt)
+          export SDK_PREVIEW_SHA=$(cat build-devtools/sdk-preview/source-revision.txt)
+          rm build-devtools/alternate/source-revision.txt
           if [ "$GITHUB_REF" = refs/heads/main ]; then
-            node scripts/compose-pages.mjs build-devtools/current build-devtools/alternate build-devtools/deploy
+            MAIN_SHA="$CURRENT_SHA" FEATURE_SHA="$alternate_sha" node scripts/compose-pages.mjs build-devtools/current build-devtools/alternate build-devtools/sdk-preview build-devtools/deploy
           else
-            node scripts/compose-pages.mjs build-devtools/alternate build-devtools/current build-devtools/deploy
+            MAIN_SHA="$alternate_sha" FEATURE_SHA="$CURRENT_SHA" node scripts/compose-pages.mjs build-devtools/alternate build-devtools/current build-devtools/sdk-preview build-devtools/deploy
           fi
       - uses: actions/upload-pages-artifact@v4
         with:
