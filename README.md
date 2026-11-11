@@ -2,20 +2,19 @@
 
 | 网页入口 | 对应分支 | 测试内容 |
 | --- | --- | --- |
-| **[Feature 编辑器测试版](https://team-miacode.github.io/MiaView_Web/feature/)** | `feature/web-editor-migration` | 网页编辑器与阶段功能 |
-| [Feature 独立编辑器](https://team-miacode.github.io/MiaView_Web/feature/editor/) | `feature/web-editor-migration` | 独立编辑器与组件接入 |
-| [Feature 独立预览](https://team-miacode.github.io/MiaView_Web/feature/preview/) | `feature/web-editor-migration` | 文件夹预览与 SDK 接入 |
-| [Main 发布版](https://team-miacode.github.io/MiaView_Web/) | `main` | 已发布的谱面预览 |
+| **[测试版](https://team-miacode.github.io/MiaView_Web/feature/)** | `feature/web-editor-migration` | 网页工作台与阶段功能 |
+| [编辑器](https://team-miacode.github.io/MiaView_Web/feature/editor/) | `feature/web-editor-migration` | 独立编辑器与组件接入 |
+| [Main](https://team-miacode.github.io/MiaView_Web/) | `main` | 正式发布的谱面预览 |
 
 Feature 测试版通过“打开”选择谱面文件夹，载入其中的 `maidata.txt`、`track.*`、`bg.*` 和 PV。文件在浏览器中读取。各入口随对应分支的阶段提交更新。
 
-在 `standalone-preview` 分支按[本地运行](#本地运行)启动服务后，打开[独立预览示例页](http://127.0.0.1:3030/preview/index.html?demo=1)。页面载入内置谱面，点击播放可体验进度条、音符统计以及预览和音频设置。
+在 `standalone-preview` 分支生成独立部署包后，从 `build-devtools/products/preview` 运行 `npm run dev`，打开[独立预览示例页](http://127.0.0.1:3030/index.html?demo=1)。示例包含进度条、音符统计以及预览和音频设置。
 
 MiaView_Web 提供 maimai 谱面编辑工作台与实时预览 SDK，支持 Simai 格式。它基于 [MiaCode](https://github.com/Team-MiaCode/MiaCode) 的原生解析器和预览场景，通过 WebAssembly、Qt Quick 和 WebGL 2 绘制画面，通过 WebAudio 播放音乐与判定音效。工作台采用 HTML/CSS 与原生 ES modules，入口为 `index.html`。
 
 本项目通过 `vendor/MiaCode` 子模块跟进 MiaCode `dev`，并固定确切提交。解析、分析和预览场景复用上游代码；浏览器宿主、音视频接入、JavaScript SDK 和网页界面由本仓维护。更新上游需要显式更新子模块并重建播放器。
 
-编辑器的阶段要求与验收记录见[迁移计划](docs/WEB_EDITOR_MIGRATION_PLAN_ZH.md)和[UI 验收计划](docs/WEB_EDITOR_UI_ACCEPTANCE_ZH.md)。[editor/](editor/README.md) 提供独立编辑器页面和 `createEditor` SDK，[preview/](preview/README.md) 提供独立预览页面和 `createPreview` SDK。两个子项目包含自身源码、界面、服务、构建脚本与源版本配置，运行和构建以对应目录为根。
+编辑器的阶段要求与验收记录见[迁移计划](docs/WEB_EDITOR_MIGRATION_PLAN_ZH.md)和[UI 验收计划](docs/WEB_EDITOR_UI_ACCEPTANCE_ZH.md)。[编辑器入口说明](products/editor/README.md)和[预览入口说明](products/preview/README.md)对应两个独立部署包。工作台、编辑器 SDK 与预览 SDK 共用根目录源码。运行 `npm run sync:products -- --runtime` 可生成 `build-devtools/products/editor` 和 `build-devtools/products/preview`。
 
 ## 功能一览
 
@@ -115,24 +114,28 @@ npm run build:pages
 输出目录为：
 
 ```text
-artifacts/pages/
+build-devtools/pages/
 ├── index.html
+├── editor/
+├── preview/
 ├── examples/
 ├── sdk/
 ├── renderer/
+├── ui/
+├── services/
 └── .nojekyll
 ```
 
 部署该目录内的全部内容，保留相对目录结构及生成的 `.nojekyll`。网站可以放在域名根目录，也可以放在项目子路径。打包要求输出目录不存在；重复打包可换一个目录：
 
 ```sh
-npm run build:pages -- artifacts/site-v2
+npm run build:pages -- build-devtools/site-v2
 ```
 
 本地验证静态输出可以使用 Python：
 
 ```sh
-python3 -m http.server 8080 --bind 127.0.0.1 --directory artifacts/pages
+python3 -m http.server 8080 --bind 127.0.0.1 --directory build-devtools/pages
 ```
 
 Windows 使用 `python` 代替 `python3`。打开 <http://localhost:8080>，不要直接双击 HTML 使用 `file://` 访问。
@@ -140,6 +143,8 @@ Windows 使用 `python` 代替 `python3`。打开 <http://localhost:8080>，不�
 示例页加载谱面后，支持选择本地音乐和 PV，或移除 PV 恢复静态背景。素材替换沿用当前文档、难度、播放位置和播放状态。PV 提供视频背景，声音来自音乐文件和判定音效。
 
 ## 集成到你的网站
+
+通过[预览 SDK 接入说明](docs/PREVIEW_SDK_INTEGRATION_ZH.md)部署播放器，接通谱面、媒体、难度和播放事件。
 
 ### 放置静态资源
 

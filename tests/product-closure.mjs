@@ -3,7 +3,7 @@ import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const base = resolve(process.env.MIACODE_PRODUCTS_ROOT || ".");
+const base = resolve(process.env.MIACODE_PRODUCTS_ROOT || "build-devtools/products");
 const authority = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const generated = new Set(["miacode-preview.js", "miacode-preview.wasm", "miacode-analysis.js", "miacode-analysis.wasm", "qtloader.js", "theme.css", "build-identity.json", "artifact-manifest.json", "LICENSE", "LICENSE_SCOPE.md", "THIRD_PARTY_NOTICES.md"]);
 const commonDirectories = new Set(["sdk", "renderer", "services", "ui", "native", "scripts", "dev", "backend"]);

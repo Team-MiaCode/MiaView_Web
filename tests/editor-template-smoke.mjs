@@ -7,13 +7,13 @@ import { pathToFileURL } from "node:url";
 const runtime = process.env.MIACODE_PLAYWRIGHT_MODULE;
 const { chromium } = await import(runtime ? pathToFileURL(runtime).href : "playwright");
 const isolated = mkdtempSync(join(tmpdir(), "miacode-editor-isolated-"));
-cpSync(resolve("editor"), isolated, { recursive: true });
+cpSync(resolve(process.env.MIACODE_PRODUCTS_ROOT || "build-devtools/products", "editor"), isolated, { recursive: true });
 const { sourcePin } = await import(pathToFileURL(join(isolated, "scripts/source-pin.mjs")));
 assert.deepEqual(sourcePin(isolated), JSON.parse(readFileSync(join(isolated, "source-config.json"), "utf8")));
 const { staticServer } = await import(pathToFileURL(join(isolated, "dev/server.mjs")));
 const server = staticServer(isolated, { performanceTerminal: false });
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, executablePath: process.env.MIACODE_CHROMIUM });
 try {
   const page = await browser.newPage({ viewport: { width: 1366, height: 768 } });
   const missing = [], errors = [];

@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, mkdtempSync, mkdirSync, writeFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, mkdtempSync, mkdirSync, writeFileSync, statSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
-import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep, extname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -9,7 +8,8 @@ import { spawnSync } from "node:child_process";
 const { chromium } = await import(process.env.MIACODE_PLAYWRIGHT_MODULE
   ? pathToFileURL(process.env.MIACODE_PLAYWRIGHT_MODULE).href : "playwright");
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const output = mkdtempSync(join(tmpdir(), "miaview-pages-"));
+mkdirSync(join(root, "build-devtools"), { recursive: true });
+const output = mkdtempSync(join(root, "build-devtools", "pages-test-"));
 const build = spawnSync(process.execPath, ["scripts/build-pages.mjs", join(output, "site")],
   { cwd: root, encoding: "utf8" });
 assert.equal(build.status, 0, build.stderr);
@@ -101,10 +101,13 @@ try {
   assert.equal(await page.locator("#remove-pv").isDisabled(), true);
   assert.ok(methods.every(method => ["GET", "HEAD"].includes(method)), "Local media must not be uploaded");
   if (existsSync(join(siteRoot, "editor/index.html"))) {
+    for (const product of ["editor", "preview"])
+      for (const directory of ["sdk", "renderer", "ui", "services"])
+        assert.ok(!existsSync(join(siteRoot, product, directory)), `${product} must use shared ${directory}`);
     await page.goto(base + "editor/index.html");
     await page.locator(".welcome-title").waitFor();
     await page.evaluate(async () => { const editor = document.getElementById("workbench").editor; await editor.ready; await editor.command("file.demo"); });
-    assert.equal(new URL(await page.locator(".preview-container iframe").getAttribute("src")).pathname, `${prefix}editor/renderer/index.html`);
+    assert.equal(new URL(await page.locator(".preview-container iframe").getAttribute("src")).pathname, `${prefix}renderer/index.html`);
     let releasePreviewModule;
     const moduleGate = new Promise(resolve => { releasePreviewModule = resolve; });
     const moduleUrl = base + "preview/app.mjs";
@@ -117,12 +120,12 @@ try {
     } finally { releasePreviewModule(); await page.unrouteAll({ behavior: "wait" }); }
     await page.locator("#files").setInputFiles(folder);
     await page.locator("#difficulty:not([disabled])").waitFor({ timeout: 90000 });
-    assert.equal(new URL(await page.locator("#preview iframe").getAttribute("src")).pathname, `${prefix}preview/renderer/index.html`);
+    assert.equal(new URL(await page.locator("#preview iframe").getAttribute("src")).pathname, `${prefix}renderer/index.html`);
     await page.goto(base + "editor/examples/editor.html");
     await page.getByRole("status").filter({ hasText: "编辑器就绪" }).waitFor({ timeout: 90000 });
     await page.getByRole("button", { name: "加载示例", exact: true }).click();
     await page.locator("#editor > div > iframe").contentFrame().locator(".source-input").waitFor();
-    assert.equal(new URL(await page.locator("#editor > div > iframe").getAttribute("src")).pathname, `${prefix}editor/renderer/editor.html`);
+    assert.equal(new URL(await page.locator("#editor > div > iframe").getAttribute("src")).pathname, `${prefix}renderer/editor.html`);
   }
   assert.deepEqual(errors, []);
   assert.deepEqual(missing, [], "Static Pages resources must load without missing/backend routes");
@@ -130,4 +133,5 @@ try {
 } finally {
   await browser.close();
   await new Promise(resolve => server.close(resolve));
+  rmSync(output, { recursive: true, force: true });
 }

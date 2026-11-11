@@ -24,7 +24,7 @@ for (const [name, field] of [["Standard", ""], ["Explicit", "assets/clip.webm"],
     copyFileSync(field.endsWith("webm") ? "tests/fixtures/bg-pattern.webm" : "ui/components/icons/app.png", resolve(folder, field));
   } else copyFileSync("tests/fixtures/bg-pattern.webm", resolve(folder, "pv.webm"));
 }
-const productRoot = resolve(process.env.MIACODE_PRODUCTS_ROOT || ".");
+const productRoot = resolve(process.env.MIACODE_PRODUCTS_ROOT || "build-devtools/products");
 const servers = [], results = [];
 const renderReferences = new Map();
 async function frameDiagnostics(page) {
