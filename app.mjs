@@ -232,6 +232,12 @@ export function createWorkbench(container, options = {}) {
     for (const key of ["window", "header", "sidebar", "base", "border", "axis", "gridMajor", "gridSubdivision", "gridMinor", "laneEven", "laneOdd", "label", "textSecondary", "waveStroke"]) {
       const surface = { window: "surface", header: "panel", sidebar: "panel", base: "surface" }[key];
       const value = style.getPropertyValue(surface ? `--background-${surface}` : `--timeline-${key.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)}`).trim();
+      const hex = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(value);
+      if (hex) {
+        const [red, green, blue] = hex[1].match(/../g).map(channel => parseInt(channel, 16));
+        colors[key] = [red, green, blue, hex[2] ? parseInt(hex[2], 16) / 255 : 1];
+        continue;
+      }
       const channels = value.startsWith("rgb") ? value.match(/[\d.]+/g).map(Number) : null;
       colors[key] = channels ? [channels[0], channels[1], channels[2], channels[3] ?? 1] : value;
     }
