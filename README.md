@@ -95,7 +95,7 @@ python examples/sdk-preview/serve.py
 | `resolution` | `1920×1080` | 初始画布尺寸，支持 16∶9 或 1∶1，单边为 1 至 4096 的整数。 |
 | `controls` | `true` | 显示完整播放器。`false` 提供画面，宿主可用 SDK 组装控制区。 |
 | `theme` | `"dark"` | 另有 `"light"`、`"legacy"`、`"legacy_light"`。 |
-| `maxFps` | `60` | 不小于 30 的整数，或 `"unlimited"`。 |
+| `maxFps` | `"unlimited"` | 播放画布帧率上限，可设为不小于 30 的整数。 |
 | `preferencesKey` | 省略 | 指定渲染器来源下的本地存储键，用于保存面板设置。 |
 | `diagnostics` | `true` | 控制诊断上报，纯静态部署设为 `false`。 |
 | `rendererUrl` | SDK 相对路径 `../renderer/index.html` | 指定播放器 iframe 的地址。 |
