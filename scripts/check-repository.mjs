@@ -3,12 +3,13 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runtimeResourceFiles } from "./build-identity.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const generated = new Set([
   "miacode-preview.js", "miacode-preview.wasm", "miacode-analysis.js", "miacode-analysis.wasm", "qtloader.js", "theme.css",
   "build-identity.json", "artifact-manifest.json", "LICENSE", "LICENSE_SCOPE.md",
-  "THIRD_PARTY_NOTICES.md",
+  "THIRD_PARTY_NOTICES.md", ...runtimeResourceFiles,
 ]);
 const product = existsSync(resolve(root, "source-config.json"));
 function sourceFiles(directory = "") {

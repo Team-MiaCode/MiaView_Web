@@ -1,9 +1,11 @@
+export const HUD_AREAS = ["chart_info", "timestamp", "center_display", "object_stats", "debug_info"];
+
 const names = new Set([
   "previewMode", "showSlideTracks", "showJudgeMarkers", "showTouchTrail", "handRadiusPx", "wifiNeedC", "staticTapOnSlideThresholdMs",
   "tapFlowSpeed", "touchFlowSpeed", "scaleMode", "smoothBrightness", "showTimestamp", "showDebugInfo",
   "forceLabeledJudgeLineWhenPaused", "touchPadAuthoringShortcut", "centerDisplay", "tapJudgeTextDistance",
   "judgeEffectSlide", "judgeEffectTap", "judgeEffectBreak", "judgeEffectTouch", "outlineIndex", "skinJudgeEffectIndex",
-  "skinDirectoryName", "customOutlineFileName",
+  "skinDirectoryName", "customOutlineFileName", "fireworkStyle",
 ]);
 
 export function previewSettingsFromValues(values) {

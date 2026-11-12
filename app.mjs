@@ -6,8 +6,10 @@ import { openDialog } from "./ui/components/dialog.mjs";
 import { element as h } from "./ui/components/dom.mjs";
 import { translate, formatMessage } from "./ui/components/translate.mjs";
 import { BrowserFiles } from "./services/browser-files.mjs";
+import { DEMO_CHART } from "./services/demo-chart.mjs";
 import { ProjectStore } from "./services/project-store.mjs";
-import { previewSettingsFromValues, previewValuesFromSettings } from "./services/preview-appearance.mjs";
+import { DATABASE_UPGRADE_MESSAGE } from "./services/database.mjs";
+import { HUD_AREAS, previewSettingsFromValues, previewValuesFromSettings } from "./services/preview-appearance.mjs";
 import { stageResource, relocatePath, resourceFile, resolveChartResource, resolveChartMedia, inputPaths, hydrateProjectResources } from "./services/chart-resources.mjs";
 import { decodeMaidata } from "./renderer/runtime.mjs";
 import { WorkbenchShortcuts } from "./services/shortcuts.mjs";
@@ -26,10 +28,8 @@ import { TIMELINE_ZOOM_PRESETS } from "./ui/workbench/timeline-controls.mjs";
 import { exportPreferences } from "./services/export-preferences.mjs";
 import { coverPreferences } from "./services/cover-preferences.mjs";
 
-const HUD_AREAS = ["chart_info", "timestamp", "center_display", "object_stats", "debug_info"];
 const MURI_SETTINGS = ["previewMode", "handRadiusPx", "wifiNeedC", "staticTapOnSlideThresholdMs"];
 
-const SAMPLE = "&title=MiaCode Example\n&artist=MiaCode\n&first=0\n&lv_5=12\n&des_5=MiaCode\n&inote_5=(120){4}\n1,2,3,4,5,6,7,8,\n1b,2x,3h[4:1],4-8[4:1],\nA1,B2,C,D3,E4,E\n";
 export function createWorkbench(container, options = {}) {
   const viewState = new ViewState(options.storage ?? localStorage);
   const workbench = new Workbench(container, viewState);
@@ -93,8 +93,15 @@ export function createWorkbench(container, options = {}) {
       workbench.documentSession.shortcutRows = rows;
       if (viewState.activeEditorKey === "preferences") { workbench.pageKey = ""; workbench.update(); }
     } });
-  const projectStore = options.projectStore ?? new ProjectStore();
-  const preferenceAssets = new PreferenceAssets();
+  const blockedDatabases = new Set();
+  const reportDatabaseUpgrade = (name, blocked) => {
+    if (blocked) blockedDatabases.add(name);
+    else blockedDatabases.delete(name);
+    if (blockedDatabases.size) workbench.status(DATABASE_UPGRADE_MESSAGE);
+    else if (workbench.statusLabel.textContent === DATABASE_UPGRADE_MESSAGE) workbench.status("");
+  };
+  const projectStore = options.projectStore ?? new ProjectStore(undefined, undefined, reportDatabaseUpgrade);
+  const preferenceAssets = new PreferenceAssets(undefined, reportDatabaseUpgrade);
   const background = new AppBackground(workbench.root,viewState,preferenceAssets,settings=>preview.normalizeBackground(settings));
   let userFonts, userAppearance;
   let fileService;
@@ -103,6 +110,14 @@ export function createWorkbench(container, options = {}) {
   let introPending=Promise.resolve(),introQueued=0;
   let exportPageActive = false, exportSyncSequence = 0;
   workbench.documentSession.exportValues = { ...viewState.preferences.exportValues };
+  function showFontSamples(settings = workbench.documentSession.previewSettings, values = viewState.preferences.previewValues) {
+    const paths = [settings?.hudFontPaths?.[HUD_AREAS[values?.hudFontAreaIndex ?? 0]]];
+    if (exportPageActive) {
+      const { introFontDisplayPath, introFontBodyPath } = workbench.documentSession.exportValues;
+      paths.push(introFontDisplayPath, introFontBodyPath);
+    }
+    return userFonts.show(paths);
+  }
   function saveExportPreferences() {
     viewState.setPreference("exportValues", exportPreferences(workbench.documentSession.exportValues || {}));
   }
@@ -129,6 +144,7 @@ export function createWorkbench(container, options = {}) {
   }
   async function updateExportPage(active) {
     await pausePlayback();
+    await showFontSamples();
     if (active) {
       const values = workbench.documentSession.exportValues;
       const charts = workbench.documentSession.charts || [];
@@ -153,7 +169,7 @@ export function createWorkbench(container, options = {}) {
   function introSettings() {return {...Object.fromEntries(Object.entries(workbench.documentSession.exportValues||{}).filter(([key])=>key.startsWith("intro"))),
     introSound: introSound || null,
     introBackground:workbench.documentSession.exportValues?.introBackgroundModeIndex===1?introBackground:undefined};}
-  const exportJobs=new VideoExportJobs({root:container,previewOptions:options.preview,assets:preferenceAssets,fonts:()=>preferenceAssets.fonts(),
+  const exportJobs=new VideoExportJobs({root:container,previewOptions:options.preview,assets:preferenceAssets,
     changed:state=>{workbench.setExportStatus(state);workbench.status(state.message);},
     deliver:async(video,filename)=>{
       if(video.blob)await fileService.download(video.blob,filename);
@@ -371,7 +387,7 @@ export function createWorkbench(container, options = {}) {
         : await preview.audioCommand("audio.getSettings");
       workbench.documentSession.audio = audio;
       const values = previewSettingsFromValues(viewState.preferences.previewValues || {});
-      if (Object.keys(values).length) { await userAppearance.restore(values); await preview.setSettings(values); }
+      if (Object.keys(values).length) await showFontSamples(await userAppearance.apply(values));
       const state = await preview.getState();
       workbench.documentSession.previewSettings = state.settings;
       workbench.documentSession.previewValues = { ...viewState.preferences.previewValues, ...previewValuesFromSettings(state.settings) };
@@ -622,6 +638,7 @@ export function createWorkbench(container, options = {}) {
     if(id==="export.settings") {
       await navigationPending;
       Object.assign(workbench.documentSession.exportValues||={},args);
+      if ("introFontDisplayPath" in args || "introFontBodyPath" in args) await showFontSamples();
       if("outputPath" in args || "outputMode" in args)exportFileHandle=null;
       if ("outputMode" in args) {
         const values = workbench.documentSession.exportValues;
@@ -673,6 +690,7 @@ export function createWorkbench(container, options = {}) {
     }
     if(id==="export.resetIntroFonts") {
       Object.assign(workbench.documentSession.exportValues||={},{introFontDisplayPath:"",introFontBodyPath:""});
+      await showFontSamples();
       saveExportPreferences(); await syncExportPreview(); refreshExport(); return;
     }
     if(id==="job.cancel")return exportJobs.cancel();
@@ -1086,7 +1104,7 @@ export function createWorkbench(container, options = {}) {
         await command("document.selectDifficulty", { difficulty: Number(key.slice(11)) });
       return;
     }
-    if (id === "file.demo") { if (await confirmDocumentChange()) return open({ maidata: SAMPLE }); return; }
+    if (id === "file.demo") { if (await confirmDocumentChange()) return open({ maidata: DEMO_CHART }); return; }
     if (id === "file.new") { if (await confirmDocumentChange()) return open({ maidata: "&title=新谱面\n&artist=\n&first=0\n&lv_5=\n&inote_5=(120){4}E\n" }); return; }
     if (id === "file.close") {
       if (!await confirmDocumentChange()) return;
@@ -1117,9 +1135,9 @@ export function createWorkbench(container, options = {}) {
     if (id === "file.save" || id === "file.saveAll" || id === "file.saveAs") return save(id === "file.saveAll", id === "file.saveAs");
     if (id === "file.flushRecovery") { await mediaPending; await workbench.sourceEditor.pending; await editPending; return flushRecovery(); }
     if (id === "file.openRecent" || id === "file.restore") {
-      let record = args.id ? await projectStore.get(args.id) : null;
+      let record = args.id ? await projectStore.getSummary(args.id) : null;
       if (!record) {
-        const records = (await projectStore.list()).filter(record => id === "file.openRecent" || record.dirty);
+        const records = (await projectStore.listSummaries()).filter(record => id === "file.openRecent" || record.dirty);
         if (!records.length) { workbench.status("自动保存列表为空"); return; }
         const select = h("select", { "aria-label": "自动保存项目" }, records.map(record => h("option", { value: record.id }, `${record.title || record.filePath} · ${new Date(record.updatedAt).toLocaleString()}`)));
         const selected = await new Promise(resolve => openDialog(container, { title: "恢复自动保存", height: 260, body: select,
@@ -1128,7 +1146,9 @@ export function createWorkbench(container, options = {}) {
         record = records.find(record => record.id === selected);
       }
       if (!await confirmDocumentChange()) return;
-      record = hydrateProjectResources(await projectStore.get(record.id));
+      const saved = await projectStore.get(record.id);
+      if (!saved) return;
+      record = hydrateProjectResources(saved);
       let restoreEdits = record.dirty;
       const handle = record.binding?.fileHandle;
       if (handle && (!handle.queryPermission || await handle.queryPermission({ mode: "read" }) === "granted")) {
@@ -1202,8 +1222,8 @@ export function createWorkbench(container, options = {}) {
       return;
     }
     if (id === "preview.settings") {
-      await userAppearance.restore(args);
-      const settings = await preview.setSettings(args);
+      const settings = await userAppearance.apply(args);
+      await showFontSamples(settings);
       workbench.documentSession.previewSettings = settings;
       viewState.setPreference("previewValues", { ...viewState.preferences.previewValues, ...previewValuesFromSettings(settings), hudFontPaths: settings.hudFontPaths });
       await refreshTimeline();
@@ -1215,8 +1235,8 @@ export function createWorkbench(container, options = {}) {
         const values = { ...viewState.preferences.previewValues, ...args };
         const changes=previewSettingsFromValues(Object.fromEntries(Object.entries(args).filter(([key])=>key!=="hudFontPath")));
         if("hudFontPath" in args)changes.hudFontPaths={[HUD_AREAS[values.hudFontAreaIndex ?? 0]]:args.hudFontPath};
-        await userAppearance.restore(changes);
-        const settings = Object.keys(changes).length ? await preview.setSettings(changes) : (await preview.getState()).settings;
+        const settings = Object.keys(changes).length ? await userAppearance.apply(changes) : (await preview.getState()).settings;
+        await showFontSamples(settings, values);
         values.hudFontPaths=settings.hudFontPaths;
         values.hudFontPath=settings.hudFontPaths[HUD_AREAS[values.hudFontAreaIndex ?? 0]];
         workbench.documentSession.previewSettings = settings;
@@ -1348,7 +1368,7 @@ export function createWorkbench(container, options = {}) {
     await fitCanvas();
     await refreshTimeline();
     await refreshRecent();
-    if (viewState.preferences.autoRestoreLastSessionFile && viewState.preferences.lastSessionProjectId && await projectStore.get(viewState.preferences.lastSessionProjectId))
+    if (viewState.preferences.autoRestoreLastSessionFile && viewState.preferences.lastSessionProjectId && await projectStore.getSummary(viewState.preferences.lastSessionProjectId))
       await command("file.openRecent", { id: viewState.preferences.lastSessionProjectId });
     workbench.status("预览就绪"); return workbench;
   }).catch(error => { workbench.status(error.message); throw error; });

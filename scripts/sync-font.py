@@ -49,6 +49,24 @@ assert coverage == characters
 shutil.copyfile(source.with_name("MapleMono-OFL.txt"), output / "MapleMono-OFL.txt")
 record = {"family": family, "sourceSha256": hashlib.sha256(source.read_bytes()).hexdigest(),
           "characters": len(characters), "lineRatio": line_ratio, "files": files}
+
+timeline_source = source.with_name("XiaolaiMono-Regular.subset.ttf")
+timeline_font = TTFont(timeline_source, recalcTimestamp=False)
+digits = set(range(ord("0"), ord("9") + 1))
+options = subset.Options()
+options.name_IDs = ["*"]
+processor = subset.Subsetter(options=options)
+processor.populate(unicodes=digits)
+processor.subset(timeline_font)
+timeline_font.flavor = "woff2"
+target = output / "XiaolaiMono-Timeline.woff2"
+timeline_font.save(target)
+assert set(TTFont(target).getBestCmap()) == digits
+record["timelineFont"] = {"path": target.name, "byteSize": target.stat().st_size,
+                          "sha256": hashlib.sha256(target.read_bytes()).hexdigest()}
+styles.append('@font-face { font-family: "Xiaolai Mono"; src: url("fonts/XiaolaiMono-Timeline.woff2") '
+              'format("woff2"); font-style: normal; font-weight: 400; font-display: swap; unicode-range: U+30-39; }')
+
 record["cardFonts"] = []
 license_records = []
 for weight, numeric_weight in [("Heavy", 900), ("Bold", 700)]:

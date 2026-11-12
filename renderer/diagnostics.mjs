@@ -1,6 +1,7 @@
 const initializationMetrics = new Set([
   "engineLoad",
   "engineInit",
+  "engineWarmup",
   "chartLoad",
   "maidataRead",
   "audioRead",

@@ -7,7 +7,7 @@ import { staticServer } from "../scripts/serve.mjs";
 const { chromium } = await import(process.env.MIACODE_PLAYWRIGHT_MODULE
   ? pathToFileURL(process.env.MIACODE_PLAYWRIGHT_MODULE).href : "playwright");
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const chart = readFileSync(resolve(root, "tests/fixtures/firework/maidata.txt"), "utf8");
+const chart = readFileSync(resolve(root, "tests/fixtures/firework/maidata.txt"), "utf8").replace(",E", ",,E");
 const server = staticServer(root, { performanceOutput: () => {} });
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 const base = `http://127.0.0.1:${server.address().port}`;
@@ -16,11 +16,15 @@ const browser = await chromium.launch({ executablePath: process.env.MIACODE_CHRO
 try {
   const page = await browser.newPage();
   const errors = [];
+  const packs = new Set();
+  page.on("request", request => {
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith(".rcc")) packs.add(path.split("/").at(-1));
+  });
   page.on("pageerror", error => errors.push(error.message));
   await page.addInitScript(() => {
-    // Observe real WebGL work, including deferred Qt renders, rather than JS tick time.
-    const shaders = new WeakMap(), programs = new WeakMap(), timingLocations = new WeakMap();
-    window.fireworkGpu = { mipmaps: 0, draws: 0, links: 0, angles: [] };
+    const shaders = new WeakMap(), programs = new WeakMap(), styles = new WeakMap();
+    window.fireworkGpu = { mipmaps: 0, draws: [0, 0], links: [0, 0] };
     const proto = WebGL2RenderingContext.prototype;
     const wrap = (name, observe) => {
       const original = proto[name];
@@ -35,103 +39,200 @@ try {
       sources.push(shader);
       programs.set(program, sources);
     });
-    const isFirework = program => (programs.get(program) ?? [])
-      .some(shader => shaders.get(shader)?.includes("starStates"));
     wrap("linkProgram", program => {
-      if (isFirework(program)) window.fireworkGpu.links++;
+      const sources = programs.get(program)?.map(shader => shaders.get(shader)) ?? [];
+      const style = sources.some(source => source.includes("materialAndEdge")) ? 0
+        : sources.some(source => source.includes("colorBallBigSource")) ? 1 : undefined;
+      if (style === undefined) return;
+      styles.set(program, style);
+      window.fireworkGpu.links[style]++;
     });
     wrap("generateMipmap", () => window.fireworkGpu.mipmaps++);
     for (const name of ["drawArrays", "drawElements"]) {
       wrap(name, function () {
-        const program = this.getParameter(this.CURRENT_PROGRAM);
-        if (!isFirework(program)) return;
-        window.fireworkGpu.draws++;
-        // Qt's GLES backend exposes the shared block as ordinary uniforms.
-        // Find the fragment timing vector without hard-coding SPIR-V names.
-        if (!timingLocations.has(program)) {
-          const names = Array.from({ length: this.getProgramParameter(program, this.ACTIVE_UNIFORMS) },
-            (_, index) => this.getActiveUniform(program, index).name);
-          const timing = names.filter(name => /(^|\.)timing$/.test(name)).at(-1);
-          if (!timing) throw new Error("Firework timing uniform missing");
-          timingLocations.set(program, this.getUniformLocation(program, timing));
-        }
-        const timing = this.getUniform(program, timingLocations.get(program));
-        window.fireworkGpu.angles.push(timing[2]);
+        const style = styles.get(this.getParameter(this.CURRENT_PROGRAM));
+        if (style !== undefined) window.fireworkGpu.draws[style]++;
       });
     }
   });
   await page.goto(base + "/tests/host.html");
-  await page.evaluate(async () => {
+  const defaults = await page.evaluate(async () => {
     const { createPreview } = await import("/sdk/index.mjs");
     window.preview = createPreview(document.getElementById("one"), {
-      resolution: { width: 640, height: 360 }, diagnostics: false,
+      resolution: { width: 640, height: 360 }, diagnostics: false, controls: false,
     });
     await preview.ready;
+    return (await preview.getState()).settings;
   });
+  assert.equal(defaults.fireworkStyle, 0);
+  assert.equal(defaults.fireworkBrightness, 1);
+  assert.equal(packs.size, 0, "blank startup fetches no deferred resource packs");
   const frame = page.frames().find(frame => frame.url().includes("/renderer/index.html"));
-  const gpu = () => frame.evaluate(() => ({ ...window.fireworkGpu }));
-  const settled = async () => {
-    // Allow both the SDK seek and Qt's queued render/presentation to finish.
-    await frame.evaluate(async () => {
-      for (let i = 0; i < 4; i++) await new Promise(resolve => requestAnimationFrame(resolve));
-    });
+  const gpu = () => frame.evaluate(() => window.fireworkGpu);
+  const settled = () => frame.evaluate(async () => {
+    for (let i = 0; i < 4; i++) await new Promise(resolve => requestAnimationFrame(resolve));
+  });
+  const seek = async second => {
+    await page.evaluate(second => preview.seek(second), second);
+    await settled();
   };
-  const warmed = await gpu();
-  assert.ok(warmed.links > 0, "ready requires a compiled firework program");
-  assert.ok(warmed.draws > 0, "ready requires a submitted transparent firework draw");
-  assert.equal(warmed.mipmaps, 1, "the actual big-ball mipmap is prepared before playback");
+  const capture = () => frame.locator(".qt-window-canvas").screenshot();
+  const ready = await gpu();
+  assert.ok(ready.links[0] > 0 && ready.draws[0] > 0, "Standard submitted a warm-up draw before ready");
+  assert.equal(ready.draws[1], 0);
 
-  await page.evaluate(maidata => preview.load({
-    maidata,
-    difficulty: 5,
-  }), chart);
+  await page.evaluate(async maidata => {
+    await preview.setSettings({ showTimestamp: false, showChartInfoHud: false, showObjectStatsHud: false });
+    await preview.load({ maidata, difficulty: 5 });
+  }, chart);
+  assert.deepEqual([...packs].sort(), ["miacode-skins.rcc", "miacode-slides.rcc"]);
   await settled();
-  assert.equal((await gpu()).draws, warmed.draws, "an idle retained node must not draw");
-  // Touch at 2/4 seconds; touch-hold ends at 6.5 seconds. Each burst has an idle gap.
-  for (const [active, idle] of [[2.233, 3.5], [4.233, 5.5], [6.733, 8]]) {
+  assert.equal((await gpu()).draws[0], ready.draws[0], "idle Standard reuses its warm-up node");
+
+  const rendered = [];
+  for (const style of [0, 1]) {
+    await seek(0);
     const before = await gpu();
-    await page.evaluate(second => preview.seek(second), active);
+    const settings = await page.evaluate(fireworkStyle => preview.setSettings({ fireworkStyle }), style);
+    assert.equal(settings.fireworkStyle, style);
     await settled();
-    const burst = await gpu();
-    assert.ok(burst.draws > before.draws, `firework must render at ${active}s`);
-    assert.equal(burst.mipmaps, warmed.mipmaps, "bursts reuse the warmed big-ball texture");
-    assert.equal(burst.links, warmed.links, "bursts reuse the warmed shader program");
-    await page.evaluate(second => preview.seek(second), idle);
-    await settled();
-    const ended = await gpu();
-    assert.equal(ended.draws, burst.draws, "ended firework must be blocked without an extra draw");
-  }
-  // Backward seeks restart animation while retaining resources.
-  await page.evaluate(() => preview.seek(2.233));
-  await settled();
-  const restarted = await gpu();
-  assert.ok(restarted.draws > warmed.draws);
-  assert.equal(restarted.mipmaps, warmed.mipmaps);
-  assert.equal(restarted.links, warmed.links);
+    const warmed = await gpu();
+    assert.ok(warmed.links[style] > 0);
+    if (style === 1) {
+      assert.ok(warmed.draws[1] > before.draws[1], "Modern submits a warm-up draw after switching");
+      assert.equal(warmed.mipmaps, before.mipmaps + 1, "Modern warms the big-ball mipmap");
+    }
 
-  // Replaying the same burst at the same elapsed time must still choose a new
-  // angle. 0.15s also exercises the equality with the synthetic warm-up lead.
-  const angles = [];
-  for (let i = 0; i < 2; i++) {
-    await page.evaluate(() => preview.seek(3.5));
+    // Center and off-center Touch, then Touch Hold at its end.
+    for (const [active, idle] of [[2.233, 3.65], [4.233, 5.65], [6.733, 8.15]]) {
+      const previous = await gpu();
+      if (active === 6.733) {
+        await seek(6.2);
+        assert.equal((await gpu()).draws[style], previous.draws[style], "Touch Hold waits for its end");
+      }
+      await seek(active);
+      const burst = await gpu();
+      assert.ok(burst.draws[style] > previous.draws[style], `style ${style} draws at ${active}s`);
+      assert.equal(burst.mipmaps, warmed.mipmaps, "bursts reuse textures");
+      assert.equal(burst.links[style], warmed.links[style], "bursts reuse shader programs");
+      await seek(idle);
+      assert.equal((await gpu()).draws[style], burst.draws[style], "idle frames suppress firework draws");
+    }
+
+    const beforeTail = (await gpu()).draws[style];
+    await seek(3.3);
+    assert.equal((await gpu()).draws[style] > beforeTail, style === 0, "each style uses its own duration");
+
+    await seek(2.15);
+    const first = await capture();
+    await seek(3.65);
+    await seek(2.15);
+    assert.ok((await capture()).equals(first), `style ${style} replays with the same star layout`);
+    await page.evaluate(() => preview.setSettings({ fireworkBrightness: .5 }));
     await settled();
-    const idle = await gpu();
-    await page.evaluate(() => preview.seek(2.15));
-    await settled();
-    const replay = await gpu();
-    assert.ok(replay.draws > idle.draws);
-    assert.equal(replay.mipmaps, warmed.mipmaps);
-    assert.equal(replay.links, warmed.links);
-    const angle = replay.angles.at(-1);
-    assert.ok(Number.isFinite(angle) && angle >= 0 && angle < 4096);
-    angles.push(angle);
+    assert.ok(!(await capture()).equals(first), `brightness changes the rendered burst for style ${style}`);
+    await page.evaluate(() => preview.setSettings({ fireworkBrightness: 1 }));
+    rendered.push(first);
   }
-  assert.notEqual(angles[0], angles[1], "independent repeated bursts retain upstream randomization");
-  const { mipmaps, draws, links } = await gpu();
+  assert.ok(!rendered[0].equals(rendered[1]), "the two styles produce distinct preview frames");
+
+  // Reload scene assets and switch styles during a burst.
+  const beforeSkin = (await gpu()).draws[0];
+  await page.evaluate(() => preview.setSettings({ noteSkin: "SD", fireworkStyle: 0 }));
+  await seek(2.233);
+  assert.ok((await gpu()).draws[0] > beforeSkin, "the active burst uses Standard after changing skin and style");
+
+  await page.evaluate(() => preview.setSettings({ showTimestamp: false, showChartInfoHud: false, showObjectStatsHud: false }));
+  const overlap = chart.slice(0, chart.indexOf("(120)")) + "(120){1},{8}Cf,B1f,{1},,,E";
+  const loadChart = maidata => page.evaluate(maidata => preview.load({ maidata, difficulty: 5 }), maidata);
+  for (const fireworkStyle of [0, 1]) {
+    await page.evaluate(fireworkStyle => preview.setSettings({ fireworkStyle }), fireworkStyle);
+    await loadChart(overlap);
+    await seek(2.55);
+    const overlapping = await capture();
+    await loadChart(overlap.replace("Cf,", "C,"));
+    await seek(2.55);
+    assert.ok((await capture()).equals(overlapping), `overlapping bursts use the latest trigger for style ${fireworkStyle}`);
+  }
+  await loadChart(chart);
+
+  const exportFrames = await page.evaluate(async () => {
+    const backdrop = document.createElement("canvas");
+    backdrop.width = 64; backdrop.height = 64;
+    const paint = backdrop.getContext("2d");
+    paint.fillStyle = "#b0b0b0";
+    paint.fillRect(0, 0, 64, 64);
+    await preview.setResources({ cover: await new Promise(resolve => backdrop.toBlob(resolve)) });
+    const options = { width: 320, height: 180, fps: 30, exportStartSeconds: 1.9, exportEndSeconds: 2.45 };
+    const media = await import("/renderer/vendor/mediabunny/index.mjs");
+    const frames = [];
+    for (const fireworkStyle of [0, 1]) {
+      await preview.setSettings({ fireworkStyle, outerBrightness: 1, innerBrightness: 1 });
+      const output = new Promise((resolve, reject) => {
+        const release = () => { completed(); failed(); };
+        const completed = preview.on("exportCompleted", event => { release(); resolve(event); });
+        const failed = preview.on("exportFailed", event => { release(); reject(new Error(event.message)); });
+      });
+      await preview.startExport(options);
+      const result = await output;
+      const input = new media.Input({ source: new media.BlobSource(result.blob), formats: media.ALL_FORMATS });
+      try {
+        const track = await input.getPrimaryVideoTrack(), sink = new media.VideoSampleSink(track);
+        const canvas = document.createElement("canvas");
+        canvas.width = options.width; canvas.height = options.height;
+        const context = canvas.getContext("2d");
+        const sample = await sink.getSample(result.duration - .2);
+        sample.draw(context, 0, 0); sample.close();
+        const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+        let colored = 0;
+        for (let i = 0; i < pixels.length; i += 4) {
+          if (Math.max(pixels[i], pixels[i + 1], pixels[i + 2]) - Math.min(pixels[i], pixels[i + 1], pixels[i + 2]) > 40) colored++;
+        }
+        const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", pixels))].join(",");
+        frames.push({ hash, colored });
+      } finally { input.dispose(); }
+    }
+    return frames;
+  });
+  assert.ok(exportFrames.every(frame => frame.colored > 100), JSON.stringify(exportFrames));
+  assert.notEqual(exportFrames[0].hash, exportFrames[1].hash, "encoded video respects the selected style");
+  assert.ok(!packs.has("miacode-hud.rcc"), "video export with HUD off needs no HUD fonts");
+  assert.ok(!packs.has("miacode-export.rcc"), "plain video export needs no intro assets");
+
+  const covers = await page.evaluate(async maidata => {
+    await preview.setCoverChart({ maidata, difficulty: 5 }, { duration: 10 });
+    await preview.setCoverComposition({ outputWidth: 360, outputHeight: 360 });
+    const composition = await preview.coverCommand("cover.addChartFrameLayer", {});
+    const key = composition.activeLayerKey;
+    await preview.coverCommand("cover.layer", { key: "card", visible: false });
+    await preview.coverCommand("cover.layer", { key, sizeFraction: .9, frameSeconds: 2.233 });
+    const captures = [];
+    for (const fireworkStyle of [0, 1]) {
+      await preview.setSettings({ fireworkStyle });
+      await preview.setCoverChart({ maidata, difficulty: 5 }, { duration: 10 });
+      await preview.setCoverComposition({});
+      const { blob } = await preview.exportCover({ type: "image/png" });
+      captures.push([...new Uint8Array(await crypto.subtle.digest("SHA-256", await blob.arrayBuffer()))].join(","));
+    }
+    return captures;
+  }, chart);
+  assert.notEqual(covers[0], covers[1], "cover chart frames respect the selected style");
+  assert.ok(packs.has("miacode-export.rcc"), "opening the cover mounts export assets");
+  assert.ok(!packs.has("miacode-hud.rcc"), "cover chart frames need no HUD fonts");
   await page.evaluate(() => preview.destroy());
   assert.deepEqual(errors, []);
-  console.log(`Firework warm-up, idle blocking, reuse and random restart passed: ${JSON.stringify({ mipmaps, draws, links })}`);
-  await page.close();
+
+  const failurePage = await browser.newPage();
+  await failurePage.route("**/miacode-preview.wasm?*", route => route.fulfill({ status: 503 }));
+  await failurePage.goto(base + "/tests/host.html");
+  await assert.rejects(failurePage.evaluate(async () => {
+    const { createPreview } = await import("/sdk/index.mjs");
+    const preview = createPreview(document.getElementById("one"), { timeoutMs: 5000 });
+    try { await preview.ready; }
+    finally { preview.destroy(); }
+  }), /播放器文件加载或校验失败/);
+
+  console.log("Standard and Modern firework warm-up, idle, deterministic replay, brightness, SDK, video and cover passed.");
 } finally {
   await browser.close();
   await new Promise(resolve => server.close(resolve));

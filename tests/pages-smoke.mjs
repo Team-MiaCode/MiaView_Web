@@ -90,9 +90,9 @@ try {
   await page.locator("#local-audio:not([disabled])").waitFor();
   assert.ok((await page.locator("#media-status").textContent()).includes("local-track.wav"));
   await page.locator("#play").click();
-  await frame.locator("#play").filter({ hasText: "暂停" }).waitFor();
+  await frame.getByRole("button", { name: "暂停", exact: true }).waitFor();
   await page.locator("#pause").click();
-  await frame.locator("#play").filter({ hasText: "播放" }).waitFor();
+  await frame.getByRole("button", { name: "播放", exact: true }).waitFor();
   mkdirSync(join(root, "artifacts/ui"), { recursive: true });
   await page.screenshot({ path: join(root, "artifacts/ui/pages-local-files.png"), fullPage: true });
   await page.locator("#remove-pv").click();

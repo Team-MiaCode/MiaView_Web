@@ -68,11 +68,17 @@ export function attachSdkBridge(engine, controller) {
         });
       } catch (error) {
         if (disposed) return;
-        if (message.type === "load" || message.type === "selectDifficulty")
+        if (error.name !== "AbortError" && (message.type === "load" || message.type === "selectDifficulty"))
           engine.fail(error);
         send("response", null, {
           requestId: message.requestId,
           ok: false,
+          // Startup can fail before the renderer has loaded its own identity.
+          // The failed initialize request still belongs to the validated host session.
+          ...(message.type === "initialize" && {
+            playerVersion: message.payload?.playerVersion,
+            sourceRevision: message.payload?.sourceRevision,
+          }),
           error: { message: error.message ?? "Preview command failed" },
         });
       }
@@ -80,13 +86,12 @@ export function attachSdkBridge(engine, controller) {
     if (message.type !== "getAnalysis" && !immediate) queue = next;
   };
   window.addEventListener("message", receive);
-  window.addEventListener(
-    "pagehide",
-    () => {
-      disposed = true;
-      unsubscribe();
-      window.removeEventListener("message", receive);
-    },
-    { once: true },
-  );
+  function pagehide(event) {
+    if (event.persisted) return;
+    disposed = true;
+    unsubscribe();
+    window.removeEventListener("message", receive);
+    window.removeEventListener("pagehide", pagehide);
+  }
+  window.addEventListener("pagehide", pagehide);
 }

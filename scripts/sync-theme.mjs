@@ -7,7 +7,8 @@ import { readUiTheme } from "./sync-ui.mjs";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export function syncTheme(source = join(root, "vendor/MiaCode"), revision = "working tree") {
   const qml = readFileSync(join(source, "src/app/ui/theme/Theme.qml"), "utf8");
-  const extracted = readUiTheme(qml);
+  const themeSource = JSON.parse(readFileSync(join(source, "resources/themes/palettes.json"), "utf8"));
+  const extracted = readUiTheme(qml, themeSource);
   const tokens = { surface: "background.surface", panel: "background.panel",
     elevated: "background.elevated", control: "background.control", border: "border.normal",
     "control-border": "border.control", text: "text.active", muted: "text.secondary",
@@ -22,10 +23,10 @@ export function syncTheme(source = join(root, "vendor/MiaCode"), revision = "wor
     const scheme = theme === "light" || theme === "legacy_light" ? "light" : "dark";
     return `${theme === "dark" ? ":root" : `:root[data-theme="${theme}"]`} {\n  color-scheme: ${scheme};\n${values.join("\n")}\n}`;
   });
-  const fontSize = qml.match(/readonly property int uiFontSize:[^\n]*: (\d+)/)?.[1];
+  const fontSize = extracted.uiFontSize;
   if (!fontSize) throw new Error("MiaCode default font size changed; review the theme adapter");
   writeFileSync(join(root, "renderer/theme.css"),
-    `/* Generated from MiaCode Theme.qml (${revision}); run scripts/sync-theme.mjs. */\n` +
+    `/* Generated from MiaCode themes (${revision}); run scripts/sync-theme.mjs. */\n` +
     `:root { --transport-height: ${TRANSPORT_HEIGHT}px; --ui-font-size: ${fontSize}px; }\n` + palettes.join("\n") + "\n");
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) syncTheme(process.env.MIACODE_SOURCE_DIR);

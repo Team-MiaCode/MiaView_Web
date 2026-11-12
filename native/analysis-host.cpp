@@ -36,7 +36,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char* miacode_analysis(const char* source)
     if (input.value("hasDocument").toBool() && difficulty) {
         const auto timing = miacode::simai::buildTimingMetadata(doc);
         const auto parsed = SimaiParser::parseForTimeline(difficulty->chart, timing);
-        const auto validation = SimaiParser::buildValidationReport(difficulty->chart, locale, &parsed, timing);
+        const auto validation = SimaiParser::buildValidationReport(difficulty->chart, locale, timing);
         errors = validation.errorCount;
         warnings = validation.warningCount;
         for (const auto& issue : validation.issues) {

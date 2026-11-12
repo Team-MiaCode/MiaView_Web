@@ -319,10 +319,15 @@ void WebCoverScene::commitActiveLayerGeometry()
     emit compositionChanged(snapshot());
 }
 
-void WebCoverScene::setChartState(const miacode::preview::scene::PreviewFrameState& state, double duration)
+void WebCoverScene::setChartState(const miacode::preview::scene::PreviewFrameState& state, double duration, const QString& appearanceKey)
 {
     playback_.cancelInput();
     playback_.pause();
+    if (chartAppearanceKey_ != appearanceKey) {
+        chartAppearanceKey_ = appearanceKey;
+        for (const auto& entry : frames_)
+            if (entry.second->root) entry.second->root->invalidateTextureCache();
+    }
     chartState_ = state;
     chartState_.media = {};
     chartState_.touchPadAuthoringEnabled = false;

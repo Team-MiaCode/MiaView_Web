@@ -1,115 +1,345 @@
-import { THEME_TOKENS, previewTheme } from "./protocol.mjs";
+import { PreferenceAssets } from "../services/preference-assets.mjs";
+import { DATABASE_UPGRADE_MESSAGE } from "../services/database.mjs";
+import { HUD_AREAS, previewSettingsFromValues, previewValuesFromSettings } from "../services/preview-appearance.mjs";
+import { UserAppearance } from "../services/user-appearance.mjs";
+import { UserFonts } from "../services/user-fonts.mjs";
+import { element as h, button, icon } from "../ui/components/dom.mjs";
+import { formRow, number, select, toggle } from "../ui/components/forms.mjs";
+import { PopupHost } from "../ui/components/popup-host.mjs";
+import { settingsTabs } from "../ui/components/settings-tabs.mjs";
+import { createAudioSettings, updateAudioSettings } from "../ui/workbench/audio-settings.mjs";
+import { createPreviewPanel } from "../ui/workbench/preview-panel.mjs";
+import { previewAppearanceSections } from "../ui/workbench/preview-settings.mjs";
 
-// Shared player controls.
-export function attachPlayerControls(controller, engine) {
-  const $ = (id) => document.getElementById(id);
-  const themeButton = $("theme-toggle");
-  function setTheme(theme) {
-    document.documentElement.dataset.theme = theme;
-    const labels = { dark: "浅色", light: "经典深色", legacy: "经典浅色", legacy_light: "深色" };
-    themeButton.textContent = labels[theme];
-    themeButton.setAttribute("aria-label", `切换到${labels[theme]}主题`);
+export function attachPlayerControls(controller, engine, parameters) {
+  const preferenceKey = parameters.get("preferencesKey");
+  const report = engine.fail;
+  const preferences = { languageToken: "zh" };
+  if (preferenceKey) {
+    try { Object.assign(preferences, JSON.parse(localStorage.getItem(preferenceKey))); } catch (error) { report(error); }
   }
-  setTheme(previewTheme(new URLSearchParams(location.search).get("theme") || "dark"));
-  themeButton.addEventListener("click", () => setTheme(THEME_TOKENS[(THEME_TOKENS.indexOf(document.documentElement.dataset.theme) + 1) % THEME_TOKENS.length]));
-  $("fullscreen").addEventListener("click", async () => {
-    try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else await document.documentElement.requestFullscreen();
-      $("transport-error").hidden = true;
-    } catch {
-      $("transport-error").textContent = "当前页面未允许全屏";
-      $("transport-error").hidden = false;
+  function savePreferences(changes) {
+    Object.assign(preferences, changes);
+    if (!preferenceKey) return;
+    try { localStorage.setItem(preferenceKey, JSON.stringify(preferences)); } catch (error) { report(error); }
+  }
+  const viewState = { preferences };
+  const documentSession = { previewValues: { ...preferences.previewValues } };
+  const lifetime = new AbortController();
+  const { signal } = lifetime;
+  const audioButton = button("音频设置", () => toggleSettings("audio-settings", audioButton),
+    { symbol: "audio-settings", className: "chrome", iconOnly: true, disabled: true });
+  const fullscreen = button("全屏", () => command("preview.fullscreen"),
+    { symbol: "fullscreen", className: "chrome", iconOnly: true });
+  const panel = createPreviewPanel({ viewState, command, transportActions: [audioButton, fullscreen],
+    menu: (trigger, items) => popups.showMenu(trigger, items, { above: true, alignEnd: true }),
+    openSettings: () => toggleSettings("preview-settings", panel.settingsButton) });
+  const { root, container, transport, statistics } = panel;
+  root.classList.toggle("preview-host-fill", parameters.get("panelLayout") === "fill");
+  document.body.prepend(root);
+  panel.settingsButton.disabled = true;
+  document.addEventListener("fullscreenchange", () => {
+    const active = Boolean(document.fullscreenElement);
+    const label = active ? "退出全屏" : "全屏";
+    fullscreen.replaceChildren(icon(active ? "fullscreen-exit" : "fullscreen"));
+    fullscreen.setAttribute("aria-label", label);
+    fullscreen.title = label;
+  }, { signal });
+  const popups = new PopupHost(root, command);
+  const surface = document.getElementById("stage");
+  const stageLayout = surface.parentElement;
+  let baseResolution;
+  const run = (type, payload) => controller.execute(type, payload);
+  const preview = {
+    play: () => run("play"),
+    pause: () => run("pause"),
+    seek: second => run("seek", { second }),
+    setPlayback: args => run("setPlayback", args),
+    setCanvasSize: args => run("setCanvasSize", args),
+    setMediaSettings: args => run("setMediaSettings", args),
+    setSettings: args => run("setSettings", args),
+    setPerformance: args => run("setPerformance", args),
+    setTheme: theme => run("setTheme", { theme }),
+    audioCommand: (id, args = {}) => run("audioCommand", { id, args }),
+    importFont: (font, name = font.name, owner) => run("importFont", { font, name, owner }),
+    importSkin: (files, owner) => run("importSkin", { files, owner }),
+    importJudgeLine: (image, owner) => run("importJudgeLine", { image, owner }),
+    releaseUnusedAppearance: (owner, fontPaths) => run("releaseUnusedAppearance", { owner, fontPaths }),
+  };
+  let unblockBoot;
+  const upgradeBlocked = new Promise(resolve => { unblockBoot = resolve; });
+  const assets = new PreferenceAssets(undefined, (_, blocked) => {
+    if (signal.aborted) return;
+    if (blocked) {
+      engine.reportProgress(DATABASE_UPGRADE_MESSAGE);
+      unblockBoot();
+    } else {
+      engine.finishProgress(DATABASE_UPGRADE_MESSAGE, "本地数据已就绪");
     }
   });
-  document.addEventListener("fullscreenchange", () => {
-    $("fullscreen").textContent = document.fullscreenElement ? "退出全屏" : "全屏";
-    $("fullscreen").setAttribute("aria-label", document.fullscreenElement ? "退出全屏" : "进入全屏");
+  const appearance = new UserAppearance(preview, assets);
+  const fonts = new UserFonts(preview, assets);
+
+  const settingsTitle = h("h3", { id: "preview-settings-title" });
+  const settingsBody = h("div", { className: "preview-overlay-body" });
+  const closeButton = button("关闭设置", closeSettings, { className: "chrome", symbol: "close", iconOnly: true });
+  const overlay = h("section", { id: "preview-settings-overlay", className: "preview-settings-overlay", hidden: true,
+    "aria-labelledby": settingsTitle.id }, h("div", { className: "preview-overlay-heading" }, settingsTitle, closeButton), settingsBody);
+  container.replaceChildren(surface, overlay);
+  stageLayout.remove();
+  for (const trigger of [panel.settingsButton, audioButton]) {
+    trigger.setAttribute("aria-controls", overlay.id);
+    trigger.setAttribute("aria-expanded", "false");
+  }
+
+  let activeSettings, settingsTrigger;
+  function closeSettings(restoreFocus = true) {
+    if (!activeSettings) return;
+    overlay.hidden = true;
+    settingsBody.replaceChildren();
+    activeSettings = null;
+    settingsTrigger.setAttribute("aria-expanded", "false");
+    if (restoreFocus !== false) settingsTrigger.focus();
+  }
+  function toggleSettings(key, trigger) {
+    if (activeSettings === key) return closeSettings();
+    closeSettings(false);
+    activeSettings = key;
+    settingsTrigger = trigger;
+    settingsTitle.textContent = trigger.title;
+    trigger.setAttribute("aria-expanded", "true");
+    const context = { viewState, documentSession, command, close: closeSettings };
+    const content = key === "audio-settings" ? createAudioSettings(context) : settingsTabs([
+      ...previewAppearanceSections({ ...context, touchPadAuthoring: false, videoControls }),
+      { key: "playback", label: "播放", render: playbackSettings },
+    ], viewState.previewSettingsPage, page => { viewState.previewSettingsPage = page; });
+    settingsBody.replaceChildren(content);
+    settingsBody.scrollTop = 0;
+    overlay.hidden = false;
+    closeButton.focus();
+  }
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape" && !event.defaultPrevented && activeSettings) closeSettings();
+  }, { signal });
+
+  let playback = {};
+  function videoControls() {
+    return [
+      toggle("自由比例", Boolean(preferences.previewCanvasFreeAspect),
+        enabled => command("preview.toggleFreeAspect", { enabled })),
+      toggle("隐藏 PV", engine.state().media.hidePv,
+        hidePv => command("preview.toggleHidePv", { hidePv })),
+    ];
+  }
+  function playbackSettings() {
+    const { duration } = transport.state;
+    return [
+      formRow("主题", select([["dark", "深色"], ["light", "浅色"], ["legacy", "经典深色"], ["legacy_light", "经典浅色"]],
+        document.documentElement.dataset.theme, theme => command("preview.theme", { theme }))),
+      formRow("画布帧率", select([[0, "30 FPS"], [1, "60 FPS"], [2, "120 FPS"], [3, "无限制"]],
+        preferences.canvasFrameRateMode ?? 1, mode => command("preview.frameRate", { canvasFrameRateMode: Number(mode) }))),
+      ...(transport.loaded ? [
+        toggle("区间播放", Boolean(playback.rangePlaybackEnabled), enabled => command("preview.rangeMode", { enabled })),
+        ...[["exportStartSeconds", "起点（秒）", 0], ["exportEndSeconds", "终点（秒）", duration]].map(([key, label, fallback]) =>
+          formRow(label, number(key, playback[key] || fallback, (_, { value }) => command("preview.range", { [key]: value }),
+            { min: 0, max: duration }))),
+      ] : []),
+    ];
+  }
+
+  let canvasSize;
+  async function fitCanvas() {
+    const { clientWidth: width, clientHeight: height } = container;
+    if (!width || !height || !baseResolution) return;
+    const scale = Math.min(1080 / height, 4096 / Math.max(width, height));
+    const next = preferences.previewCanvasFreeAspect
+      ? { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) }
+      : baseResolution;
+    if (next.width === canvasSize?.width && next.height === canvasSize?.height) return;
+    canvasSize = next;
+    try { await preview.setCanvasSize(next); }
+    catch (error) { if (canvasSize === next) canvasSize = {}; throw error; }
+  }
+  const resize = new ResizeObserver(() => { void fitCanvas().catch(report); });
+
+  let state = {};
+  function updatePlayback(value) {
+    state = { ...state, ...value };
+    if (value.playback) playback = value.playback;
+    if (value.media) preferences.previewHidePv = value.media.hidePv;
+    if (value.performance) preferences.canvasFrameRateMode = value.performance.canvasFrameRateMode;
+    transport.update(value);
+    statistics.update(state.statistics ?? [], { dataAvailable: state.statisticsAvailable,
+      noteSkin: documentSession.previewSettings?.noteSkin });
+  }
+  function updateAudio(audio) {
+    documentSession.audio = audio;
+    if (activeSettings === "audio-settings") updateAudioSettings(settingsBody.firstElementChild, audio, preferences.languageToken);
+  }
+  const unsubscribe = controller.events((type, value) => {
+    if (type === "timeupdate") updatePlayback(value);
+    if (type === "playbackChanged") updatePlayback({ playback: value });
+    if (type === "settingsChanged") {
+      documentSession.previewSettings = value;
+      Object.assign(documentSession.previewValues, previewValuesFromSettings(value));
+      statistics.update(state.statistics ?? [], { dataAvailable: state.statisticsAvailable, noteSkin: value.noteSkin });
+    }
   });
-  function updateTransport(currentTime, duration, minimum = 0) {
-    $("seek").min = minimum;
-    $("seek").max = duration;
-    $("seek").value = currentTime;
-    const format = second => `${second < 0 ? "-" : ""}${Math.floor(Math.abs(second) / 60)}:${String(Math.floor(Math.abs(second) % 60)).padStart(2, "0")}`;
-    const text = `${format(currentTime)} / ${format(duration)}`;
-    if ($("time").textContent !== text) $("time").textContent = text;
+
+  let settingsPending = Promise.resolve();
+  function applyValues(args) {
+    const operation = settingsPending.then(async () => {
+      const values = { ...preferences.previewValues, ...args };
+      const area = HUD_AREAS[values.hudFontAreaIndex ?? 0];
+      const changes = previewSettingsFromValues(args);
+      if ("hudFontPath" in args) changes.hudFontPaths = { [area]: args.hudFontPath };
+      const settings = Object.keys(changes).length ? await appearance.apply(changes) : documentSession.previewSettings;
+      await fonts.show([settings.hudFontPaths?.[area]]);
+      const saved = { ...values, ...previewValuesFromSettings(settings), hudFontPaths: settings.hudFontPaths,
+        hudFontPath: settings.hudFontPaths?.[area] ?? "" };
+      Object.assign(documentSession.previewValues, saved);
+      savePreferences({ previewValues: saved });
+      if (activeSettings === "preview-settings" && ["hudFontPath", "hudFontAreaIndex", "skinDirectoryName", "customOutlineFileName"].some(key => key in args))
+        settingsBody.firstElementChild.refresh();
+    });
+    settingsPending = operation.catch(() => {});
+    return operation;
   }
-  function updateChart(chart) {
-    $("chart-title").textContent = chart ? chart.title || "未命名谱面" : "未加载谱面";
-    $("chart-title").title = chart ? [chart.title, chart.artist].filter(Boolean).join(" · ") : "";
+
+  const assetInput = h("input", { type: "file", hidden: true });
+  root.append(assetInput);
+  let chooseAsset;
+  assetInput.addEventListener("change", () => {
+    const files = Array.from(assetInput.files);
+    assetInput.value = "";
+    if (files.length) void chooseAsset(files).catch(report);
+  }, { signal });
+  function pickAsset(accept, action, directory = false) {
+    chooseAsset = action;
+    assetInput.toggleAttribute("webkitdirectory", directory);
+    assetInput.multiple = directory;
+    assetInput.accept = accept;
+    assetInput.value = "";
+    assetInput.click();
   }
-  function updateSettingsControls(settings) {
-    $("preview-mode").value = settings.previewMode;
-    $("outer-brightness").value = String(
-      Math.round(settings.outerBrightness * 100),
-    );
-    $("inner-brightness").value = String(
-      Math.round(settings.innerBrightness * 100),
-    );
-    $("outer-value").textContent = `${$("outer-brightness").value}%`;
-    $("inner-value").textContent = `${$("inner-brightness").value}%`;
-    $("tap-speed").value = String(settings.tapFlowSpeed);
-    $("touch-speed").value = String(settings.touchFlowSpeed);
-    $("tap-speed-value").textContent = $("tap-speed").value;
-    $("touch-speed-value").textContent = $("touch-speed").value;
-    $("slide-order").value = settings.earlierSlideOnTop ? "earlier" : "later";
-    $("note-skin").value = settings.noteSkin;
-  }
-  function applySettings() {
-    void controller.execute("setSettings", {
-      outerBrightness: Number($("outer-brightness").value) / 100,
-      innerBrightness: Number($("inner-brightness").value) / 100,
-      earlierSlideOnTop: $("slide-order").value === "earlier",
-      noteSkin: $("note-skin").value,
-      tapFlowSpeed: Number($("tap-speed").value),
-      touchFlowSpeed: Number($("touch-speed").value),
-      previewMode: $("preview-mode").value,
-    }).then(() => { $("settings-error").hidden = true; }).catch((error) => {
-      updateSettingsControls(engine.state().settings);
-      $("settings-error").textContent = error.message;
-      $("settings-error").hidden = false;
+
+  let playbackRequest;
+  function togglePlayback() {
+    const playing = !(playbackRequest?.playing ?? transport.state.playing);
+    const request = { playing };
+    playbackRequest = request;
+    return (playing ? preview.play() : preview.pause()).then(value => {
+      if (playbackRequest === request) updatePlayback(value);
+    }).finally(() => {
+      if (playbackRequest === request) playbackRequest = undefined;
     });
   }
-  function toggleSettings(open) {
-    $("settings-panel").hidden = !open;
-    document.body.classList.toggle("settings-open", open);
-    $("settings-toggle").setAttribute("aria-expanded", String(open));
-    (open ? $("settings-close") : $("settings-toggle")).focus();
-    if (open && matchMedia("(max-width: 640px)").matches)
-      window.scrollTo({ top: $("settings-panel").offsetTop, behavior: "smooth" });
-    if (!open) window.scrollTo({ top: 0 });
-  }
-  $("settings-toggle").addEventListener("click", () =>
-    toggleSettings($("settings-panel").hidden),
-  );
-  $("settings-close").addEventListener("click", () => toggleSettings(false));
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !$("settings-panel").hidden) {
-      event.preventDefault();
-      toggleSettings(false);
-    }
-  });
-  for (const id of [
-    "preview-mode",
-    "outer-brightness",
-    "inner-brightness",
-    "tap-speed",
-    "touch-speed",
-    "slide-order",
-    "note-skin",
-  ])
-    $(id).addEventListener("input", applySettings);
-  $("settings-reset").addEventListener("click", () => {
-    updateSettingsControls(engine.defaultSettings());
-    applySettings();
-  });
 
-  const run = (type, payload) => {
-    void controller.execute(type, payload).catch(engine.fail);
+  async function execute(id, args) {
+    switch (id) {
+      case "preview.toggle": return togglePlayback();
+      case "preview.pause": updatePlayback(await preview.pause()); return;
+      case "preview.stop": await preview.pause(); updatePlayback(await preview.seek(0)); return;
+      case "preview.seek": await preview.pause(); updatePlayback(await preview.seek(args.second)); return;
+      case "preview.rate":
+        await preview.setPlayback(args);
+        savePreferences({ previewPlaybackRate: args.rate });
+        return;
+      case "preview.rangeMode":
+        if (!transport.loaded) return;
+        return preview.setPlayback({ rangePlaybackEnabled: args.enabled, exportStartSeconds: playback.exportStartSeconds ?? 0,
+          exportEndSeconds: playback.exportEndSeconds || transport.state.duration });
+      case "preview.range": return preview.setPlayback({ exportEndSeconds: playback.exportEndSeconds || transport.state.duration, ...args });
+      case "preview.fullscreen": return document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+      case "preview.toggleFreeAspect":
+        savePreferences({ previewCanvasFreeAspect: args.enabled });
+        return fitCanvas();
+      case "preview.toggleHidePv": {
+        const { hidePv } = args;
+        await preview.setMediaSettings({ hidePv });
+        savePreferences({ previewHidePv: hidePv });
+        return;
+      }
+      case "preview.theme":
+        await preview.setTheme(args.theme);
+        return;
+      case "preview.frameRate": await preview.setPerformance(args); savePreferences(args); return;
+      case "preview.values": return applyValues(args);
+      case "skin.import": return pickAsset("image/png", async files => {
+        const skin = await appearance.importSkin(files);
+        Object.assign(documentSession, await appearance.list());
+        await applyValues({ skinDirectoryName: skin.skinDirectoryName });
+      }, true);
+      case "preview.importJudgeLine": return pickAsset("image/png", async ([file]) => {
+        const outline = await appearance.importJudgeLine(file);
+        Object.assign(documentSession, await appearance.list());
+        await applyValues({ customOutlineFileName: outline.customOutlineFileName });
+      });
+      case "preview.importHudFont": return pickAsset(".ttf,.otf", async ([file]) => {
+        const font = await fonts.import(file);
+        documentSession.userFonts = fonts.list();
+        await applyValues({ hudFontPath: font.path });
+      });
+      case "preview.resetHudFont": return applyValues({ hudFontPath: "" });
+      case "audio.saveAsSoftwareDefault": {
+        const audio = await preview.audioCommand("audio.getSettings");
+        savePreferences({ audioSoftwareDefault: audio.settings });
+        return;
+      }
+      case "audio.restoreSoftwareDefault":
+        return execute("audio.restoreSettings", { settings: preferences.audioSoftwareDefault ?? {} });
+    }
+    if (id.startsWith("audio.")) {
+      const audio = await preview.audioCommand(id, args);
+      savePreferences({ audioSettings: audio.settings });
+    }
+  }
+  function command(id, args = {}) { return execute(id, args).catch(report); }
+
+  const restorePreferences = engine.boot.then(async () => {
+    if (signal.aborted) return;
+    const initial = engine.state();
+    baseResolution = canvasSize = initial.resolution;
+    documentSession.previewSettings = initial.settings;
+    await preview.audioCommand("audio.getSettings");
+    try {
+      if (preferences.theme) await preview.setTheme(preferences.theme);
+      if (preferences.previewPlaybackRate != null) await preview.setPlayback({ rate: preferences.previewPlaybackRate });
+      if (preferences.previewHidePv != null) await preview.setMediaSettings({ hidePv: preferences.previewHidePv });
+      if (preferences.canvasFrameRateMode != null) await preview.setPerformance({ canvasFrameRateMode: preferences.canvasFrameRateMode });
+      if (preferences.audioSettings) await preview.audioCommand("audio.restoreSettings", { settings: preferences.audioSettings });
+      if (preferenceKey) {
+        documentSession.userFonts = await fonts.restore();
+        Object.assign(documentSession, await appearance.list());
+      }
+      if (preferences.previewValues) await applyValues(preferences.previewValues);
+    } catch (error) { report(error); }
+    if (signal.aborted) return;
+    updatePlayback(engine.state());
+    resize.observe(container);
+    panel.settingsButton.disabled = false;
+    audioButton.disabled = false;
+  });
+  return {
+    boot: Promise.race([restorePreferences, engine.boot.then(() => upgradeBlocked)]),
+    theme(theme) {
+      document.documentElement.dataset.theme = theme;
+      savePreferences({ theme });
+    },
+    audio: updateAudio,
+    chart(chart) {
+      transport.setDocument({ hasDocument: Boolean(chart) });
+      if (activeSettings === "preview-settings" && viewState.previewSettingsPage === "playback")
+        settingsBody.firstElementChild.refresh();
+    },
+    destroy() {
+      lifetime.abort();
+      resize.disconnect();
+      popups.destroy();
+      statistics.destroy();
+      fonts.destroy();
+      unsubscribe();
+      void assets.close().catch(() => {});
+    },
   };
-  $("play").addEventListener("click", () => run(engine.state().playing ? "pause" : "play"));
-  $("restart").addEventListener("click", () => run("restart"));
-  $("seek").addEventListener("pointerdown", () => run("pause"));
-  $("seek").addEventListener("input", () => run("seek", { second: Number($("seek").value) }));
-  return { settings: updateSettingsControls, chart: updateChart, transport: updateTransport, theme: setTheme };
 }

@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 const metricLabels = {
   engineLoad: "引擎下载、校验及编译",
   engineInit: "Qt 引擎初始化",
+  engineWarmup: "烟花首帧预热",
   chartLoad: "谱面加载总耗时",
   maidataRead: "谱面读取",
   audioRead: "音乐读取",
@@ -44,6 +45,7 @@ export function formatPerformanceReport(sessionId, report, receivedAt) {
   const phases = {
     "engine-load": "引擎加载",
     "engine-init": "Qt 初始化",
+    "engine-warmup": "烟花首帧预热",
     "chart-load": "谱面加载",
     ready: "已就绪",
     error: "发生错误",

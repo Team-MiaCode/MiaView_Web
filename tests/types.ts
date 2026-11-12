@@ -14,15 +14,22 @@ const preview: MiaCodePreview = createPreview(document.createElement("div"), {
   maxFps: 120,
   theme: "light",
   layout: "fit",
+  panelLayout: "fill",
+  preferencesKey: "preview-test",
 });
 void preview.setTheme("legacy_light");
 // @ts-expect-error Only original theme tokens are accepted.
 void preview.setTheme("system");
 // @ts-expect-error Unknown layout modes are rejected.
 createPreview(document.createElement("div"), { layout: "fluid" });
+// @ts-expect-error Unknown panel layout modes are rejected.
+createPreview(document.createElement("div"), { panelLayout: "fluid" });
 void preview.load(chart);
 void preview.seek(1);
 void preview.setSettings({ tapFlowSpeed: 8, noteSkin: "SD" });
+void preview.setSettings({ fireworkStyle: 1, fireworkBrightness: 0.5 });
+// @ts-expect-error The firework selector accepts the two native enum values.
+void preview.setSettings({ fireworkStyle: 2 });
 void preview.setSettings({ previewMode: "maimuri_dx_style" });
 // @ts-expect-error Unknown preview modes are rejected.
 void preview.setSettings({ previewMode: "unknown" });
@@ -34,6 +41,7 @@ createPreview(document.createElement("div"), { theme: "system" });
 // @ts-expect-error Numeric strings are not frame rates.
 createPreview(document.createElement("div"), { maxFps: "120" });
 preview.on("paused", (event) => event.elapsedMs);
+preview.on("loaded", (event) => event.difficultyId);
 preview.destroy();
 // @ts-expect-error Judgment effects are fixed and not configurable.
 void preview.setSettings({ showJudgeEffects: false });

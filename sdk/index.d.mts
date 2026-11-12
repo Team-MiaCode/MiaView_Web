@@ -102,6 +102,8 @@ export interface AnalysisSnapshot {
 }
 export interface PreviewSettings {
   fireworkBrightness?: number;
+  /** 0 selects Standard (default), 1 selects Modern. */
+  fireworkStyle?: 0 | 1;
   showSlideTracks?: boolean; showJudgeMarkers?: boolean; showTouchTrail?: boolean;
   handRadiusPx?: number; wifiNeedC?: boolean; staticTapOnSlideThresholdMs?: number;
   hudFontPaths?: HudFontPaths;
@@ -396,6 +398,10 @@ export interface DiagnosticsSnapshot {
   historyLimit: number;
   reports: PerformanceReport[];
   definitions: Record<string, string>;
+  wasmAllocatedBytes?: number;
+  hudFontCacheEntries?: number;
+  waveform?: { builds: number; retainedBytes: number; scratchPeakBytes: number };
+  appearance?: { skin: number; outline: number; font: number };
 }
 export interface PreviewOptions {
   /** Iframe Permissions Policy; default "autoplay; fullscreen". */
@@ -408,8 +414,12 @@ export interface PreviewOptions {
   theme?: "dark" | "light" | "legacy" | "legacy_light";
   /** Intrinsic aspect ratio, or fill a workbench container with its own height. */
   layout?: "intrinsic" | "fit";
-  /** Render the built-in transport; default true. A workbench can supply its own controls. */
+  /** Full panel sizing inside the iframe. Default "proportional" uses 741:865. "fill" uses the iframe width and height. */
+  panelLayout?: "proportional" | "fill";
+  /** Show the full player panel. Default true. False leaves a render surface for host controls. */
   controls?: boolean;
+  /** Optional localStorage key on the renderer origin for panel preferences. */
+  preferencesKey?: string;
   /** Initialization/load logs and playback-only performance reports sent to the renderer backend. Default true. */
   diagnostics?: boolean;
   resolution?: Resolution;
@@ -434,6 +444,7 @@ export interface PreviewEvents {
   performance: PerformanceReport;
   ready: { playerVersion: string; sourceRevision: string };
   progress: { stage: string; progress: number };
+  loaded: ChartInfo;
   playing: { elapsedMs: number };
   paused: { elapsedMs: number };
   ended: { elapsedMs: number };
@@ -464,7 +475,7 @@ export interface MiaCodePreview {
   normalizeShortcuts(sequences: Record<string, string>): Promise<Record<string, ShortcutGesture>>;
   setInputShortcuts(sequences: Record<string, string>): Promise<Record<string, ShortcutGesture>>;
   normalizeBackground(settings?: Partial<AppBackgroundSettings>): Promise<AppBackgroundSettings>;
-  importFont(font: Resource, name?: string): Promise<ImportedFont>;
+  importFont(font: Resource, name?: string, owner?: string): Promise<ImportedFont>;
   getExportCapabilities(settings?: VideoExportOptions): Promise<VideoExportCapabilities>;
   setIntroAudition(settings?: IntroAuditionOptions): Promise<IntroAuditionState|null>;
   setExportPreview(settings?: VideoExportOptions & { enabled?: boolean; selectedDifficultyId?: number; stop?: boolean; cardDimmed?: boolean; introAuditionLoop?: boolean }): Promise<PreviewState>;
@@ -484,8 +495,9 @@ export interface MiaCodePreview {
   getCoverComposition(): Promise<CoverCompositionState>;
   setCoverChart(chart: ChartInput, options?: { duration?: number }): Promise<CoverCompositionState>;
   coverCommand(id: CoverCommandId, args?: CoverCommandArguments): Promise<CoverCompositionState>;
-  importSkin(files: SkinImageInput[]): Promise<ImportedSkin>;
-  importJudgeLine(image: Resource): Promise<ImportedJudgeLine>;
+  importSkin(files: SkinImageInput[], owner?: string): Promise<ImportedSkin>;
+  importJudgeLine(image: Resource, owner?: string): Promise<ImportedJudgeLine>;
+  releaseUnusedAppearance(owner: string, fontPaths?: string[]): Promise<void>;
   importCoverImage(image: Resource): Promise<ImportedCoverImage>;
   exportCover(options?: { type?: "image/png" | "image/jpeg"; quality?: number }): Promise<ExportedCoverImage>;
   selectDifficulty(difficulty: number): Promise<ChartInfo | DocumentSnapshot>;

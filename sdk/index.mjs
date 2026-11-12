@@ -40,6 +40,9 @@ class MiaCodePreview {
     const theme = previewTheme(options.theme);
     const layout = options.layout ?? "intrinsic";
     if (layout !== "intrinsic" && layout !== "fit") throw new Error("layout must be intrinsic or fit");
+    const panelLayout = options.panelLayout ?? "proportional";
+    if (panelLayout !== "proportional" && panelLayout !== "fill")
+      throw new Error("panelLayout must be proportional or fill");
     this.layout = layout;
     this.resolution = resolution;
     this.controls = options.controls ?? true;
@@ -68,6 +71,12 @@ class MiaCodePreview {
     this.url.searchParams.set("maxFps", String(maxFps));
     this.url.searchParams.set("theme", theme);
     this.url.searchParams.set("controls", this.controls ? "1" : "0");
+    this.url.searchParams.set("panelLayout", panelLayout);
+    if (options.preferencesKey !== undefined) {
+      if (typeof options.preferencesKey !== "string" || !options.preferencesKey.trim())
+        throw new Error("preferencesKey must be a nonempty string");
+      this.url.searchParams.set("preferencesKey", options.preferencesKey);
+    }
     this.url.searchParams.set("pvTimeoutMs", String(this.pvTimeoutMs));
     this.url.searchParams.set(
       "diagnostics",
@@ -273,10 +282,30 @@ class MiaCodePreview {
   }
   load(chart) {
     try {
-      return this.command(
-        "load",
-        normalizeChart(chart, this.wrapper.ownerDocument.baseURI),
-      ).then(value => { this.exportPreviewMinimum = 0; this.setIntrinsicSurface(this.resolution, false); return value; });
+      const input = normalizeChart(chart, this.wrapper.ownerDocument.baseURI);
+      const load = this.latestLoad = {};
+      const cancelled = () => new DOMException("Chart load superseded", "AbortError");
+      if (this.activeLoad && !this.destroyed) void this.request("cancelLoad").catch(() => {});
+      const operation = this.queue.then(async () => {
+        await this.ready;
+        if (this.failed) throw this.failed;
+        if (this.latestLoad !== load) throw cancelled();
+        this.activeLoad = load;
+        try {
+          const value = await this.request("load", input);
+          if (this.latestLoad !== load) throw cancelled();
+          this.exportPreviewMinimum = 0;
+          this.setIntrinsicSurface(this.resolution, false);
+          this.emit("loaded", value);
+          return value;
+        } catch (error) {
+          throw this.latestLoad === load ? error : cancelled();
+        } finally {
+          this.activeLoad = null;
+        }
+      });
+      this.queue = operation.catch(() => {});
+      return operation;
     } catch (error) {
       return Promise.reject(error);
     }
@@ -368,17 +397,20 @@ class MiaCodePreview {
   }
   cancelExport() { return this.command("cancelExport"); }
   getExportStatus() { return this.command("getExportStatus"); }
-  importFont(font, name = font?.name || "font.ttf") {
-    try { return this.command("importFont", { font: normalizeResources({audio:font},this.wrapper.ownerDocument.baseURI).audio, name }); }
+  importFont(font, name = font?.name || "font.ttf", owner) {
+    try { return this.command("importFont", { font: normalizeResources({audio:font},this.wrapper.ownerDocument.baseURI).audio, name, owner }); }
     catch (error) { return Promise.reject(error); }
   }
-  importSkin(files) {
-    try { return this.command("importSkin", { files: normalizeSkinFiles(files, this.wrapper.ownerDocument.baseURI) }); }
+  importSkin(files, owner) {
+    try { return this.command("importSkin", { files: normalizeSkinFiles(files, this.wrapper.ownerDocument.baseURI), owner }); }
     catch (error) { return Promise.reject(error); }
   }
-  importJudgeLine(image) {
-    try { return this.command("importJudgeLine", { image: normalizeResources({ cover: image }, this.wrapper.ownerDocument.baseURI).cover }); }
+  importJudgeLine(image, owner) {
+    try { return this.command("importJudgeLine", { image: normalizeResources({ cover: image }, this.wrapper.ownerDocument.baseURI).cover, owner }); }
     catch (error) { return Promise.reject(error); }
+  }
+  releaseUnusedAppearance(owner, fontPaths = []) {
+    return this.command("releaseUnusedAppearance", { owner, fontPaths });
   }
   getDocumentSaveText(section = 0) { return this.command("getDocumentSaveText", { section }); }
   setTheme(theme) {

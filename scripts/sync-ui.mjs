@@ -4,20 +4,17 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const cssName = value => value.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`);
-export function readUiTheme(qml) {
+export function readUiTheme(qml, palettes) {
   const themes = {};
-  for (const [token, property] of Object.entries({ dark: "dark", light: "light", legacy: "legacyDark", legacy_light: "legacyLight" })) {
-    const block = qml.match(new RegExp(`readonly property var ${property}Colors: \\(([\\s\\S]*?)\\n    \\}\\)`))?.[1];
-    if (!block) throw new Error(`Missing theme palette: ${property}`);
+  for (const token of ["dark", "light", "legacy", "legacy_light"]) {
+    const palette = palettes.themes[token]?.colors;
+    if (!palette) throw new Error(`Missing theme palette: ${token}`);
     const colors = {};
-    for (const group of block.matchAll(/(\w+):\s*\{([^}]+)\}/g)) {
-      for (const field of group[2].matchAll(/(\w+):\s*("#[A-Fa-f0-9]{6}"|Qt\.rgba\(([^)]+)\))/g)) {
-        let value = field[2].replaceAll('"', "");
-        if (field[3]) {
-          const parts = field[3].split(",").map(part => part.trim().split("/").map(Number).reduce((a, b) => a / b));
-          value = `rgba(${parts.slice(0, 3).map(part => Math.round(part * 255)).join(", ")}, ${Number(parts[3].toFixed(4))})`;
-        }
-        colors[`${cssName(group[1])}-${cssName(field[1])}`] = value;
+    for (const [group, fields] of Object.entries(palette)) {
+      for (const [field, value] of Object.entries(fields)) {
+        // Qt puts alpha first in eight-digit colors. CSS puts it last.
+        colors[`${cssName(group)}-${cssName(field)}`] =
+          /^#[a-f0-9]{8}$/i.test(value) ? `#${value.slice(3)}${value.slice(1, 3)}` : value;
       }
     }
     themes[token] = colors;
@@ -29,7 +26,9 @@ export function readUiTheme(qml) {
 }
 
 export function syncUi(source = resolve(root, "vendor/MiaCode")) {
-  const data = readUiTheme(readFileSync(join(source, "src/app/ui/theme/Theme.qml"), "utf8"));
+  const qml = readFileSync(join(source, "src/app/ui/theme/Theme.qml"), "utf8");
+  const palettes = JSON.parse(readFileSync(join(source, "resources/themes/palettes.json"), "utf8"));
+  const data = readUiTheme(qml, palettes);
   const output = resolve(root, "ui/components");
   mkdirSync(join(output, "icons"), { recursive: true });
   const blocks = Object.entries(data.themes).map(([name, colors]) => {
@@ -51,8 +50,15 @@ export function syncUi(source = resolve(root, "vendor/MiaCode")) {
   const buildInfo = { version: packageInfo.version, platform: `WebAssembly / ${toolchain.wasmArch} / Qt ${toolchain.qtVersion}`, buildType: "Release" };
   writeFileSync(join(output, "build-info.mjs"), `export const buildInfo = Object.freeze(${JSON.stringify(buildInfo, null, 2)});\n`);
   const shortcutSource = JSON.parse(readFileSync(join(source, "resources/shortcuts.json"), "utf8"));
-  const shortcutDefinitions = shortcutSource.editable.map(id => {
+  // The browser owns page zoom. These gestures resize the chart editor font.
+  const editorFontActions = {
+    "ui.zoom_out": ["editor.font_decrease", "Decrease Editor Font"],
+    "ui.zoom_in": ["editor.font_increase", "Increase Editor Font"],
+  };
+  const shortcutDefinitions = shortcutSource.editable.filter(id => id !== "ui.zoom_reset").map(id => {
     const item = shortcutSource.actions[id];
+    const fontAction = editorFontActions[id];
+    if (fontAction) return { id: fontAction[0], labelKey: `shortcut.${fontAction[0]}`, labelFallback: fontAction[1], shortcutText: item.default, defaultText: item.default, isDefault: true };
     return { id, labelKey: item.label_key || "", labelFallback: item.label_en || id, shortcutText: item.default || "", defaultText: item.default || "", isDefault: true };
   });
   writeFileSync(join(output, "shortcut-definitions.mjs"), `export const shortcutDefinitions = Object.freeze(${JSON.stringify(shortcutDefinitions, null, 2)});\n`);

@@ -12,7 +12,7 @@ export function createPlayerController(engine) {
   };
   engine.events(emit);
   const introSafeCommands=new Set(["setIntroAudition","setExportPreview","getState","getDocument","getAnalysis","getDocumentSaveText","getDiagnostics","getExportStatus","getExportCapabilities",
-    "getCoverComposition","getTimeline","navigateTimeline","getTimelineFollow","normalizeShortcuts","normalizeBackground","readAudioInfo","importFont","setInputShortcuts","setTheme","setCanvasSize","setDiagnostics","resetDiagnostics","setPerformance","play","pause"]);
+    "getCoverComposition","getTimeline","navigateTimeline","getTimelineFollow","normalizeShortcuts","normalizeBackground","readAudioInfo","importFont","importSkin","importJudgeLine","releaseUnusedAppearance","setInputShortcuts","setTheme","setCanvasSize","setDiagnostics","resetDiagnostics","setPerformance","play","pause"]);
   const loadedInfo = () => {
     const chart = engine.chart();
     if (!chart) throw new Error("Chart loading was cancelled");
@@ -65,7 +65,7 @@ export function createPlayerController(engine) {
     if (type === "normalizeBackground") return engine.normalizeBackground(payload);
     if (type === "importFont") {
       if (typeof payload.name !== "string") throw new Error("A font filename is required");
-      return engine.importFont(normalizeResources({ audio: payload.font }).audio, payload.name);
+      return engine.importFont(normalizeResources({ audio: payload.font }).audio, payload.name, payload.owner);
     }
     if (type === "setPlayback") {
       const result = engine.setPlayback(payload);
@@ -85,7 +85,7 @@ export function createPlayerController(engine) {
       return result;
     }
     if (type === "getTimeline") {
-      const result = engine.getTimeline(payload);
+      const result = await engine.getTimeline(payload);
       if (result.error) throw new Error(result.error);
       return result;
     }
@@ -111,8 +111,9 @@ export function createPlayerController(engine) {
     if (type === "getCoverComposition") return engine.getCoverComposition();
     if (type === "coverCommand") return engine.coverCommand(payload);
     if (type === "importCoverImage") return engine.importCoverImage(normalizeResources({ cover: payload.image }).cover);
-    if (type === "importSkin") return engine.importSkin(normalizeSkinFiles(payload.files));
-    if (type === "importJudgeLine") return engine.importJudgeLine(normalizeResources({ cover: payload.image }).cover);
+    if (type === "importSkin") return engine.importSkin(normalizeSkinFiles(payload.files), payload.owner);
+    if (type === "importJudgeLine") return engine.importJudgeLine(normalizeResources({ cover: payload.image }).cover, payload.owner);
+    if (type === "releaseUnusedAppearance") return engine.releaseUnusedAppearance(payload.owner, payload.fontPaths);
     if (type === "exportCover") return engine.exportCover(payload);
     if (type === "setTheme") return engine.setTheme(previewTheme(payload.theme));
     if (type === "getDiagnostics") return engine.diagnostics();
@@ -166,6 +167,7 @@ export function createPlayerController(engine) {
     },
     execute(type, payload) {
       if (type === "pause") { ++playbackRequest; return executeCommand(type, payload); }
+      if (type === "cancelLoad") return Promise.resolve(engine.cancelLoad());
       const request = playbackRequest;
       const pending = queue.then(() => (type === "play" || type === "restart") && request !== playbackRequest ? engine.state() : executeCommand(type, payload, request));
       if (type !== "getAnalysis") queue = pending.catch(() => {});

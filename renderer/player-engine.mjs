@@ -3,6 +3,9 @@ import {
   PreviewMediaCache,
   loadPreviewRuntime,
   fetchVerified,
+  runtimeAsset,
+  fetchRuntimeAsset,
+  registerRuntimeResource,
 } from "./runtime.mjs";
 import { pvTimeoutFromSearch } from "./pv-timeout.mjs";
 import { httpUrl } from "./protocol.mjs";
@@ -26,6 +29,7 @@ import { PreviewAnalysis } from "./analysis-client.mjs";
 // Each renderer document owns one engine; UI and SDK share its controller.
 export function createPlayerEngine(view) {
   const lifetime = new AbortController();
+  const resourcePacks = new Map();
   let disposed = false, frameRequest;
   let playbackRequest = 0;
   let playStartAbort;
@@ -34,6 +38,7 @@ export function createPlayerEngine(view) {
     HEIGHT = DEFAULT_RESOLUTION.height;
 
   const $ = (id) => document.getElementById(id);
+  const fpsBadge = $("fps");
   const embedded = window.parent !== window;
   document.body.classList.toggle("embedded", embedded);
   document.body.classList.toggle("external-controls", new URLSearchParams(location.search).get("controls") === "0");
@@ -47,11 +52,19 @@ export function createPlayerEngine(view) {
     videoUrl;
   let audio, defaultSettings, appearance, audioSettings, analysis, runtimeManifest;
   let previewDeferred = false;
-  let loadedAudioResource, exportJob;
+  let loadedAudioResource, waveformTrack, exportJob;
+  let waveformBuilds = 0, waveformBytes = 0, waveformScratchPeakBytes = 0;
   let introAudition,introOptions,introSaved;
   let introWasPlaying=false;
   let exportPreview, exportPreviewOptions, exportPreviewSaved;
   const exportSoundBytes = new Map();
+  const importedAppearance = { skin: new Map(), outline: new Map(), font: new Map() };
+  function rememberAppearance(kind, name, owner) {
+    const assets = importedAppearance[kind];
+    const owners = assets.get(name) ?? new Set();
+    owners.add(owner ?? null);
+    assets.set(name, owners);
+  }
   let latency = { ...DEFAULT_LATENCY }, analyzedTrack;
   let video = $("stage-video");
   let performanceOptions = { ...DEFAULT_PERFORMANCE };
@@ -209,6 +222,10 @@ export function createPlayerEngine(view) {
     const snapshot = diagnostics.snapshot();
     return {
       ...snapshot,
+      wasmAllocatedBytes: ready ? call("miacode_allocated_bytes", "number", [], []) : 0,
+      hudFontCacheEntries: ready ? call("miacode_hud_font_cache_entries", "number", [], []) : 0,
+      waveform: { builds: waveformBuilds, retainedBytes: waveformBytes, scratchPeakBytes: waveformScratchPeakBytes },
+      appearance: Object.fromEntries(Object.entries(importedAppearance).map(([kind, assets]) => [kind, assets.size])),
       reports: [...snapshot.reports, ...playbackDiagnostics.snapshot().reports]
         .sort((a, b) => a.sequence - b.sequence).slice(-snapshot.historyLimit),
     };
@@ -229,7 +246,6 @@ export function createPlayerEngine(view) {
   const updateTransport = (force = true) => {
     const currentTime = exportPreview?.position() ?? audio?.currentSecond() ?? 0;
     const duration = audio?.duration ?? 0;
-    view.transport?.(currentTime, duration, exportPreview?.minimum ?? 0);
     const now = performance.now();
     if (force || now - lastTimeUpdate >= 100) {
       lastTimeUpdate = now;
@@ -360,6 +376,7 @@ export function createPlayerEngine(view) {
     defaultSettings = JSON.parse(call("miacode_settings", "string", [], []));
     audioSettings = JSON.parse(call("miacode_audio_command", "string", ["string"], [JSON.stringify({ id: "audio.getSettings" })]));
     appearance = defaultSettings;
+    fpsBadge.hidden = !appearance.showDebugInfo;
     // Qt's queued window geometry can outlive a caller resize. The renderer
     // owns this single frameless surface; keep its DOM and framebuffer at the
     // caller's logical size while the outer viewport handles browser scaling.
@@ -392,13 +409,13 @@ export function createPlayerEngine(view) {
       playbackDiagnostics.record("renderWork", now - renderStarted);
       lastPresentation = now;
     };
-    view.settings(defaultSettings);
-    // Qt renders asynchronously. Wait for a presented transparent firework draw,
-    // including its real pipeline and mipmapped ball, before accepting playback.
-    while (!call("miacode_firework_ready", "number", [], [])) {
-      await nextAnimationFrame(lifetime.signal);
-    }
-    $("settings-toggle").disabled = false;
+    phase = "engine-warmup";
+    await diagnostics.measureAsync("engineWarmup", async () => {
+      // Qt renders asynchronously. Ready requires a submitted transparent draw.
+      while (!call("miacode_firework_ready", "number", [], [])) {
+        await nextAnimationFrame(lifetime.signal);
+      }
+    });
     fpsSampleTime = performance.now();
     fpsSampleFrames = call("miacode_frame_count", "number", [], []);
     ready = true;
@@ -411,6 +428,46 @@ export function createPlayerEngine(view) {
   });
   // Keep startup rejection handled before the first host/file message arrives.
   void boot.catch(() => {});
+
+  function ensureResourcePack(name, signal = lifetime.signal) {
+    signal.throwIfAborted();
+    let pending = resourcePacks.get(name);
+    if (!pending) {
+      pending = (async () => {
+        const asset = runtimeAsset(identity, runtimeManifest, `miacode-${name}.rcc`);
+        const bytes = await fetchRuntimeAsset(asset, lifetime.signal, name === "hud" ? "low" : "auto");
+        registerRuntimeResource(module, bytes);
+        if (name === "hud") call("miacode_hud_fonts_ready", null, [], []);
+        if (name === "skins") call("miacode_builtin_skins_ready", null, [], []);
+      })().catch(error => {
+        resourcePacks.delete(name);
+        throw error;
+      });
+      resourcePacks.set(name, pending);
+    }
+    if (signal === lifetime.signal) return pending;
+    return new Promise((resolve, reject) => {
+      const cancel = () => reject(signal.reason);
+      signal.addEventListener("abort", cancel, { once: true });
+      void pending.then(resolve, reject).finally(() => signal.removeEventListener("abort", cancel));
+    });
+  }
+
+  function usesHud(settings = {}) {
+    return ["showTimestamp", "showChartInfoHud", "showObjectStatsHud", "showDebugInfo"]
+      .some(key => settings[key] ?? appearance?.[key]);
+  }
+
+  function loadHudFonts() {
+    if (!usesHud()) return;
+    void ensureResourcePack("hud").catch(error => {
+      if (!disposed) emit("error", { code: "HUD_RESOURCE_FAILED", message: error.message });
+    });
+  }
+
+  function loadChartResources(signal) {
+    return Promise.all([ensureResourcePack("slides", signal), ensureResourcePack("skins", signal)]);
+  }
 
   const callMetrics = {
     miacode_load: "chartParse",
@@ -438,9 +495,7 @@ export function createPlayerEngine(view) {
     video.pause();
     if (ready && chart) {
       call("miacode_seek", null, ["number"], [audio.offset]);
-      $("seek").value = String(audio.offset);
     }
-    $("play").textContent = "播放";
     updateTransport();
     emit("paused", { elapsedMs: elapsed() });
   }
@@ -474,7 +529,6 @@ export function createPlayerEngine(view) {
       call("miacode_set_playing", null, ["number"], [1]);
       playbackDiagnostics.setEnabled(diagnostics.enabled);
       status("");
-      $("play").textContent = "暂停";
       emit("playing", { elapsedMs: elapsed() });
       updateTransport();
     } catch (error) {
@@ -496,7 +550,6 @@ export function createPlayerEngine(view) {
     audio.seek(second);
     call("miacode_seek", null, ["number"], [audio.offset]);
     if (video.src && !performanceOptions.videoDecodePrefersSoftware) positionVideo(audio.offset);
-    $("seek").value = String(audio.offset);
     updateTransport();
   }
   function clearInput() {
@@ -518,12 +571,10 @@ export function createPlayerEngine(view) {
     loadedAudioResource = undefined;
     view.chart?.(null);
     updateTransport();
-    for (const id of ["play", "restart", "seek"])
-      $(id).disabled = true;
     if (module) {
+      clearWaveform();
       call("miacode_latency_samples", null, ["number", "number", "number"], [0, 0, 0]);
       call("miacode_background", "number", ["number", "number"], [0, 0]);
-      call("miacode_waveform", null, ["number", "number", "number"], [0, 0, 0]);
     }
   }
   async function bytes(resource, signal) {
@@ -574,19 +625,50 @@ export function createPlayerEngine(view) {
       throw error;
     }
   }
-  function updateWaveform(track) {
-    if (track) {
-      const mono = new Float32Array(track.length);
-      for (let channel = 0; channel < track.numberOfChannels; channel++) {
-        const samples = track.getChannelData(channel);
-        for (let index = 0; index < mono.length; index++) mono[index] += samples[index] / track.numberOfChannels;
+  function clearWaveform() {
+    if (!waveformTrack) return;
+    call("miacode_waveform_begin", null, ["number", "number"], [0, 0]);
+    waveformTrack = null;
+    waveformBytes = 0;
+  }
+  async function ensureWaveform() {
+    const track = audio?.track;
+    if (!track || track === waveformTrack) return;
+    const channels = Array.from({ length: track.numberOfChannels }, (_, index) => track.getChannelData(index));
+    const blockSize = Math.min(track.length, 16384);
+    const scratchBytes = blockSize * Float32Array.BYTES_PER_ELEMENT;
+    const revision = generation;
+    call("miacode_waveform_begin", null, ["number", "number"], [track.length, track.duration]);
+    const pointer = module._malloc(scratchBytes);
+    if (!pointer) {
+      call("miacode_waveform_begin", null, ["number", "number"], [0, 0]);
+      throw new Error("时间轴波形缓冲分配失败");
+    }
+    try {
+      let buffer = new Float32Array(module.HEAPU8.buffer, pointer, blockSize);
+      for (let first = 0; first < track.length; first += blockSize) {
+        if (first && first % (blockSize * 32) === 0 && !document.hidden) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+          lifetime.signal.throwIfAborted();
+          if (revision !== generation) throw new DOMException("波形构建取消", "AbortError");
+          if (buffer.buffer !== module.HEAPU8.buffer) buffer = new Float32Array(module.HEAPU8.buffer, pointer, blockSize);
+        }
+        const count = Math.min(blockSize, track.length - first);
+        for (let index = 0; index < count; index++) {
+          let sample = 0;
+          for (const channel of channels) sample = Math.fround(sample + channel[first + index] / channels.length);
+          buffer[index] = sample;
+        }
+        call("miacode_waveform_add", null, ["number", "number"], [pointer, count]);
       }
-      const pointer = module._malloc(mono.byteLength);
-      try {
-        module.HEAPU8.set(new Uint8Array(mono.buffer), pointer);
-        call("miacode_waveform", null, ["number", "number", "number"], [pointer, mono.length, track.duration]);
-      } finally { module._free(pointer); }
-    } else call("miacode_waveform", null, ["number", "number", "number"], [0, 0, 0]);
+      waveformBytes = call("miacode_waveform_finish", "number", [], []);
+      waveformScratchPeakBytes = Math.max(waveformScratchPeakBytes, scratchBytes);
+      waveformBuilds++;
+      waveformTrack = track;
+    } catch (error) {
+      call("miacode_waveform_begin", null, ["number", "number"], [0, 0]);
+      throw error;
+    } finally { module._free(pointer); }
   }
   async function setBackground(data) {
     if (!data) { call("miacode_background", "number", ["number", "number"], [0, 0]); return; }
@@ -614,12 +696,19 @@ export function createPlayerEngine(view) {
     const token = generation;
     try {
       const result = await pending;
+      if (token !== generation) throw new DOMException("谱面加载已取消", "AbortError");
       diagnostics.flush();
       return result;
     } catch (error) {
       if (token === generation) abort?.abort();
       throw error;
     }
+  }
+  function cancelLoad() {
+    if (phase !== "chart-load") return;
+    ++generation;
+    abort?.abort(new DOMException("谱面加载已取消", "AbortError"));
+    phase = "ready";
   }
   async function loadChart(resources, difficultyId) {
     previewDeferred = false;
@@ -676,7 +765,7 @@ export function createPlayerEngine(view) {
     const videoReady = prepared.video;
     // Parsing can fail before the concurrently buffered video is awaited.
     void videoReady.catch(() => {});
-    const text = await prepared.text;
+    const [text] = await Promise.all([prepared.text, loadChartResources(signal)]);
     if (token !== generation) return;
     status("正在解析谱面…");
     emit("progress", { stage: "正在解析谱面", progress: 0.15 });
@@ -691,7 +780,6 @@ export function createPlayerEngine(view) {
     if (parsed.error) throw new Error(parsed.error);
     if (document.body.classList.contains("cover-view")) {
       document.body.classList.remove("cover-view");
-      $("transport").hidden = false;
       const resolution = resolutionFromSearch(location.search);
       setSurfaceSize(resolution.width, resolution.height);
     }
@@ -739,29 +827,24 @@ export function createPlayerEngine(view) {
       video.hidden = hidePv;
       if (hidePv) await setBackground(coverBytes);
     }
+    if (token !== generation) return;
     loadedCover = coverBytes;
     loadedAudioResource = resources.audio;
     chart = parsed;
-    view.chart?.(parsed);
     audio.track = track;
     audio.events = audioSettings.breakSlideTailCheerMuted ? parsed.sfxMutedTail : parsed.sfx;
     audio.segments = parsed.touchholdSegments;
     audio.duration = Math.max(parsed.duration, track?.duration ?? 0);
-    updateWaveform(track);
     audio.rate = playback.rate;
     playback.exportEndSeconds = audio.duration;
     emit("playbackChanged", { ...playback });
     updateTransport();
-    $("seek").max = String(audio.duration);
-    $("seek").value = "0";
-    $("play").textContent = "播放";
     phase = "ready";
+    view.chart?.(parsed);
     emit("progress", { stage: "资源已就绪", progress: 1 });
     status("");
     emit("paused", { elapsedMs: 0 });
-    if (token !== generation) return;
-    for (const id of ["play", "restart", "seek"])
-      $(id).disabled = false;
+    loadHudFonts();
   }
 
   async function prepareEffects(parsed) {
@@ -793,15 +876,13 @@ export function createPlayerEngine(view) {
     if (parsed.error && next.onPage) throw new Error(parsed.error);
     latency = next;
     if (audio) audio.setMix(activeAudioGains());
-    if (parsed.error) { chart = null; audio.replaceTimeline([], []); }
+    if (parsed.error) { chart = null; view.chart?.(null); audio.replaceTimeline([], []); }
     else {
       await prepareEffects(parsed); chart = parsed; view.chart?.(parsed);
       audio.duration = next.onPage ? parsed.duration : Math.max(parsed.duration, audio.track?.duration ?? 0);
       audio.replaceTimeline(audioSettings.breakSlideTailCheerMuted ? parsed.sfxMutedTail : parsed.sfx, parsed.touchholdSegments);
       if (changedPage) seek(Math.min(second, audio.duration));
     }
-    $("seek").max = String(audio.duration);
-    for (const id of ["play", "restart", "seek"]) $(id).disabled = !chart;
     updateTransport(); return previewState();
   }
   async function detectLatency(request) {
@@ -836,6 +917,8 @@ export function createPlayerEngine(view) {
     return result;
   }
   async function documentCommand(request) {
+    if (request.id === "document.replaceSource" || request.id === "document.addDifficulty")
+      await loadChartResources();
     if (exportPreview) {
       const options = { ...exportPreviewOptions };
       await setExportPreview({ enabled: false });
@@ -871,6 +954,7 @@ export function createPlayerEngine(view) {
     const parsed = latency.onPage ? latencyScene(latency) : result.preview;
     if (parsed.error) {
       chart = undefined;
+      view.chart?.(null);
       if (audio) { audio.events = []; audio.segments = []; }
       result.previewError = parsed.error;
       updateTransport();
@@ -889,7 +973,6 @@ export function createPlayerEngine(view) {
       }
     }
     delete result.preview;
-    for (const id of ["play", "restart", "seek"]) $(id).disabled = !chart;
     if (notify) emit("documentChanged", result.document);
     return result;
   }
@@ -919,6 +1002,7 @@ export function createPlayerEngine(view) {
   async function setResources(changes) {
     if (!JSON.parse(call("miacode_document", "string", [], [])).hasDocument) throw new Error("Open a document before replacing media");
     const controller = new AbortController(), { signal } = controller;
+    if ("video" in changes) mediaCache.resetVideoTimeout();
     let nextTrack = audio.track, nextCover = loadedCover, nextVideo, nextVideoUrl, nextVideoBlob, nextDecoder;
     const tasks = Object.entries(changes).map(async ([kind, resource]) => {
       try {
@@ -960,7 +1044,7 @@ export function createPlayerEngine(view) {
     audio.track = nextTrack;
     if ("audio" in changes) loadedAudioResource = changes.audio;
     loadedCover = nextCover;
-    if ("audio" in changes) updateWaveform(nextTrack);
+    if ("audio" in changes) clearWaveform();
     if ("video" in changes) {
       video.pause(); video.removeAttribute("src"); video.load();
       if (videoUrl) URL.revokeObjectURL(videoUrl);
@@ -974,7 +1058,6 @@ export function createPlayerEngine(view) {
     audio.duration = Math.max(chart?.duration ?? 0, nextTrack?.duration ?? 0);
     playback.exportStartSeconds = Math.min(playback.exportStartSeconds, audio.duration);
     playback.exportEndSeconds = Math.max(playback.exportStartSeconds, Math.min(playback.exportEndSeconds, audio.duration));
-    $("seek").max = String(audio.duration);
     audio.seek(Math.min(second, audio.duration));
     if (chart) seek(audio.offset);
     video.playbackRate = playback.rate;
@@ -996,7 +1079,7 @@ export function createPlayerEngine(view) {
   function render(now) {
     if (ready && now - fpsSampleTime >= 1000) {
       const frames = call("miacode_frame_count", "number", [], []);
-      $("fps").textContent =
+      fpsBadge.textContent =
         `FPS: ${Math.round(((frames - fpsSampleFrames) * 1000) / (now - fpsSampleTime))}`;
       fpsSampleFrames = frames;
       fpsSampleTime = now;
@@ -1020,7 +1103,6 @@ export function createPlayerEngine(view) {
         playbackDiagnostics.measure("audioSchedule", () => audio.schedule());
         playbackDiagnostics.measure("wasmTick", () =>
           call("miacode_tick", null, ["number"], [second]));
-        $("seek").value = String(second);
         updateTransport(false);
         const end = playback.rangePlaybackEnabled ? playback.exportEndSeconds : audio.duration;
         if (second >= end) {
@@ -1076,6 +1158,7 @@ export function createPlayerEngine(view) {
   function clear() {
     if (disposed) return;
     disposed = true;
+    view.destroy?.();
     previewDeferred = false;
     lifetime.abort(new DOMException("播放器关闭", "AbortError"));
     cancelAnimationFrame(frameRequest);
@@ -1140,7 +1223,12 @@ export function createPlayerEngine(view) {
     introSoundHash = hash;
   }
   async function prepareExportAssets(settings,signal,introOnly=false) {
-    await prepareIntroSound(settings, signal);
+    await Promise.all([
+      usesHud(settings) ? ensureResourcePack("hud", signal) : null,
+      settings.introEnabled && (settings.exportStartSeconds ?? 0) <= .01
+        ? ensureResourcePack("export", signal) : null,
+      prepareIntroSound(settings, signal),
+    ]);
     const files=new Set(introOnly?["answer.wav"]:["answer.wav","clock.wav",...chart.sfx.map(item=>item.file),...chart.sfxMutedTail.map(item=>item.file)]);
     if(!introOnly&&chart.touchholdSegments.length)files.add("touch_Hold_riser.wav");
     if(!introOnly&&settings.introEnabled&&!settings.introPvPreview)files.add("track_start.wav");
@@ -1241,6 +1329,7 @@ export function createPlayerEngine(view) {
     exportCall("miacode_set_settings", ["string"], [JSON.stringify(exportPreviewSaved.settings)]);
     const sceneSettings = { ...settings, previewMode: true, exportStartSeconds: 0, exportEndSeconds: audio.duration,
       introEnabled: Boolean(settings.introEnabled && (settings.exportStartSeconds ?? 0) <= .01) };
+    if (sceneSettings.introEnabled) await ensureResourcePack("export");
     let plan;
     if (changeChart) plan = await prepareExportAssets(sceneSettings, lifetime.signal);
     else {
@@ -1304,7 +1393,6 @@ export function createPlayerEngine(view) {
             frame:index=>playbackDiagnostics.measure("wasmTick",()=>exportCall("miacode_export_frame",["number"],[index])),
             still:enabled=>call("miacode_export_still",null,["number"],[Number(enabled)]),
             changed:state=>{
-              $("play").textContent=state.playing?"暂停":"播放";
               if(introWasPlaying!==state.playing){introWasPlaying=state.playing;playbackDiagnostics.setEnabled(diagnostics.enabled&&state.playing);}
               emit("introAuditionChanged",state);
             },
@@ -1384,6 +1472,7 @@ export function createPlayerEngine(view) {
   }
 
   return {
+    cancelLoad,
     boot,
     setIntroAudition,
     setPerformance: async changes => {
@@ -1447,6 +1536,11 @@ export function createPlayerEngine(view) {
       }
     },
     fail,
+    reportProgress(message) { status(message); emit("progress", { stage: message }); },
+    finishProgress(message, stage) {
+      if ($("status").textContent !== message) return;
+      status(""); emit("progress", { stage });
+    },
     clear,
     state: previewState,
     normalizeBackground: values => {
@@ -1495,7 +1589,7 @@ export function createPlayerEngine(view) {
         exportCall("miacode_cover_capture", ["number"], [0]);
       }
     },
-    importSkin: async files => {
+    importSkin: async (files, owner) => {
       const hex = data => Array.from(new Uint8Array(data), value => value.toString(16).padStart(2, "0")).join("");
       const prepared = [];
       for (const file of files) {
@@ -1512,21 +1606,39 @@ export function createPlayerEngine(view) {
           operation("commit");
         } catch (error) { operation("abort"); throw error; }
       }
+      rememberAppearance("skin", skinDirectoryName, owner);
       return { skinDirectoryName, imageCount: prepared.length };
     },
-    importJudgeLine: async image => {
+    importJudgeLine: async (image, owner) => {
       const result = importAppearanceImage({ kind: "outline" }, new Uint8Array(await bytes(image)));
+      rememberAppearance("outline", result.customOutlineFileName, owner);
       return { customOutlineFileName: result.customOutlineFileName, width: result.width, height: result.height };
     },
-    importFont: async (font, name) => {
+    importFont: async (font, name, owner) => {
       if (!font) throw new Error("请选择字体文件");
       const data = new Uint8Array(await bytes(font)), pointer = module._malloc(data.length);
       try {
         module.HEAPU8.set(data,pointer);
         const result = JSON.parse(call("miacode_import_font", "string", ["number", "number", "string"], [pointer,data.length,name]));
         if (result.error) throw new Error(result.error);
+        rememberAppearance("font", result.path, owner);
         return result;
       } finally { module._free(pointer); }
+    },
+    releaseUnusedAppearance(owner, fontPaths = []) {
+      if (typeof owner !== "string" || !owner) throw new Error("素材归属标识无效");
+      const retainedByOwner = new Set(fontPaths);
+      const retainedFonts = new Set();
+      for (const options of [introOptions, exportPreviewOptions]) {
+        retainedFonts.add(options?.introFontDisplayPath);
+        retainedFonts.add(options?.introFontBodyPath);
+      }
+      for (const [kind, names] of Object.entries(importedAppearance)) for (const [name, owners] of names) {
+        if (kind !== "font" || !retainedByOwner.has(name)) owners.delete(owner);
+        if (owners.size) continue;
+        if (kind === "font" && retainedFonts.has(name)) continue;
+        if (call("miacode_release_appearance", "number", ["string", "string"], [kind, name])) names.delete(name);
+      }
     },
     normalizeShortcuts,
     setInputShortcuts: sequences => {
@@ -1547,7 +1659,10 @@ export function createPlayerEngine(view) {
     },
     setResources,
     defaultSettings: () => defaultSettings,
-    getTimeline: options => JSON.parse(call("miacode_timeline", "string", ["string"], [JSON.stringify(options)])),
+    getTimeline: async options => {
+      await ensureWaveform();
+      return JSON.parse(call("miacode_timeline", "string", ["string"], [JSON.stringify(options)]));
+    },
     navigateTimeline: point => JSON.parse(call("miacode_timeline_navigate", "string", ["number", "number"], [point.x, point.y])),
     getTimelineFollow: second => JSON.parse(call("miacode_timeline_follow", "string", ["number"], [second])),
     getDocument: () => JSON.parse(call("miacode_document", "string", [], [])),
@@ -1556,7 +1671,14 @@ export function createPlayerEngine(view) {
       if (!input.hasDocument) return { available: false, pending: false, revision: input.revision,
         documentOpenGeneration: input.documentOpenGeneration, difficultyId: input.difficultyId,
         validationRows: [], muriRows: [], syntaxErrorCount: 0, syntaxWarningCount: 0 };
-      analysis ||= new PreviewAnalysis(identity, runtimeManifest);
+      if (!analysis) {
+        const client = new PreviewAnalysis(identity, runtimeManifest);
+        analysis = client;
+        void client.ready.catch(() => {
+          if (analysis === client) analysis = null;
+          client.close();
+        });
+      }
       return analysis.analyze(input);
     },
     flushPreview,
@@ -1590,6 +1712,7 @@ export function createPlayerEngine(view) {
         audio.seek(second);
         if (playing) audio.start();
       }
+      view.audio?.(result);
       return result;
     },
     setCanvasSize: size => {
@@ -1630,8 +1753,9 @@ export function createPlayerEngine(view) {
       updateTransport();
       return { ...result };
     },
-    setTheme: theme => { view.theme?.(theme); return theme; },
+    setTheme: theme => { document.documentElement.dataset.theme = theme; view.theme?.(theme); return theme; },
     setCoverComposition: async composition => {
+      await Promise.all([ensureResourcePack("export"), composition.sourceText ? ensureResourcePack("slides") : null]);
       if (coverState?.chartFramePlaying) exportCall("miacode_cover_state");
       pause();
       const result = JSON.parse(call("miacode_cover", "string", ["string"], [JSON.stringify(composition)]));
@@ -1639,13 +1763,15 @@ export function createPlayerEngine(view) {
         coverState = result;
         await coverPv.update(result);
         document.body.classList.add("cover-view");
-        $("transport").hidden = true;
         setSurfaceSize(result.outputWidth, result.outputHeight);
       }
       return result;
     },
     setCoverChart: async (resources, duration) => {
-      const text = new TextDecoder().decode(await bytes(resources.maidata));
+      const [chartBytes] = await Promise.all([
+        bytes(resources.maidata), loadChartResources(), ensureResourcePack("export"),
+      ]);
+      const text = new TextDecoder().decode(chartBytes);
       const chart = exportCall("miacode_load", ["string", "number", "string"], [text, resources.difficulty ?? 0, resources.filePath || ""]);
       exportCall("miacode_cover_chart", ["number"], [Math.max(chart.duration, duration ?? 0)]);
       const blob = resources.video ? resources.video instanceof Blob ? resources.video : new Blob([await bytes(resources.video)]) : null;
@@ -1673,9 +1799,11 @@ export function createPlayerEngine(view) {
       );
       if (!result.error) {
         appearance = result;
+        fpsBadge.hidden = !appearance.showDebugInfo;
+        if (chart || settings.showDebugInfo) loadHudFonts();
         if (exportPreviewSaved) exportPreviewSaved.settings = result;
         if (exportPreview) { exportPreview.lastFrame = null; exportPreview.tick(); }
-        videoPresentation.invalidatePlacement(); view.settings(result);
+        videoPresentation.invalidatePlacement();
       }
       return result;
     },

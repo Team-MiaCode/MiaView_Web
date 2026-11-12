@@ -10,7 +10,7 @@ function fixture() {
     reply(message, value) { this.onmessage({ data: { id: message.id, value } }); }
     terminate() { this.terminated = true; }
   }
-  const manifest = { files: ["miacode-analysis.js", "miacode-analysis.wasm"].map(path => ({ path, byteSize: 64, sha256: "a".repeat(64) })) };
+  const manifest = { files: ["miacode-analysis.js", "miacode-analysis.wasm", "miacode-slides.rcc"].map(path => ({ path, byteSize: 64, sha256: "a".repeat(64) })) };
   const client = new PreviewAnalysis({ version: "test" }, manifest, { WorkerClass: Worker, baseUrl: "https://preview.test/subpath/renderer/index.html" });
   return { client, worker };
 }
@@ -21,7 +21,9 @@ test("Background analysis retains snapshot identities and resolves concurrent re
   const { client, worker } = fixture();
   const initialize = worker.messages[0];
   assert.equal(worker.url.href, "https://preview.test/subpath/renderer/analysis-worker.mjs?build=test");
-  assert.ok(initialize.payload.every(resource => resource.url.startsWith("https://preview.test/subpath/renderer/miacode-analysis.")));
+  assert.deepEqual(initialize.payload.map(resource => resource.url),
+    ["miacode-analysis.js", "miacode-analysis.wasm", "miacode-slides.rcc"]
+      .map(path => `https://preview.test/subpath/renderer/${path}?build=test`));
   worker.reply(initialize, null); await client.ready;
   const first = client.analyze(input);
   assert.equal(client.analyze(input), first);
