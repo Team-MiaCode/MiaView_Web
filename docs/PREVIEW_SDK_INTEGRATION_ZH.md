@@ -4,7 +4,7 @@
 
 ## 下载与部署
 
-在 [Web preview 构建列表](https://github.com/Team-MiaCode/MiaView_Web/actions/workflows/web.yml)选择 `standalone-preview` 对应提交的成功运行，下载 **`miaview-preview`**。解压后将下列四个完整目录放在网站同一个静态前缀，例如 Next.js 项目的 `public/miaview/`。
+在 [SDK release 构建列表](https://github.com/Team-MiaCode/MiaView_Web/actions/workflows/web.yml)选择 `standalone-preview` 对应提交的成功运行，下载 **`miaview-preview-standalone`**。解压后将下列四个完整目录放在网站同一个静态前缀，例如 Next.js 项目的 `public/miaview/`。
 
 | 目录 | 用途 |
 | --- | --- |
@@ -13,7 +13,7 @@
 | `ui/` | 播放面板、设置组件、样式、字体及图标 |
 | `services/` | 播放器使用的共享资源与设置服务 |
 
-若构建产物过期，可对同一提交重新运行工作流，或按[仓库构建说明](../README.md#开发与构建)构建原生运行时，再执行 `npm run sync:products -- --runtime`，从 `build-devtools/products/preview` 提取这四个目录。`miaview-preview-standalone` 的解压根目录也提供同名目录。
+发布流程使用 [`sdk-source.json`](../sdk-source.json) 记录的提交构建 SDK。构建产物过期时，可按同一源码提交重建，详见[构建说明](../README.md#开发与构建)。
 
 部署时保留目录内的文件和相对路径，四个目录按同一版本一起更新。`.mjs` 使用 JavaScript MIME 类型，`.wasm` 使用 `application/wasm`。确认 `/miaview/sdk/index.mjs`、`/miaview/renderer/index.html` 和 `/miaview/renderer/build-identity.json` 可访问。示例采用网站同源 HTTPS 和 `diagnostics: false`，这组配置只需静态文件。
 
@@ -176,4 +176,4 @@ const detach = attachChart({
 
 当前分支包含完整的 **MiaCode Web 网页编辑器源码**。仓库根目录提供工作台及共享源码，Pages 输出的 `editor/` 和 `preview/` 分别提供独立编辑器和预览入口。部署完整编辑器选择 `miaview-editor`。网站详情页接入播放器可使用 `miaview-preview` 的四个静态目录，生成的 Qt JS/WASM 随构建产物提供。
 
-仓库另有 [HTML 示例](../examples/pages.html)、[React 示例](../examples/react-preview.jsx)和[网站资源适配器](../examples/chart-website-adapter.mjs)。
+仓库提供 [HTML 接入测试页](../examples/sdk-preview/index.html)、[React 示例](../examples/react-preview.jsx)和[网站资源适配器](../examples/chart-website-adapter.mjs)。

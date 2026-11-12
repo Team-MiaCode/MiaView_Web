@@ -1,361 +1,78 @@
-name: Web preview
+name: SDK release
 on:
   push:
   pull_request:
   workflow_dispatch:
-    inputs:
-      main_run_id:
-        description: Main workflow run providing its validated Pages artifact
-        required: false
-        type: string
-        default: ''
 
 permissions:
   contents: read
 
 jobs:
-  source-checks:
+  build-sdk:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: npm run check:repo && npm test
-      - run: npm install --no-save --package-lock=false typescript@5.9.3
-      - run: npx tsc -p tests/tsconfig.json
-
-  build-preview:
-    needs: source-checks
-    outputs:
-      source_sha: ${{ steps.source.outputs.sha }}
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
       - id: source
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@v4
+        run: |
+          revision=$(node -p 'require("./sdk-source.json").commit')
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
         with:
-          node-version: 24
+          ref: ${{ steps.source.outputs.revision }}
+          path: build-devtools/sdk-source
+          submodules: true
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Use Ubuntu HTTPS package mirror
-        run: printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build libegl1 libopengl0 libxcb-cursor0 libxkbcommon-x11-0 libgl1-mesa-dri mesa-utils xvfb
-      - run: python -m pip install -r scripts/qt-requirements.txt
+      - name: Install Qt host dependencies
+        run: |
+          printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libegl1 libopengl0 libxcb-cursor0 libxkbcommon-x11-0
       - uses: actions/cache@v4
         with:
           path: |
-            .deps/qt
-            .deps/downloads
-          key: qt-preview-${{ runner.os }}-${{ hashFiles('native/toolchain.json', 'scripts/install-qt.py') }}
-      - run: python scripts/install-qt.py
-      - name: Install Emscripten matched to Qt
+            build-devtools/sdk-source/.deps/qt
+            build-devtools/sdk-source/.deps/downloads
+          key: qt-preview-${{ runner.os }}-${{ hashFiles('build-devtools/sdk-source/native/toolchain.json', 'build-devtools/sdk-source/scripts/install-qt.py') }}
+      - name: Install the pinned toolchain
+        working-directory: build-devtools/sdk-source
         run: |
+          python -m pip install -r scripts/qt-requirements.txt
+          python scripts/install-qt.py
           git clone --depth 1 https://github.com/emscripten-core/emsdk.git .deps/emsdk
-          version=$(node -p "JSON.parse(require('fs').readFileSync('native/toolchain.json')).emscriptenVersion")
+          version=$(node -p 'require("./native/toolchain.json").emscriptenVersion')
           .deps/emsdk/emsdk install "$version"
           .deps/emsdk/emsdk activate "$version"
-      - run: npm run build:native && npm run check:source
-      - run: npm install --no-save --package-lock=false playwright@1.62.1
-      - run: npx playwright install --with-deps chromium
-      - run: npm run test:browser && npm run test:ui && npm run test:pages
-      - run: npm run build:pages && npm run sync:products -- --runtime && npm run check:products
-      - name: Validate feature Pages prefix
-        env:
-          MIACODE_PAGES_PREFIX: /MiaView_Web/feature/
-        run: npm run test:pages
-      - uses: actions/upload-artifact@v4
-        with:
-          name: miaview-preview
-          path: |
-            sdk
-            renderer
-            ui
-            services
-            index.html
-            app.mjs
-            page.css
-            preview-window.html
-            backend
-            README.md
-          if-no-files-found: error
-          retention-days: 14
-      - uses: actions/upload-artifact@v4
-        with:
-          name: miaview-editor
-          path: build-devtools/products/editor
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 14
+      - name: Build and verify the pinned preview product
+        working-directory: build-devtools/sdk-source
+        run: |
+          npm run check:repo
+          npm test
+          npm run build:native
+          npm run check:source
+          npm run sync:products -- --runtime
+          npm run check:products
+      - name: Package the SDK demo
+        run: |
+          node --check examples/sdk-preview/app.mjs
+          npm run build:sdk-preview-demo -- build-devtools/sdk-source/build-devtools/products/preview
+          cp sdk-source.json build-devtools/sdk-source/build-devtools/products/preview/
+          cp sdk-source.json build-devtools/sdk-preview-demo/
       - uses: actions/upload-artifact@v4
         with:
           name: miaview-preview-standalone
-          path: build-devtools/products/preview
+          path: build-devtools/sdk-source/build-devtools/products/preview
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
-          name: miaview-pages
-          path: build-devtools/pages
+          name: miaview-sdk-preview-demo
+          path: build-devtools/sdk-preview-demo
           if-no-files-found: error
           retention-days: 14
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: preview-screenshots
-          path: artifacts/ui
-
-  functional-acceptance:
-    needs: build-preview
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        browser: [chromium, firefox]
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - uses: actions/download-artifact@v4
-        with:
-          name: miaview-preview
-          path: .
-      - run: npm run check:source
-      - run: npm install --no-save --package-lock=false playwright@1.62.1
-      - name: Use Ubuntu HTTPS package mirror
-        run: printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt
-      - run: npx playwright install --with-deps ${{ matrix.browser }}
-      - name: Configure clocked audio output
-        run: |
-          sudo apt-get install -y pulseaudio pulseaudio-utils
-          pulseaudio --start --exit-idle-time=-1
-          pactl load-module module-null-sink sink_name=miaview_test rate=48000
-          pactl set-default-sink miaview_test
-          pactl info
-      - name: Validate browser audio clock
-        env:
-          MIACODE_BROWSER: ${{ matrix.browser }}
-        run: xvfb-run --auto-servernum node tests/audio-clock-smoke.mjs
-      - name: Validate editor functions and creator workflow
-        env:
-          MIACODE_BROWSER: ${{ matrix.browser }}
-          DEBUG: pw:browser
-        run: xvfb-run --auto-servernum npm run test:stage2
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: stage2-${{ matrix.browser }}
-          path: artifacts/stage2
-          retention-days: 14
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: shortcuts-debug-${{ matrix.browser }}
-          path: artifacts/shortcuts-core/failure.json
-
-  ui-acceptance:
-    needs: build-preview
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - uses: actions/download-artifact@v4
-        with:
-          name: miaview-preview
-          path: .
-      - run: npm run check:source
-      - name: Use Ubuntu HTTPS package mirror
-        run: printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt
-      - run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dri mesa-utils xvfb
-      - run: npm install --no-save --package-lock=false playwright@1.62.1
-      - run: npx playwright install --with-deps chromium firefox webkit chrome msedge
-      - name: Configure UI audio output
-        run: |
-          sudo apt-get install -y pulseaudio pulseaudio-utils
-          pulseaudio --start --exit-idle-time=-1
-          pactl load-module module-null-sink sink_name=miaview_products rate=48000
-          pactl set-default-sink miaview_products
-      - name: Validate workbench and isolated editor template
-        env:
-          DEBUG: pw:browser
-          MIACODE_TEST_ENGINES: chromium,firefox,webkit
-          MIACODE_DENSITY_ENGINES: chrome,msedge,firefox,webkit
-        run: xvfb-run --auto-servernum bash -e -c 'npm run test:source-wrap && npm run test:workbench && npm run test:density && npm run test:gallery && npm run test:folder && npm run test:cover && npm run test:transport && npm run test:timeline && npm run test:document && npm run test:analysis-ui && npm run test:editor-tabs && npm run test:workbench-chrome && npm run test:source-editor-ui && npm run test:ime && npm run test:stage1 && npm run sync:products -- --runtime && npm run test:editor-template'
-      - name: Validate independent products and cross-origin embeds
-        env:
-          DEBUG: pw:browser
-        run: |
-          npm run check:products
-          xvfb-run --auto-servernum npm run test:products
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: ui-screenshots
-          path: artifacts/ui
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: workbench-screenshots
-          path: artifacts/workbench-ui
-
-  build-alternate-pages:
-    needs: source-checks
-    if: >-
-      github.event_name != 'pull_request' &&
-      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/web-editor-migration') &&
-      !(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feature/web-editor-migration' && inputs.main_run_id != '')
-    runs-on: ubuntu-24.04
-    outputs:
-      source_sha: ${{ steps.source.outputs.sha }}
-    env:
-      MIACODE_BUILD_DIR: ${{ github.workspace }}/build-devtools
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref == 'refs/heads/main' && 'feature/web-editor-migration' || 'main' }}
-          submodules: true
-      - id: source
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Use Ubuntu HTTPS package mirror
-        run: printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build libegl1 libopengl0 libxcb-cursor0 libxkbcommon-x11-0
-      - run: python -m pip install -r scripts/qt-requirements.txt
-      - uses: actions/cache@v4
-        with:
-          path: |
-            .deps/qt
-            .deps/downloads
-          key: qt-preview-${{ runner.os }}-${{ hashFiles('native/toolchain.json', 'scripts/install-qt.py') }}
-      - run: python scripts/install-qt.py
-      - name: Install Emscripten matched to Qt
-        run: |
-          git clone --depth 1 https://github.com/emscripten-core/emsdk.git .deps/emsdk
-          version=$(node -p "JSON.parse(require('fs').readFileSync('native/toolchain.json')).emscriptenVersion")
-          .deps/emsdk/emsdk install "$version"
-          .deps/emsdk/emsdk activate "$version"
-      - run: npm run check:repo && npm test && npm run build:native && npm run check:source && npm run build:pages -- build-devtools/pages
-      - uses: actions/upload-artifact@v4
-        with:
-          name: miaview-alternate-pages
-          path: build-devtools/pages
-          if-no-files-found: error
-          retention-days: 14
-
-  reuse-main-pages:
-    needs: source-checks
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feature/web-editor-migration' && inputs.main_run_id != ''
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      actions: read
-    outputs:
-      source_sha: ${{ steps.source.outputs.sha }}
-    steps:
-      - id: source
-        uses: actions/github-script@v7
-        env:
-          MAIN_RUN_ID: ${{ inputs.main_run_id }}
-        with:
-          script: |
-            const run_id = Number(process.env.MAIN_RUN_ID);
-            if (!Number.isSafeInteger(run_id) || run_id <= 0) throw new Error('Invalid main workflow run');
-            const request = { ...context.repo, run_id };
-            const { data: run } = await github.rest.actions.getWorkflowRun(request);
-            if (run.head_branch !== 'main' || !['push', 'workflow_dispatch'].includes(run.event) ||
-                run.head_repository?.full_name !== context.payload.repository.full_name)
-              throw new Error('Pages artifact must originate from this repository main branch');
-            const { data: { jobs } } = await github.rest.actions.listJobsForWorkflowRun({ ...request, filter: 'latest', per_page: 100 });
-            for (const name of ['source-checks', 'build-preview'])
-              if (!jobs.some(job => job.name === name && job.conclusion === 'success'))
-                throw new Error('Main validation must succeed before publication: ' + name);
-            core.setOutput('sha', run.head_sha);
-      - uses: actions/download-artifact@v4
-        with:
-          github-token: ${{ github.token }}
-          run-id: ${{ inputs.main_run_id }}
-          name: miaview-pages
-          path: build-devtools/pages
-      - uses: actions/upload-artifact@v4
-        with:
-          name: miaview-alternate-pages
-          path: build-devtools/pages
-          if-no-files-found: error
-          retention-days: 14
-
-  prepare-pages:
-    needs: [build-preview, build-alternate-pages, reuse-main-pages]
-    if: >-
-      always() && !cancelled() && github.event_name != 'pull_request' &&
-      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/web-editor-migration') &&
-      needs.build-preview.result == 'success' &&
-      (needs.build-alternate-pages.result == 'success' || needs.reuse-main-pages.result == 'success')
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - uses: actions/download-artifact@v4
-        with:
-          name: miaview-pages
-          path: build-devtools/current
-      - uses: actions/download-artifact@v4
-        with:
-          name: miaview-alternate-pages
-          path: build-devtools/alternate
-      - name: Compose main and feature sites
-        env:
-          MAIN_SHA: ${{ github.ref == 'refs/heads/main' && needs.build-preview.outputs.source_sha || needs.reuse-main-pages.outputs.source_sha || needs.build-alternate-pages.outputs.source_sha }}
-          FEATURE_SHA: ${{ github.ref == 'refs/heads/main' && needs.build-alternate-pages.outputs.source_sha || needs.build-preview.outputs.source_sha }}
-        run: |
-          if [ "$GITHUB_REF" = refs/heads/main ]; then
-            node scripts/compose-pages.mjs build-devtools/current build-devtools/alternate build-devtools/deploy
-          else
-            node scripts/compose-pages.mjs build-devtools/alternate build-devtools/current build-devtools/deploy
-          fi
-      - uses: actions/upload-pages-artifact@v4
-        with:
-          path: build-devtools/deploy
-
-  deploy-pages:
-    needs: [prepare-pages, ui-acceptance, functional-acceptance]
-    if: >-
-      always() && !cancelled() && github.event_name != 'pull_request' &&
-      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/web-editor-migration') &&
-      needs.prepare-pages.result == 'success' && needs.ui-acceptance.result == 'success' &&
-      needs.functional-acceptance.result == 'success'
-    runs-on: ubuntu-24.04
-    permissions:
-      pages: write
-      id-token: write
-    concurrency:
-      group: github-pages
-      cancel-in-progress: true
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/configure-pages@v5
-      - uses: actions/deploy-pages@v4
-        id: deployment

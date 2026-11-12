@@ -6,9 +6,7 @@
 
 左侧「画面比例」通过 `setCanvasSize()` 切换与视频导出对应的 1:1、4:3、16:9 画布，三种尺寸均为 1080 像素高。
 
-在源码仓库运行 `npm run dev`，打开 [SDK 接入测试页](http://127.0.0.1:3030/examples/sdk-preview/index.html)。
-
-需要单独部署时，在运行时已就绪的仓库执行 `npm run build:sdk-preview-demo`。构建输出为 `build-devtools/sdk-preview-demo/`，含测试页和同版本的 SDK 与运行资源。将整个目录复制到静态服务器，访问目录下的 `examples/sdk-preview/`。
+下载并解压 `miaview-sdk-preview-demo`。修改示例后，可在发布分支运行 `npm run build:sdk-preview-demo -- build-devtools/miaview-preview-standalone`，从解压的 SDK 包生成 `build-devtools/sdk-preview-demo/`。将整个测试站目录复制到静态服务器，访问目录下的 `examples/sdk-preview/`。
 
 在构建输出目录中，可使用 Python 启动本地静态服务：
 

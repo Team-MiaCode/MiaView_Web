@@ -11,19 +11,17 @@
 
 ![预览 SDK 测试页，左侧选择谱面和媒体，右侧显示播放器](.assets/sdk-preview-demo.png)
 
-从已配置运行时的仓库生成独立静态测试站：
+从 [SDK release 构建列表](https://github.com/Team-MiaCode/MiaView_Web/actions/workflows/web.yml)下载 `miaview-sdk-preview-demo`，解压后启动本地测试站：
 
 ```sh
-npm run build:sdk-preview-demo
-cd build-devtools/sdk-preview-demo
 python examples/sdk-preview/serve.py
 ```
 
-服务启动后访问终端显示的地址。部署到静态站点时，上传整个输出目录，测试页路径为 `examples/sdk-preview/index.html`。在源码目录运行 `npm run dev` 时使用同一路径。
+服务启动后访问终端显示的地址。部署到静态站点时，上传整个输出目录，测试页路径为 `examples/sdk-preview/index.html`。
 
 ## 接入须知
 
-从 [Web preview 构建列表](https://github.com/Team-MiaCode/MiaView_Web/actions/workflows/web.yml)选择 `standalone-preview` 对应提交的成功构建，下载 `miaview-preview-standalone`。取出同一版本的四个目录，放到宿主静态前缀下，例如 `public/miaview/`。
+从 [SDK release 构建列表](https://github.com/Team-MiaCode/MiaView_Web/actions/workflows/web.yml)选择 `standalone-preview` 对应提交的成功构建，下载 `miaview-preview-standalone`。取出同一版本的四个目录，放到宿主静态前缀下，例如 `public/miaview/`。
 
 | 目录 | 内容 |
 | --- | --- |
@@ -40,7 +38,15 @@ python examples/sdk-preview/serve.py
 
 ### 开发与构建
 
-已有匹配的 `miaview-preview` 产物时，将其中的完整 `renderer/` 合并到同提交的源码根目录，运行 `npm run check` 验证。需要从源码构建时，初始化 `vendor/MiaCode` 子模块，按 [工具链版本](native/toolchain.json)和 [CI 构建配置](.github/workflows/web.yml)配置 Qt 与 Emscripten，再运行 `npm run build:native` 和 `npm run check:source`。原生构建使用 `build-devtools/` 和 Release。运行 `npm run sync:products -- --runtime` 可从源码生成独立预览包。
+[`sdk-source.json`](sdk-source.json) 记录 SDK 发布使用的源码提交。[构建流程](.github/workflows/web.yml)检出该提交，验证运行时并生成独立预览包和测试站。在线测试页与完整编辑器共用同批发布的运行资源。共享 SDK 和编辑器的开发工作见 [`feature/web-editor-migration`](https://github.com/Team-MiaCode/MiaView_Web/tree/feature/web-editor-migration)。
+
+修改测试页后，使用解压的 `miaview-preview-standalone` 重新生成本地测试站：
+
+```sh
+npm run build:sdk-preview-demo -- build-devtools/miaview-preview-standalone
+cd build-devtools/sdk-preview-demo
+python examples/sdk-preview/serve.py
+```
 
 ## 调用属性
 
@@ -114,4 +120,4 @@ python examples/sdk-preview/serve.py
 | `on(type, listener)` | 订阅 `progress`、`loaded`、`playing`、`paused`、`ended`、`error` 等事件，返回取消订阅函数。 |
 | `destroy()` | 卸载播放器并释放实例资源。 |
 
-完整类型见 [sdk/index.d.mts](sdk/index.d.mts)。另有[宿主接入说明](docs/PREVIEW_SDK_INTEGRATION_ZH.md)与 [React 示例](examples/react-preview.jsx)。
+完整类型见 SDK 包中的 `sdk/index.d.mts`。另有[宿主接入说明](docs/PREVIEW_SDK_INTEGRATION_ZH.md)与 [React 示例](examples/react-preview.jsx)。
