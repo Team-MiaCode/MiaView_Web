@@ -1083,5 +1083,9 @@
   "guide.navigation.preferences": "Preferences: configure interface appearance and styling, the editor and shortcuts.",
   "qml.open_waveform_and_beat_line_brightness_settings": "Open waveform and beat-line brightness settings",
   "qml.timeline_brightness": "Timeline brightness",
-  "workbench.difficulty": "Difficulty"
+  "workbench.difficulty": "Difficulty",
+  "dialog.skin_settings.firework": "Firework effect",
+  "dialog.skin_settings.firework.standard": "Standard",
+  "dialog.skin_settings.firework.modern": "Modern",
+  "dialog.render_settings.video.firework_brightness": "Firework brightness"
 }

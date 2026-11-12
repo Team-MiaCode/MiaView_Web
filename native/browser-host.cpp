@@ -64,9 +64,11 @@ WebExportScene* exportScene = nullptr;
 std::optional<PreviewFrameState> exportSavedState;
 bool exportFramePending = false;
 bool exportSavedPlaying = false;
-bool exportSavedSceneVisible = true, exportSavedHudVisible = true, exportSavedCoverVisible = false;
+bool exportSavedSceneVisible = true, exportSavedCoverVisible = false;
 PreviewQuickSceneRoot* scene = nullptr;
 PreviewQuickHudLayer* hud = nullptr;
+bool hudFontsReady = false;
+bool builtinSkinsReady = false;
 QQuickWindow* previewWindow = nullptr;
 QPointer<WebCoverScene> coverScene;
 QSize renderSize(1920, 1080);
@@ -167,7 +169,8 @@ QJsonObject sceneAudioData() {
 }
 void applyRenderMode(RenderMode mode) {
     state.muriRenderOptions.renderMode = mode;
-    if (mode == RenderMode::MaimuriDxStyle || state.muriRenderOptions.showJudgeMarkers || state.muriRenderOptions.showTouchTrail) {
+    if (!state.noteMarkers.isEmpty()
+        && (mode == RenderMode::MaimuriDxStyle || state.muriRenderOptions.showJudgeMarkers || state.muriRenderOptions.showTouchTrail)) {
         if (!analysisReady) {
             cachedAnalysis = MuriAnalyzer::analyze(state.noteMarkers, state.muriRenderOptions, staticTapOnSlideThresholdMs / 1000.0);
             cachedAnalysis.revision = ++analysisRevision;
@@ -185,7 +188,7 @@ const char* json(const QJsonObject& value) {
 }
 QJsonObject settings() {
     return {{"outerBrightness", state.render.backgroundBrightnessOuter},
-        {"fireworkBrightness", miaview::firework::brightness()},
+        {"fireworkBrightness", state.render.fireworkBrightness}, {"fireworkStyle", int(state.render.fireworkStyle)},
         {"innerBrightness", state.render.backgroundBrightnessInner},
         {"tapFlowSpeed", state.render.tapFlowSpeed},
         {"touchFlowSpeed", state.render.touchFlowSpeed},
@@ -216,7 +219,7 @@ void refresh(bool forceHud = true) {
     // the full-surface painted HUD is throttled; explicit user changes flush it.
     refreshPreviewFrameStateHudStatsSnapshot(state);
     if (scene) scene->setFrameState(&state);
-    if (hud && (forceHud || !hudUpdateClock.isValid()
+    if (hud && hudFontsReady && (forceHud || !hudUpdateClock.isValid()
         || hudUpdateClock.elapsed() >= kHudUpdateIntervalMs)) {
         hudUpdateClock.start();
         hud->setFrameState(&state);
@@ -233,8 +236,8 @@ void applyPausedOutline() {
     effectiveOutline = outline; effectiveOutlinePath = path; effectiveOutlineImageMode = mode;
     ++state.sceneContentRevision;
 }
-void mountAssets() {
-    QDirIterator files(":/assets", QDir::Files, QDirIterator::Subdirectories);
+void mountAssets(const QString& root) {
+    QDirIterator files(root, QDir::Files, QDirIterator::Subdirectories);
     while (files.hasNext()) {
         const QString resource = files.next();
         const QString path = resource.mid(1);
@@ -267,6 +270,25 @@ QJsonObject exportDocumentSnapshot() {
 }
 
 extern "C" {
+EMSCRIPTEN_KEEPALIVE void miacode_builtin_skins_ready() {
+    mountAssets(":/assets/skin");
+    mountAssets(":/assets/noteguide");
+    const auto loaded = miacode::preview::runtime::PreviewSceneAssetLoader::load(
+        webSkinDirectory(skinDirectoryName), PreviewOutlineVariant::Line);
+    state.skin = loaded.skinAssets;
+    state.judgeOverlay = loaded.judgeOverlayAssets;
+    builtinSkinsReady = true;
+    timeline.invalidateSkin();
+    ++state.sceneContentRevision;
+    refresh();
+}
+
+EMSCRIPTEN_KEEPALIVE void miacode_hud_fonts_ready() {
+    hudFontsReady = true;
+    hud->setVisible(!coverScene || !coverScene->isVisible());
+    refresh();
+}
+
 EMSCRIPTEN_KEEPALIVE const char* miacode_export_asset(const char* kind, const char* name, const unsigned char* data, int count) {
     if (!exportScene || !data || count <= 0) return json({{"error", "Export asset is empty"}});
     return json(exportScene->storeAsset(QString::fromUtf8(kind), QString::fromUtf8(name), QByteArray(reinterpret_cast<const char*>(data), count)));
@@ -281,11 +303,10 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_export_prepare(const char* source) {
         exportSavedState = state;
         exportSavedPlaying = previewPlaying;
         exportSavedSceneVisible = scene->isVisible();
-        exportSavedHudVisible = hud->isVisible();
         exportSavedCoverVisible = coverScene && coverScene->isVisible();
         if (coverScene) coverScene->setVisible(false);
         scene->setVisible(true);
-        hud->setVisible(true);
+        hud->setVisible(hudFontsReady);
         previewPlaying = true;
         applyPausedOutline();
     }
@@ -339,7 +360,7 @@ EMSCRIPTEN_KEEPALIVE void miacode_export_finish() {
     previewPlaying = exportSavedPlaying;
     applyPausedOutline();
     scene->setVisible(exportSavedSceneVisible);
-    hud->setVisible(exportSavedHudVisible);
+    hud->setVisible(hudFontsReady && !exportSavedCoverVisible);
     if (coverScene) coverScene->setVisible(exportSavedCoverVisible);
     refresh();
     previewWindow->update();
@@ -452,7 +473,8 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_set_settings(const char* source) {
     auto hudFonts = state.hudFontSettings;
     const QHash<QString, QPair<double, double>> ranges{
         {"outerBrightness", {0, 1}}, {"innerBrightness", {0, 1}},
-        {"fireworkBrightness", {.5, 1.2}},
+        {"fireworkBrightness", {miacode::preview_video::kFireworkBrightnessMin, miacode::preview_video::kFireworkBrightnessMax}},
+        {"fireworkStyle", {0, 1}},
         {"tapFlowSpeed", {kPreviewTimingFlowSpeedMin, kPreviewTimingFlowSpeedMax}},
         {"touchFlowSpeed", {kPreviewTimingFlowSpeedMin, kPreviewTimingFlowSpeedMax}}, {"layoutSquareScale", {.5, 1}},
         {"scaleMode", {0, 3}}, {"outlineIndex", {0, 3}}, {"centerDisplay", {0, 7}},
@@ -491,16 +513,23 @@ EMSCRIPTEN_KEEPALIVE const char* miacode_set_settings(const char* source) {
         : supplied.contains("outlineIndex") ? QString() : customOutlineFileName;
     if (!nextOutline.isEmpty() && miacode::assets::customOutlinePathForFileName(nextOutline).isEmpty()) return json({{"error", "请导入所选判定线"}});
     if (skinDirectoryName != nextSkin) {
-        const auto loaded = miacode::preview::runtime::PreviewSceneAssetLoader::load(skinPath, PreviewOutlineVariant::Line);
-        if (loaded.skinAssets.tapImage.isNull()) return json({{"error", "皮肤目录需要 tap.png"}});
-        state.skin = loaded.skinAssets; state.judgeOverlay = loaded.judgeOverlayAssets; state.judgeEffect = loaded.judgeEffectAssets;
+        if (builtinSkinsReady || (nextSkin != "skinDX" && nextSkin != "skinSD")) {
+            const auto loaded = miacode::preview::runtime::PreviewSceneAssetLoader::load(skinPath, PreviewOutlineVariant::Line);
+            if (loaded.skinAssets.tapImage.isNull()) return json({{"error", "皮肤目录需要 tap.png"}});
+            state.skin = loaded.skinAssets;
+            state.judgeOverlay = loaded.judgeOverlayAssets;
+        } else {
+            state.skin = {};
+            state.judgeOverlay = {};
+        }
         skinDirectoryName = nextSkin;
         ++state.sceneContentRevision;
     }
     customOutlineFileName = nextOutline;
     state.render.backgroundBrightnessOuter = values.value("outerBrightness").toDouble();
     state.render.backgroundBrightnessInner = values.value("innerBrightness").toDouble();
-    miaview::firework::setBrightness(values.value("fireworkBrightness").toDouble());
+    state.render.fireworkBrightness = values.value("fireworkBrightness").toDouble();
+    state.render.fireworkStyle = static_cast<PreviewFireworkStyle>(values.value("fireworkStyle").toInt());
     state.render.tapFlowSpeed = normalizePreviewTimingFlowSpeed(values.value("tapFlowSpeed").toDouble());
     state.render.touchFlowSpeed = normalizePreviewTimingFlowSpeed(values.value("touchFlowSpeed").toDouble());
     state.render.slideEarlierSecondAndTextOnTop = values.value("earlierSlideOnTop").toBool();
@@ -593,7 +622,7 @@ const char* renderDocument(int difficultyId, bool resetTime, bool selectWorkspac
         coverScene->setVisible(false);
         previewWindow->resize(renderSize);
         scene->setVisible(true);
-        hud->setVisible(true);
+        hud->setVisible(hudFontsReady);
     }
     if (!ids.contains(difficultyId)) difficultyId = ids.last();
     if (selectWorkspace) editorDocument.workspace.selectDifficulty(difficultyId);
@@ -957,7 +986,7 @@ int main(int argc, char** argv) {
     surface.setStencilBufferSize(8);
     QSurfaceFormat::setDefaultFormat(surface);
     QGuiApplication app(argc, argv);
-    mountAssets();
+    mountAssets(":/assets/background");
     miacode::assets::setAssetRoot(QStringLiteral("/assets"));
     const auto loaded = miacode::preview::runtime::PreviewSceneAssetLoader::load("/assets/skin/skinDX", PreviewOutlineVariant::Line);
     state.assets = loaded.assetState;
@@ -971,7 +1000,6 @@ int main(int argc, char** argv) {
     state.render.showObjectStatsHud = true;
     state.render.showChartInfoHud = true;
     state.render.smoothBrightness = false;
-    state.render.fixHudTextLayout = false;
     state.render.judgeEffectStyle = PreviewJudgeEffectStyle::Starry;
     state.render.centerDisplayMode = miacode::preview_gameplay::CenterDisplayMode::Combo;
     state.framePacingTargetFps = 60;
@@ -997,6 +1025,7 @@ int main(int argc, char** argv) {
     scene = new PreviewQuickSceneRoot(window.contentItem());
     hud = new PreviewQuickHudLayer(window.contentItem());
     hud->setRenderTarget(QQuickPaintedItem::FramebufferObject);
+    hud->setVisible(false);
     WebExportScene exportRenderer(window.contentItem());
     exportScene = &exportRenderer;
     scene->setSize(renderSize);

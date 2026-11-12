@@ -118,7 +118,7 @@ QJsonObject WebExportScene::frame(int index,PreviewFrameState& state) {
     const bool introCover=task_.intro.enabled&&authoring<reveal;
     state.playheadSeconds=info.value("chartSecond").toDouble();
     state.render.showTimestamp=task_.showTimestamp&&!introCover;state.render.showChartInfoHud=task_.showChartInfoHud&&!introCover;
-    state.render.showObjectStatsHud=task_.showObjectStatsHud&&!introCover;state.render.fixHudTextLayout=true;
+    state.render.showObjectStatsHud=task_.showObjectStatsHud&&!introCover;
     const double fade=task_.intro.enabled?qBound(0.0,state.playheadSeconds+miacode::intro::kBgFadeDurationSeconds,1.0):1.0;
     state.render.backgroundBrightnessOuter=task_.backgroundBrightnessOuter*fade;state.render.backgroundBrightnessInner=task_.backgroundBrightnessInner*fade;
     if(intro_){applyIntroGeometry();intro_->setVisible(introActive);intro_->setProperty("frame",authoring);}

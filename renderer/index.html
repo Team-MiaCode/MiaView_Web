@@ -112,6 +112,16 @@
           <option value="SD">SD</option>
         </select></label
       >
+      <label class="select-setting" for="firework-style">
+        烟花效果<select id="firework-style">
+          <option value="0">标准</option>
+          <option value="1">现代</option>
+        </select>
+      </label>
+      <label class="range-setting" for="firework-brightness">
+        烟花亮度 <output id="firework-brightness-value" for="firework-brightness">100%</output>
+      </label>
+      <input id="firework-brightness" type="range" min="50" max="120" value="100" />
       <button id="settings-reset" type="button">恢复默认</button>
       <div id="settings-error" role="alert" hidden></div>
     </section>

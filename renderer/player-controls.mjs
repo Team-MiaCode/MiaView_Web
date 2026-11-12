@@ -54,6 +54,9 @@ export function attachPlayerControls(controller, engine) {
     $("touch-speed-value").textContent = $("touch-speed").value;
     $("slide-order").value = settings.earlierSlideOnTop ? "earlier" : "later";
     $("note-skin").value = settings.noteSkin;
+    $("firework-style").value = String(settings.fireworkStyle ?? 0);
+    $("firework-brightness").value = String(Math.round((settings.fireworkBrightness ?? 1) * 100));
+    $("firework-brightness-value").textContent = `${$("firework-brightness").value}%`;
   }
   function applySettings() {
     void controller.execute("setSettings", {
@@ -61,6 +64,8 @@ export function attachPlayerControls(controller, engine) {
       innerBrightness: Number($("inner-brightness").value) / 100,
       earlierSlideOnTop: $("slide-order").value === "earlier",
       noteSkin: $("note-skin").value,
+      fireworkStyle: Number($("firework-style").value),
+      fireworkBrightness: Number($("firework-brightness").value) / 100,
       tapFlowSpeed: Number($("tap-speed").value),
       touchFlowSpeed: Number($("touch-speed").value),
       previewMode: $("preview-mode").value,
@@ -97,6 +102,8 @@ export function attachPlayerControls(controller, engine) {
     "touch-speed",
     "slide-order",
     "note-skin",
+    "firework-style",
+    "firework-brightness",
   ])
     $(id).addEventListener("input", applySettings);
   $("settings-reset").addEventListener("click", () => {

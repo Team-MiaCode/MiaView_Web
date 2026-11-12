@@ -1,6 +1,6 @@
 #include "timeline-bridge.h"
+#include "core/scene/PreviewHudState.h"
 #include <QBuffer>
-#include <QFontDatabase>
 #include <QFontMetricsF>
 #include <QJsonArray>
 #include <algorithm>
@@ -98,10 +98,8 @@ QJsonObject WebTimeline::build(const QJsonObject& options)
     request.waveformBrightness = options.value("waveformBrightness").toDouble(.5);
     request.measureLineBrightness = options.value("measureLineBrightness").toDouble(1);
     request.waveformPhaseCompensationSeconds = options.value("waveformPhaseCompensationSeconds").toDouble(0);
-    static const int font = QFontDatabase::addApplicationFont(QStringLiteral(":/fonts/maple_mono_cn.ttf"));
-    Q_UNUSED(font);
-    request.headerLineNumberFont = QFont(QStringLiteral("Maple Mono Normal NL CN"));
-    request.headerLineNumberFont.setPointSize(11);
+    request.headerLineNumberFont = miacode::preview::scene::previewHudDefaultFontForArea(
+        miacode::preview::scene::PreviewHudFontArea::Timestamp, 11);
     request.skinDirectory = QStringLiteral("/assets/skin/skin") + options.value("noteSkin").toString("DX");
     if (skin_ != request.skinDirectory) {
         skin_ = request.skinDirectory;

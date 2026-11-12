@@ -172,8 +172,8 @@ export function normalizeSettings(settings) {
         throw new Error(`${name} must be a boolean`);
     } else if (name === "layoutSquareScale") {
       if (!Number.isFinite(value) || value < .5 || value > 1) throw new Error(`${name} must be between 0.5 and 1`);
-    } else if (["scaleMode", "outlineIndex", "centerDisplay", "tapJudgeTextDistance", "skinJudgeEffectIndex"].includes(name)) {
-      const maximum = { scaleMode: 3, outlineIndex: 3, centerDisplay: 7, tapJudgeTextDistance: 2, skinJudgeEffectIndex: 1 }[name];
+    } else if (["scaleMode", "outlineIndex", "centerDisplay", "tapJudgeTextDistance", "skinJudgeEffectIndex", "fireworkStyle"].includes(name)) {
+      const maximum = { scaleMode: 3, outlineIndex: 3, centerDisplay: 7, tapJudgeTextDistance: 2, skinJudgeEffectIndex: 1, fireworkStyle: 1 }[name];
       if (!Number.isInteger(value) || value < 0 || value > maximum) throw new Error(`${name} must be an integer from 0 to ${maximum}`);
     } else if (name === "skinDirectoryName") {
       if (typeof value !== "string" || !/^(skinSD|skinDX|skin-[a-f0-9]{64})$/.test(value)) throw new Error("Invalid skin directory name");

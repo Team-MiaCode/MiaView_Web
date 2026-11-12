@@ -310,5 +310,4 @@
   <file alias="assets/noteguide/Mine.png">@MIACODE_SOURCE_DIR@/assets/noteguide/Mine.png</file>
   <file alias="assets/noteguide/Normal.png">@MIACODE_SOURCE_DIR@/assets/noteguide/Normal.png</file>
   <file alias="assets/noteguide/Slide.png">@MIACODE_SOURCE_DIR@/assets/noteguide/Slide.png</file>
-  <file alias="assets/background/outline_line.png">@MIACODE_SOURCE_DIR@/assets/background/outline_line.png</file>
 </qresource></RCC>

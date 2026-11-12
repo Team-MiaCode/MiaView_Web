@@ -73,6 +73,12 @@ export function attachSdkBridge(engine, controller) {
         send("response", null, {
           requestId: message.requestId,
           ok: false,
+          // Startup can fail before the renderer has loaded its own identity.
+          // The failed initialize request still belongs to the validated host session.
+          ...(message.type === "initialize" && {
+            playerVersion: message.payload?.playerVersion,
+            sourceRevision: message.payload?.sourceRevision,
+          }),
           error: { message: error.message ?? "Preview command failed" },
         });
       }

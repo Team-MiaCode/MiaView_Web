@@ -3,7 +3,7 @@ const names = new Set([
   "tapFlowSpeed", "touchFlowSpeed", "scaleMode", "smoothBrightness", "showTimestamp", "showDebugInfo",
   "forceLabeledJudgeLineWhenPaused", "touchPadAuthoringShortcut", "centerDisplay", "tapJudgeTextDistance",
   "judgeEffectSlide", "judgeEffectTap", "judgeEffectBreak", "judgeEffectTouch", "outlineIndex", "skinJudgeEffectIndex",
-  "skinDirectoryName", "customOutlineFileName",
+  "skinDirectoryName", "customOutlineFileName", "fireworkStyle",
 ]);
 
 export function previewSettingsFromValues(values) {

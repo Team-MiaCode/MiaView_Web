@@ -1,11 +1,11 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { writeArtifacts } from "./artifacts.mjs";
 import { syncTheme } from "../scripts/sync-theme.mjs";
-import { nativeInputsFingerprint } from "../scripts/build-identity.mjs";
+import { nativeInputsFingerprint, runtimeResourceFiles } from "../scripts/build-identity.mjs";
 import { sourcePin } from "../scripts/source-pin.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -90,6 +90,7 @@ run("cmake", configure);
 run("cmake", ["--build", build, "--parallel", String(jobs)]);
 
 const publicRoot = join(root, "renderer");
+rmSync(join(publicRoot, "LICENSE_SCOPE.md"), { force: true });
 mkdirSync(join(publicRoot, "sfx"), { recursive: true });
 for (const name of ["answer.wav", "break_slide.wav", "break_tap.wav", "break.wav",
   "slide_break_slide.wav", "slide_break_start.wav", "slide.wav", "tap_ex.wav",
@@ -98,10 +99,10 @@ for (const name of ["answer.wav", "break_slide.wav", "break_tap.wav", "break.wav
 copyFileSync(join(source, "src/intro/audio/track_start.wav"), join(publicRoot, "sfx/track_start.wav"));
 syncTheme(source, upstreamGitCommit);
 copyFileSync(join(build, "miacode-preview.wasm"), join(publicRoot, "miacode-preview.wasm"));
-for (const name of ["miacode-analysis.js", "miacode-analysis.wasm"])
+for (const name of ["miacode-analysis.js", "miacode-analysis.wasm", ...runtimeResourceFiles])
   copyFileSync(join(build, name), join(publicRoot, name));
 // Keep generated text reproducible across host line-ending conventions.
-for (const name of ["miacode-preview.js", "qtloader.js", "LICENSE", "LICENSE_SCOPE.md", "THIRD_PARTY_NOTICES.md"]) {
+for (const name of ["miacode-preview.js", "qtloader.js", "LICENSE", "THIRD_PARTY_NOTICES.md"]) {
   const input = join(name.endsWith(".js") ? build : source, name);
   let text = readFileSync(input, "utf8").replace(/\r\n/g, "\n").replace(/^[ \t]+$/gm, "");
   if (name === "THIRD_PARTY_NOTICES.md") {

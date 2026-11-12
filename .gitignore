@@ -17,6 +17,7 @@ scripts/apply-upstream-preview.py
 /renderer/miacode-preview.wasm
 /renderer/miacode-analysis.js
 /renderer/miacode-analysis.wasm
+/renderer/*.rcc
 /renderer/*.br
 /renderer/*.gz
 /renderer/qtloader.js

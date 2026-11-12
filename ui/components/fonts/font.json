@@ -17,6 +17,11 @@
       "unicodeRange": "U+7000-10FFFF"
     }
   ],
+  "timelineFont": {
+    "path": "XiaolaiMono-Timeline.woff2",
+    "byteSize": 2332,
+    "sha256": "81ae1fedf877e18c037b61cd542f9da3de132d9b860d063e857027cd732e1674"
+  },
   "cardFonts": [
     {
       "family": "Resource Han Rounded CN Heavy",

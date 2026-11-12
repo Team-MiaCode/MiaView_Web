@@ -8,7 +8,6 @@
 
 #include <QQuickWindow>
 #include <QSGNode>
-#include <QtMath>
 
 #include <atomic>
 
@@ -18,7 +17,6 @@ using namespace miacode::preview::scene;
 
 // Each renderer document owns one WASM instance and one preview window.
 std::atomic<bool> fireworkPresented{false};
-std::atomic<double> fireworkBrightness{1.0};
 
 class RetainedFireworkNode final : public QSGNode
 {
@@ -56,28 +54,27 @@ public:
         if (blocked) pendingDraw_ = false;
     }
 
-    void beginFrame(qint64 sourceImageKey)
+    void beginFrame(const PreviewFrameState& state)
     {
-        if (sourceImageKey_ != sourceImageKey) {
+        const auto style = state.render.fireworkStyle;
+        const auto& effect = state.judgeEffect.standardFirework.effect;
+        const auto colorBallKey = style == PreviewFireworkStyle::Modern
+            ? state.judgeEffect.modernFireworkColorBallImage.cacheKey() : 0;
+        if (style_ != style || effect_ != effect || colorBallKey_ != colorBallKey) {
+            style_ = style;
+            effect_ = effect;
+            colorBallKey_ = colorBallKey;
+            pendingDraw_ = false;
             presented_ = false;
             fireworkPresented.store(false, std::memory_order_release);
         }
     }
 
-    bool canIdle(qint64 sourceImageKey) const
-    {
-        return presented_ && fireworkNode_ != nullptr && sourceImageKey_ == sourceImageKey;
-    }
+    bool canIdle() const { return presented_; }
 
-    bool needsBurstRestart() const { return hasRealBurst_ && !wasActive_; }
-    void endBurst() { wasActive_ = false; }
-
-    void noteDraw(qint64 sourceImageKey, bool realBurst)
+    void noteDraw()
     {
-        sourceImageKey_ = sourceImageKey;
         pendingDraw_ = true;
-        wasActive_ = realBurst;
-        hasRealBurst_ |= realBurst;
         setBlocked(false);
     }
 
@@ -109,15 +106,15 @@ private:
     MiaViewUpstreamJudgeFireworkLayer upstream_;
     QSGNode* fireworkNode_ = nullptr;
     QMetaObject::Connection presentConnection_;
-    qint64 sourceImageKey_ = -1;
+    PreviewFireworkStyle style_ = PreviewFireworkStyle::Standard;
+    std::shared_ptr<const PreviewStandardFireworkEffect> effect_;
+    qint64 colorBallKey_ = 0;
     bool blocked_ = true;
     bool pendingDraw_ = false;
     bool presented_ = false;
-    bool wasActive_ = false;
-    bool hasRealBurst_ = false;
 };
 
-PreviewFrameState warmupStateFor(const PreviewFrameState& state, qreal elapsedToAvoid = -1.0)
+PreviewFrameState warmupStateFor(const PreviewFrameState& state)
 {
     PreviewFrameState warmup = state;
     TimelineNoteMarker marker;
@@ -125,12 +122,6 @@ PreviewFrameState warmupStateFor(const PreviewFrameState& state, qreal elapsedTo
     marker.isFirework = true;
     marker.second = fireworkWarmupMarkerSecond(state.playheadSeconds);
     marker.touchPoint = QPointF(kFireworkWarmupOffscreenCoordinate, kFireworkWarmupOffscreenCoordinate);
-    // A transparent update between independent bursts lets upstream's own
-    // trigger-change logic choose a fresh random star angle on the next draw.
-    // Avoid equal triggers when restarting at exactly the warm-up lead time.
-    if (qFuzzyCompare(elapsedToAvoid + 1.0, kFireworkWarmupLeadSeconds + 1.0)) {
-        marker.second += kFireworkWarmupLeadSeconds * 0.5;
-    }
     warmup.noteMarkers = {marker};
     return warmup;
 }
@@ -141,9 +132,6 @@ bool miaview::firework::ready()
 {
     return fireworkPresented.load(std::memory_order_acquire);
 }
-
-double miaview::firework::brightness() { return fireworkBrightness.load(std::memory_order_relaxed); }
-void miaview::firework::setBrightness(double value) { fireworkBrightness.store(value, std::memory_order_relaxed); }
 
 QSGNode* PreviewQuickJudgeFireworkLayer::updateNode(
     QSGNode* oldNode,
@@ -159,8 +147,7 @@ QSGNode* PreviewQuickJudgeFireworkLayer::updateNode(
 
     auto* root = dynamic_cast<RetainedFireworkNode*>(oldNode);
     if (root == nullptr) root = new RetainedFireworkNode(window);
-    const qint64 sourceImageKey = state.judgeEffect.fireworkColorBallImage.cacheKey();
-    root->beginFrame(sourceImageKey);
+    root->beginFrame(state);
 
     const PreviewActiveMarkerView activeMarkers = preparedCache != nullptr && cursor != nullptr
         ? PreviewActiveMarkerView(state.noteMarkers, preparedCache->judgeFireworkLayer(), *cursor)
@@ -169,27 +156,16 @@ QSGNode* PreviewQuickJudgeFireworkLayer::updateNode(
         state, activeMarkers,
         playfieldRectForStage(stageRectForSize(renderSize), state.render.layoutSquareScale));
 
-    if (layerState.active) {
-        if (root->needsBurstRestart()) {
-            root->updateUpstream(warmupStateFor(state, layerState.clipTimeSeconds),
-                nullptr, nullptr, renderSize, window, textures);
-        }
-        if (root->updateUpstream(state, preparedCache, cursor, renderSize, window, textures)) {
-            root->noteDraw(sourceImageKey, true);
-        } else {
-            root->setBlocked(true);
-        }
-        return root;
-    }
-
-    root->endBurst();
-    if (root->canIdle(sourceImageKey)) {
+    if (!layerState.active && root->canIdle()) {
         root->setBlocked(true);
         return root;
     }
 
-    if (root->updateUpstream(warmupStateFor(state), nullptr, nullptr, renderSize, window, textures)) {
-        root->noteDraw(sourceImageKey, false);
+    const bool updated = layerState.active
+        ? root->updateUpstream(state, preparedCache, cursor, renderSize, window, textures)
+        : root->updateUpstream(warmupStateFor(state), nullptr, nullptr, renderSize, window, textures);
+    if (updated) {
+        root->noteDraw();
     } else {
         root->setBlocked(true);
     }

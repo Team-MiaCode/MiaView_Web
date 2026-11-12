@@ -29,7 +29,7 @@ export function previewAppearanceSections({ viewState, documentSession, command 
     { key: "video", label: label("visual_group"), render: () => [
       slider("brightnessOuter", label("video.brightness_outer"), (settings.outerBrightness ?? .5) * 100, 0, 100),
       slider("brightnessInner", label("video.brightness_inner"), (settings.innerBrightness ?? .2) * 100, 0, 100),
-      slider("fireworkBrightness", "烟花亮度", (settings.fireworkBrightness ?? 1) * 100, 50, 120),
+      slider("fireworkBrightness", label("video.firework_brightness"), (settings.fireworkBrightness ?? 1) * 100, 50, 120),
       slider("layoutSquareScale", label("video.layout_square_scale"), 95, 50, 100, 5),
       choice("scaleMode", label("video.scale_mode"), [[0, label("video.scale.fill")], [1, label("video.scale.fit")], [2, label("video.scale.square_fit")], [3, label("video.scale.inner_circle_fit_outer_fill")]], 0),
       switchRow("smoothBrightness", label("video.smooth_brightness"), true),
@@ -57,6 +57,7 @@ export function previewAppearanceSections({ viewState, documentSession, command 
     { key: "skin", label: label("skin_group"), render: () => [
       appearanceChoice("skin"),
       choice("skinJudgeEffectIndex", t("dialog.skin_settings.chart_effect"), ["standard", "starry"].map((key, index) => [index, t(`dialog.skin_settings.chart_effect.${key}`)]), 0),
+      choice("fireworkStyle", t("dialog.skin_settings.firework"), ["standard", "modern"].map((key, index) => [index, t(`dialog.skin_settings.firework.${key}`)]), settings.fireworkStyle ?? 0),
       appearanceChoice("outline"),
       section(t("dialog.video_export.option.hud_font"),
         choice("hudFontAreaIndex", t("dialog.video_export.option.hud_font_area"), ["chart_info", "timestamp", "center_display", "object_stats", "debug"].map((key, index) => [index, t(`dialog.video_export.option.hud_font_area.${key}`)]), 0),

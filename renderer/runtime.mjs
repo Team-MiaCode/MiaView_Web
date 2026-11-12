@@ -281,6 +281,33 @@ export async function fetchVerified(
   return bytes;
 }
 
+export function runtimeAsset(identity, manifest, path, baseUrl = import.meta.url) {
+  const file = manifest.files.find(file => file.path === path);
+  if (!file) throw new Error(`运行时资源缺失：${path}`);
+  const url = new URL(path, baseUrl);
+  url.searchParams.set("build", identity.version);
+  return { url: url.href, sha256: file.sha256, byteSize: file.byteSize };
+}
+
+export function fetchRuntimeAsset(resource, signal, priority = "auto") {
+  return fetchVerified(resource, signal, (url, options) =>
+    fetch(url, { ...options, cache: "force-cache", priority }));
+}
+
+export function registerRuntimeResource(module, bytes) {
+  const pointer = module._malloc(bytes.byteLength);
+  if (!pointer) throw new Error("运行时资源内存分配失败");
+  let registered = false;
+  try {
+    module.HEAPU8.set(new Uint8Array(bytes), pointer);
+    registered = Boolean(module.ccall("miacode_register_resource", "number", ["number"], [pointer]));
+    if (!registered) throw new Error("运行时资源注册失败");
+  } finally {
+    // A registered QResource keeps using the allocation until the module exits.
+    if (!registered) module._free(pointer);
+  }
+}
+
 // Exactly one chart's prepared media. Difficulty changes reuse decoded music
 // and verified PV bytes; switching charts/destroying drops the old reference.
 export class PreviewMediaCache {

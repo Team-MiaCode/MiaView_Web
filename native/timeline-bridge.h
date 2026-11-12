@@ -10,6 +10,7 @@ class WebTimeline final
 public:
     void load(const QString& text, double first, const miacode::simai::SimaiTimingMetadata& timing);
     void setWaveform(const float* samples, int count, double duration);
+    void invalidateSkin() { skin_.clear(); }
     QJsonObject build(const QJsonObject& options);
     QJsonObject navigate(double x, double y) const;
     QJsonObject follow(double second) const;

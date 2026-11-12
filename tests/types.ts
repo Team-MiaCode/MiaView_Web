@@ -23,6 +23,9 @@ createPreview(document.createElement("div"), { layout: "fluid" });
 void preview.load(chart);
 void preview.seek(1);
 void preview.setSettings({ tapFlowSpeed: 8, noteSkin: "SD" });
+void preview.setSettings({ fireworkStyle: 1, fireworkBrightness: 0.5 });
+// @ts-expect-error The firework selector accepts the two native enum values.
+void preview.setSettings({ fireworkStyle: 2 });
 void preview.setSettings({ previewMode: "maimuri_dx_style" });
 // @ts-expect-error Unknown preview modes are rejected.
 void preview.setSettings({ previewMode: "unknown" });

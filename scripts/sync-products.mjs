@@ -2,14 +2,14 @@ import { cpSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSyn
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sourcePin } from "./source-pin.mjs";
-import { rendererVersion } from "./build-identity.mjs";
+import { rendererVersion, runtimeResourceFiles } from "./build-identity.mjs";
 import { writeRendererInventory } from "./update-artifacts.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const runtime = process.argv.includes("--runtime");
 const output = resolve(root, process.argv.find(arg => arg.startsWith("--output="))?.slice(9) ?? "build-devtools/products");
 if (existsSync(output)) throw new Error(`Use an empty product output directory: ${output}`);
-const generated = new Set(["miacode-preview.js", "miacode-preview.wasm", "miacode-analysis.js", "miacode-analysis.wasm", "qtloader.js", "theme.css", "build-identity.json", "artifact-manifest.json", "LICENSE", "LICENSE_SCOPE.md", "THIRD_PARTY_NOTICES.md", "sfx"]);
+const generated = new Set(["miacode-preview.js", "miacode-preview.wasm", "miacode-analysis.js", "miacode-analysis.wasm", "qtloader.js", "theme.css", "build-identity.json", "artifact-manifest.json", "LICENSE", "LICENSE_SCOPE.md", "THIRD_PARTY_NOTICES.md", "sfx", ...runtimeResourceFiles]);
 const rootOnly = new Set(["scripts/sync-products.mjs", "tests/editor-template-smoke.mjs", "tests/products-smoke.mjs", "tests/product-closure.mjs", "tests/product-builds.mjs"]);
 const configuration = sourcePin(root);
 const packageSource = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));

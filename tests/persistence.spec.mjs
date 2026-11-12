@@ -14,9 +14,9 @@ test("Cover defaults share styles and retained assets while project paths stay l
 });
 
 test("Muri and firework controls enforce native parameter bounds", () => {
-  assert.deepEqual(normalizeSettings({ handRadiusPx: 60, staticTapOnSlideThresholdMs: 250, fireworkBrightness: 1.2, wifiNeedC: true }),
-    { handRadiusPx: 60, staticTapOnSlideThresholdMs: 250, fireworkBrightness: 1.2, wifiNeedC: true });
-  for (const values of [{ handRadiusPx: 61 }, { staticTapOnSlideThresholdMs: 149 }, { fireworkBrightness: .49 }, { showTouchTrail: 1 }])
+  const settings = { handRadiusPx: 60, staticTapOnSlideThresholdMs: 250, fireworkStyle: 1, fireworkBrightness: 1.2, wifiNeedC: true };
+  assert.deepEqual(normalizeSettings(settings), settings);
+  for (const values of [{ handRadiusPx: 61 }, { staticTapOnSlideThresholdMs: 149 }, { fireworkStyle: 2 }, { fireworkStyle: "modern" }, { fireworkBrightness: .49 }, { showTouchTrail: 1 }])
     assert.throws(() => normalizeSettings(values));
 });
 

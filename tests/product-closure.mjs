@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { runtimeResourceFiles } from "../scripts/build-identity.mjs";
 
 const base = resolve(process.env.MIACODE_PRODUCTS_ROOT || "build-devtools/products");
 const authority = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const generated = new Set(["miacode-preview.js", "miacode-preview.wasm", "miacode-analysis.js", "miacode-analysis.wasm", "qtloader.js", "theme.css", "build-identity.json", "artifact-manifest.json", "LICENSE", "LICENSE_SCOPE.md", "THIRD_PARTY_NOTICES.md"]);
+const generated = new Set(["miacode-preview.js", "miacode-preview.wasm", "miacode-analysis.js", "miacode-analysis.wasm", "qtloader.js", "theme.css", "build-identity.json", "artifact-manifest.json", "LICENSE", "LICENSE_SCOPE.md", "THIRD_PARTY_NOTICES.md", ...runtimeResourceFiles]);
 const commonDirectories = new Set(["sdk", "renderer", "services", "ui", "native", "scripts", "dev", "backend"]);
 function files(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap(item => {

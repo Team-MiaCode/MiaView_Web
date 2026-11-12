@@ -31,7 +31,7 @@ try {
   const timeline = { zoomScale: 1.5, waveformBrightness: .65, measureLineBrightness: .8, followPreviewEnabled: true, followProgressEnabled: false };
   await command("timeline.settings", timeline);
   const values = { previewMode: "maimuri_dx_style", showSlideTracks: false, showJudgeMarkers: true, showTouchTrail: true,
-    handRadiusPx: 42, wifiNeedC: true, staticTapOnSlideThresholdMs: 230, fireworkBrightness: 65 };
+    handRadiusPx: 42, wifiNeedC: true, staticTapOnSlideThresholdMs: 230, fireworkStyle: 1, fireworkBrightness: 65 };
   await command("preview.values", values);
   await page.evaluate(() => document.getElementById("workbench").editor.viewState.setPreferences({ chart_normalize_syntax: "compact_single_line", chart_normalize_section_measure_count: 0,
     chart_normalize_start_at_new_measure: true, chart_normalize_reduce_to_384_grid: true }));
@@ -78,7 +78,7 @@ try {
   const surface = page.frameLocator('.preview-container iframe').locator('#qt-screen canvas');
   await command("preview.seek", { second: 2.233 }); await command("preview.values", { fireworkBrightness: 50 });
   const dim = await surface.screenshot(); await command("preview.values", { fireworkBrightness: 120 });
-  const bright = await surface.screenshot(); assert.notDeepEqual(dim, bright, "Firework brightness changes native rendered rays");
+  const bright = await surface.screenshot(); assert.ok(!dim.equals(bright), "Firework brightness changes native rendered rays");
   writeFileSync(join(output, "firework-50.png"), dim); writeFileSync(join(output, "firework-120.png"), bright);
   await command("page.cover");
   await page.waitForFunction(() => document.querySelector('.cover-page .cover-editor')?.coverRenderer);
@@ -93,7 +93,7 @@ try {
   await page.evaluate(() => document.getElementById("workbench").editor.viewState.setPreference("autoRestoreLastSessionFile", false));
   await command("file.flushRecovery"); await page.reload(); await ready(); assert.equal((await state()).loaded, false);
   assert.deepEqual(errors, []); results.errors = errors;
-  console.log(`${name}: session, rate, timeline, Muri, normalization, cover defaults, output presets, option widths and firework brightness passed`);
+  console.log(`${name}: session, rate, timeline, Muri, normalization, cover defaults, output presets, option widths and firework settings passed`);
 } finally {
   writeFileSync(join(output, "results.json"), JSON.stringify(results, null, 2));
   await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve));

@@ -1083,5 +1083,9 @@
   "guide.navigation.preferences": "首选项：设置界面外观、样式，编辑器与快捷键。",
   "qml.open_waveform_and_beat_line_brightness_settings": "打开波形和小节线亮度设置",
   "qml.timeline_brightness": "时间轴亮度",
-  "workbench.difficulty": "难度"
+  "workbench.difficulty": "难度",
+  "dialog.skin_settings.firework": "烟花效果",
+  "dialog.skin_settings.firework.standard": "标准",
+  "dialog.skin_settings.firework.modern": "现代",
+  "dialog.render_settings.video.firework_brightness": "烟花亮度"
 }

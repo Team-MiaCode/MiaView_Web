@@ -3,6 +3,9 @@ import {
   PreviewMediaCache,
   loadPreviewRuntime,
   fetchVerified,
+  runtimeAsset,
+  fetchRuntimeAsset,
+  registerRuntimeResource,
 } from "./runtime.mjs";
 import { pvTimeoutFromSearch } from "./pv-timeout.mjs";
 import { httpUrl } from "./protocol.mjs";
@@ -26,6 +29,7 @@ import { PreviewAnalysis } from "./analysis-client.mjs";
 // Each renderer document owns one engine; UI and SDK share its controller.
 export function createPlayerEngine(view) {
   const lifetime = new AbortController();
+  const resourcePacks = new Map();
   let disposed = false, frameRequest;
   let playbackRequest = 0;
   let playStartAbort;
@@ -393,11 +397,13 @@ export function createPlayerEngine(view) {
       lastPresentation = now;
     };
     view.settings(defaultSettings);
-    // Qt renders asynchronously. Wait for a presented transparent firework draw,
-    // including its real pipeline and mipmapped ball, before accepting playback.
-    while (!call("miacode_firework_ready", "number", [], [])) {
-      await nextAnimationFrame(lifetime.signal);
-    }
+    phase = "engine-warmup";
+    await diagnostics.measureAsync("engineWarmup", async () => {
+      // Qt renders asynchronously. Ready requires a submitted transparent draw.
+      while (!call("miacode_firework_ready", "number", [], [])) {
+        await nextAnimationFrame(lifetime.signal);
+      }
+    });
     $("settings-toggle").disabled = false;
     fpsSampleTime = performance.now();
     fpsSampleFrames = call("miacode_frame_count", "number", [], []);
@@ -411,6 +417,46 @@ export function createPlayerEngine(view) {
   });
   // Keep startup rejection handled before the first host/file message arrives.
   void boot.catch(() => {});
+
+  function ensureResourcePack(name, signal = lifetime.signal) {
+    signal.throwIfAborted();
+    let pending = resourcePacks.get(name);
+    if (!pending) {
+      pending = (async () => {
+        const asset = runtimeAsset(identity, runtimeManifest, `miacode-${name}.rcc`);
+        const bytes = await fetchRuntimeAsset(asset, lifetime.signal, name === "hud" ? "low" : "auto");
+        registerRuntimeResource(module, bytes);
+        if (name === "hud") call("miacode_hud_fonts_ready", null, [], []);
+        if (name === "skins") call("miacode_builtin_skins_ready", null, [], []);
+      })().catch(error => {
+        resourcePacks.delete(name);
+        throw error;
+      });
+      resourcePacks.set(name, pending);
+    }
+    if (signal === lifetime.signal) return pending;
+    return new Promise((resolve, reject) => {
+      const cancel = () => reject(signal.reason);
+      signal.addEventListener("abort", cancel, { once: true });
+      void pending.then(resolve, reject).finally(() => signal.removeEventListener("abort", cancel));
+    });
+  }
+
+  function usesHud(settings = {}) {
+    return ["showTimestamp", "showChartInfoHud", "showObjectStatsHud", "showDebugInfo"]
+      .some(key => settings[key] ?? appearance?.[key]);
+  }
+
+  function loadHudFonts() {
+    if (!usesHud()) return;
+    void ensureResourcePack("hud").catch(error => {
+      if (!disposed) emit("error", { code: "HUD_RESOURCE_FAILED", message: error.message });
+    });
+  }
+
+  function loadChartResources(signal) {
+    return Promise.all([ensureResourcePack("slides", signal), ensureResourcePack("skins", signal)]);
+  }
 
   const callMetrics = {
     miacode_load: "chartParse",
@@ -676,7 +722,7 @@ export function createPlayerEngine(view) {
     const videoReady = prepared.video;
     // Parsing can fail before the concurrently buffered video is awaited.
     void videoReady.catch(() => {});
-    const text = await prepared.text;
+    const [text] = await Promise.all([prepared.text, loadChartResources(signal)]);
     if (token !== generation) return;
     status("正在解析谱面…");
     emit("progress", { stage: "正在解析谱面", progress: 0.15 });
@@ -762,6 +808,7 @@ export function createPlayerEngine(view) {
     if (token !== generation) return;
     for (const id of ["play", "restart", "seek"])
       $(id).disabled = false;
+    loadHudFonts();
   }
 
   async function prepareEffects(parsed) {
@@ -836,6 +883,8 @@ export function createPlayerEngine(view) {
     return result;
   }
   async function documentCommand(request) {
+    if (request.id === "document.replaceSource" || request.id === "document.addDifficulty")
+      await loadChartResources();
     if (exportPreview) {
       const options = { ...exportPreviewOptions };
       await setExportPreview({ enabled: false });
@@ -1140,7 +1189,12 @@ export function createPlayerEngine(view) {
     introSoundHash = hash;
   }
   async function prepareExportAssets(settings,signal,introOnly=false) {
-    await prepareIntroSound(settings, signal);
+    await Promise.all([
+      usesHud(settings) ? ensureResourcePack("hud", signal) : null,
+      settings.introEnabled && (settings.exportStartSeconds ?? 0) <= .01
+        ? ensureResourcePack("export", signal) : null,
+      prepareIntroSound(settings, signal),
+    ]);
     const files=new Set(introOnly?["answer.wav"]:["answer.wav","clock.wav",...chart.sfx.map(item=>item.file),...chart.sfxMutedTail.map(item=>item.file)]);
     if(!introOnly&&chart.touchholdSegments.length)files.add("touch_Hold_riser.wav");
     if(!introOnly&&settings.introEnabled&&!settings.introPvPreview)files.add("track_start.wav");
@@ -1241,6 +1295,7 @@ export function createPlayerEngine(view) {
     exportCall("miacode_set_settings", ["string"], [JSON.stringify(exportPreviewSaved.settings)]);
     const sceneSettings = { ...settings, previewMode: true, exportStartSeconds: 0, exportEndSeconds: audio.duration,
       introEnabled: Boolean(settings.introEnabled && (settings.exportStartSeconds ?? 0) <= .01) };
+    if (sceneSettings.introEnabled) await ensureResourcePack("export");
     let plan;
     if (changeChart) plan = await prepareExportAssets(sceneSettings, lifetime.signal);
     else {
@@ -1556,7 +1611,14 @@ export function createPlayerEngine(view) {
       if (!input.hasDocument) return { available: false, pending: false, revision: input.revision,
         documentOpenGeneration: input.documentOpenGeneration, difficultyId: input.difficultyId,
         validationRows: [], muriRows: [], syntaxErrorCount: 0, syntaxWarningCount: 0 };
-      analysis ||= new PreviewAnalysis(identity, runtimeManifest);
+      if (!analysis) {
+        const client = new PreviewAnalysis(identity, runtimeManifest);
+        analysis = client;
+        void client.ready.catch(() => {
+          if (analysis === client) analysis = null;
+          client.close();
+        });
+      }
       return analysis.analyze(input);
     },
     flushPreview,
@@ -1632,6 +1694,7 @@ export function createPlayerEngine(view) {
     },
     setTheme: theme => { view.theme?.(theme); return theme; },
     setCoverComposition: async composition => {
+      await Promise.all([ensureResourcePack("export"), composition.sourceText ? ensureResourcePack("slides") : null]);
       if (coverState?.chartFramePlaying) exportCall("miacode_cover_state");
       pause();
       const result = JSON.parse(call("miacode_cover", "string", ["string"], [JSON.stringify(composition)]));
@@ -1645,7 +1708,10 @@ export function createPlayerEngine(view) {
       return result;
     },
     setCoverChart: async (resources, duration) => {
-      const text = new TextDecoder().decode(await bytes(resources.maidata));
+      const [chartBytes] = await Promise.all([
+        bytes(resources.maidata), loadChartResources(), ensureResourcePack("export"),
+      ]);
+      const text = new TextDecoder().decode(chartBytes);
       const chart = exportCall("miacode_load", ["string", "number", "string"], [text, resources.difficulty ?? 0, resources.filePath || ""]);
       exportCall("miacode_cover_chart", ["number"], [Math.max(chart.duration, duration ?? 0)]);
       const blob = resources.video ? resources.video instanceof Blob ? resources.video : new Blob([await bytes(resources.video)]) : null;
@@ -1673,6 +1739,7 @@ export function createPlayerEngine(view) {
       );
       if (!result.error) {
         appearance = result;
+        if (chart || settings.showDebugInfo) loadHudFonts();
         if (exportPreviewSaved) exportPreviewSaved.settings = result;
         if (exportPreview) { exportPreview.lastFrame = null; exportPreview.tick(); }
         videoPresentation.invalidatePlacement(); view.settings(result);

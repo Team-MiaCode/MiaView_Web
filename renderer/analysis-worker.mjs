@@ -1,12 +1,13 @@
-import { fetchVerified } from "./runtime.mjs";
+import { fetchRuntimeAsset, registerRuntimeResource } from "./runtime.mjs";
 
 let module;
 async function initialize(resources) {
-  const [script, wasm] = await Promise.all(resources.map(resource => fetchVerified(resource)));
+  const [script, wasm, slides] = await Promise.all(resources.map(resource => fetchRuntimeAsset(resource)));
   const url = URL.createObjectURL(new Blob([script], { type: "application/javascript" }));
   try {
     const { default: entry } = await import(url);
     module = await entry({ wasmBinary: wasm, locateFile: path => new URL(path, resources[0].url).href });
+    registerRuntimeResource(module, slides);
   } finally { URL.revokeObjectURL(url); }
 }
 self.onmessage = async ({ data: { id, type, payload } }) => {

@@ -50,6 +50,11 @@ try {
         await page.evaluate(() => document.fonts.ready);
         const scene = await page.evaluate(() => document.getElementById("workbench").editor.workbench.documentSession.timelineSceneState);
         assert.equal(scene.laneCount, 9);
+        if (theme === "dark") {
+          assert.equal(scene.baseBackgroundRects[0].color, "rgba(25,26,27,1)");
+          const laneColor = scene.laneOverlayRects[0].color.match(/^rgba\(255,255,255,([\d.]+)\)$/);
+          assert.ok(laneColor && Math.abs(Number(laneColor[1]) - 11 / 255) < 1e-6);
+        }
         assert.equal(scene.waveformBars.length > 0, state === "waveform");
         const filename = `timeline-${width}x${height}-${state}-${theme}.png`;
         await page.locator(".timeline-view").screenshot({ path: resolve(output, filename) });

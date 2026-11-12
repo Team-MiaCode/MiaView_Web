@@ -32,7 +32,7 @@ input[type="range"]::-moz-range-thumb { width: 10px; height: 10px; border-radius
 .preview-transport input.range-playback::-moz-range-track { background: linear-gradient(to right, var(--slider-rail) 0 var(--range-start), var(--accent-primary) var(--range-start) var(--range-end), var(--slider-rail) var(--range-end) 100%); }
 .preview-transport input.range-playback::-moz-range-progress { background: transparent; }
 input[type="checkbox"] { appearance: none; width: 15px; height: 15px; min-height: 15px; margin: 0; padding: 0; border: 1px solid var(--toggle-border); border-radius: 5px; background: transparent; }
-input[type="checkbox"]:checked { background: var(--toggle-checked-track); border-color: var(--toggle-checked-track); }
+input[type="checkbox"]:checked { background: var(--accent-muted); border-color: var(--accent-muted); }
 input[type="checkbox"]:checked::after { content: ""; display: block; width: 11px; height: 11px; margin: 1px; background: var(--toggle-checked-knob); mask: url("ui/components/icons/check.svg") center / contain no-repeat; }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: -2px; }
 .icon { display: inline-block; flex-shrink: 0; background: currentColor; mask-repeat: no-repeat; mask-position: center; mask-size: contain; }
@@ -452,7 +452,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .preferences-content .switch-control { grid-template-columns: 28px minmax(0, 1fr); min-height: 30px; font-size: var(--ui-font-size); color: var(--text-secondary); }
 .switch-control input[type="checkbox"] { position: relative; width: 28px; height: 16px; min-height: 16px; border-radius: 8px; border: 0; background: var(--toggle-track); }
 .switch-control input[type="checkbox"]::after { content: ""; display: block; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; margin: 0; mask: none; border-radius: 6px; background: var(--toggle-knob); border: 1px solid var(--toggle-knob-border); transition: transform 100ms; }
-.switch-control input[type="checkbox"]:checked { background: var(--toggle-checked-track); }
+.switch-control input[type="checkbox"]:checked { background: var(--accent-muted); }
 .switch-control input[type="checkbox"]:checked::after { transform: translateX(12px); background: var(--toggle-checked-knob); }
 .layout-cards { --layout-card-gap: 24px; display: flex; gap: var(--layout-card-gap); min-width: 0; container-type: inline-size; }
 .preferences-content .form-row:has(.layout-cards) { align-items: start; }

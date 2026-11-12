@@ -102,6 +102,8 @@ export interface AnalysisSnapshot {
 }
 export interface PreviewSettings {
   fireworkBrightness?: number;
+  /** 0 selects Standard (default), 1 selects Modern. */
+  fireworkStyle?: 0 | 1;
   showSlideTracks?: boolean; showJudgeMarkers?: boolean; showTouchTrail?: boolean;
   handRadiusPx?: number; wifiNeedC?: boolean; staticTapOnSlideThresholdMs?: number;
   hudFontPaths?: HudFontPaths;

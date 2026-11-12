@@ -1084,7 +1084,11 @@ export const catalogues = {
     "guide.navigation.preferences": "首选项：设置界面外观、样式，编辑器与快捷键。",
     "qml.open_waveform_and_beat_line_brightness_settings": "打开波形和小节线亮度设置",
     "qml.timeline_brightness": "时间轴亮度",
-    "workbench.difficulty": "难度"
+    "workbench.difficulty": "难度",
+    "dialog.skin_settings.firework": "烟花效果",
+    "dialog.skin_settings.firework.standard": "标准",
+    "dialog.skin_settings.firework.modern": "现代",
+    "dialog.render_settings.video.firework_brightness": "烟花亮度"
   },
   "en": {
     "sidebar.menu": "Menu",
@@ -2171,7 +2175,11 @@ export const catalogues = {
     "guide.navigation.preferences": "Preferences: configure interface appearance and styling, the editor and shortcuts.",
     "qml.open_waveform_and_beat_line_brightness_settings": "Open waveform and beat-line brightness settings",
     "qml.timeline_brightness": "Timeline brightness",
-    "workbench.difficulty": "Difficulty"
+    "workbench.difficulty": "Difficulty",
+    "dialog.skin_settings.firework": "Firework effect",
+    "dialog.skin_settings.firework.standard": "Standard",
+    "dialog.skin_settings.firework.modern": "Modern",
+    "dialog.render_settings.video.firework_brightness": "Firework brightness"
   },
   "ja": {
     "sidebar.menu": "メニュー",
@@ -3258,6 +3266,10 @@ export const catalogues = {
     "guide.navigation.preferences": "環境設定：画面の外観やスタイル、エディター、ショートカットを設定します。",
     "qml.open_waveform_and_beat_line_brightness_settings": "波形と拍線の明るさ設定を開く",
     "qml.timeline_brightness": "タイムラインの明るさ",
-    "workbench.difficulty": "難易度"
+    "workbench.difficulty": "難易度",
+    "dialog.skin_settings.firework": "花火エフェクト",
+    "dialog.skin_settings.firework.standard": "標準",
+    "dialog.skin_settings.firework.modern": "モダン",
+    "dialog.render_settings.video.firework_brightness": "花火の明るさ"
   }
 };

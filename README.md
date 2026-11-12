@@ -41,7 +41,7 @@ MiaView_Web 提供 maimai 谱面编辑工作台与实时预览 SDK，支持 Sima
 
 ## 获取播放器
 
-Git 仓库和源码 ZIP 只包含源码，不包含运行所需的生成 JS / WASM。获取可直接使用的产品有以下方式：
+Git 仓库和源码 ZIP 提供源码，运行时 JS、WASM 和 RCC 由构建生成。获取可用产品有以下方式。
 
 | 方式 | 用途 | 是否需要本地编译 |
 | --- | --- | --- |
@@ -155,6 +155,8 @@ public/
 ```
 
 部署后应能访问 `/miaview/sdk/index.mjs` 和 `/miaview/renderer/index.html`。保留播放器内的 JS、WASM、音效、主题、构建清单和许可文件。纯静态接入不需要 `backend/`，创建播放器时设置 `diagnostics: false` 即可。
+
+`renderer/` 内的 `.rcc` 文件与 WASM 使用同一构建清单。首个谱面按需加载滑轨参考表和内置皮肤。HUD 字体在显示 HUD 时加载，封面和视频片头共用导出资源包。
 
 ### 创建播放器
 
@@ -277,6 +279,8 @@ await preview.setSettings({
   outerBrightness: 0.5,  // 0–1
   innerBrightness: 0.2,  // 0–1
   noteSkin: "DX",        // "SD" 或 "DX"
+  fireworkStyle: 0,      // 0 标准（默认），1 现代
+  fireworkBrightness: 1, // 0.5–1.2
   previewMode: "native", // "native"、"maimuri_dx_style" 或 "erase_by_area"
 });
 ```
@@ -480,10 +484,9 @@ npm run check:source
 
 ## 许可说明
 
-上游源码的 MIT 许可证、资源许可范围和第三方声明见：
+上游项目自有源码使用 GNU GPLv3。第三方依赖和素材的许可见以下文件。
 
 - [LICENSE](vendor/MiaCode/LICENSE)
-- [LICENSE_SCOPE.md](vendor/MiaCode/LICENSE_SCOPE.md)
 - [THIRD_PARTY_NOTICES.md](vendor/MiaCode/THIRD_PARTY_NOTICES.md)
 
-构建后的 `renderer/` 保留这三个文件。上游源码的 MIT 许可不覆盖所有字体、音效、皮肤或 Qt 运行时；本库尚未完成独立的公开发布许可审核，使用或再分发时请核对各组件的适用条款。
+构建后的 `renderer/` 包含这两份文件。再分发时核对 Qt 运行时、字体、音效、皮肤的适用条款，以及 WASM 对应源码的提供方式。
