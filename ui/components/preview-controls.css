@@ -58,8 +58,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 @container (max-width: 240px) { .preview-control-row { flex-wrap: wrap; height: auto; } }
 .note-statistics { container-type: inline-size; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 44px; padding: 4px; }
 .note-stat-cell { display: grid; grid-template-columns: 24px minmax(0, min(var(--note-stat-text-width, 72px), calc(100% - 38px))); align-items: center; justify-content: center; gap: 6px; min-width: 0; }
-.note-stat-icon { display: grid; place-items: center; width: 24px; height: 24px; }
-.note-stat-icon img { max-width: 24px; max-height: 24px; object-fit: contain; }
+.note-stat-icon { display: flex; align-items: center; justify-content: center; width: 24px; height: 28px; }
+.note-stat-icon img { width: 20px; height: 20px; object-fit: contain; }
+.note-stat-cell[data-kind="hold"] img { width: 18px; height: 26px; object-fit: fill; }
+.note-stat-cell[data-kind="slide"] img { width: 24px; height: 24px; }
+.note-stat-icon .icon { color: var(--text-secondary); transform: translateY(-1px); }
 .note-stat-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .note-stat-name { color: var(--text-secondary); font-size: var(--secondary-font-size, 12px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .note-stat-value { white-space: nowrap; font-variant-numeric: tabular-nums; font-size: var(--secondary-font-size, 12px); }

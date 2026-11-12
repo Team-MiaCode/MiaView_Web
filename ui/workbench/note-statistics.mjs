@@ -7,7 +7,7 @@ export class NoteStatistics {
     this.root = h("div", { className: "note-statistics", "aria-label": "音符统计" });
     this.cells = new Map();
     for (const kind of ["tap", "hold", "slide", "touch", "break", "total"]) {
-      const image = kind === "total" ? icon("chart", 20) : h("img", { alt: "", width: 24, height: 24 });
+      const image = kind === "total" ? icon("chart", 26) : h("img", { alt: "" });
       const name = h("span", { className: "note-stat-name" });
       const value = h("span", { className: "note-stat-value" });
       const cell = h("div", { className: "note-stat-cell", dataset: { kind } }, h("span", { className: "note-stat-icon" }, image),

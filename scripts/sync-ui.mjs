@@ -62,11 +62,6 @@ export function syncUi(source = resolve(root, "vendor/MiaCode")) {
     return { id, labelKey: item.label_key || "", labelFallback: item.label_en || id, shortcutText: item.default || "", defaultText: item.default || "", isDefault: true };
   });
   writeFileSync(join(output, "shortcut-definitions.mjs"), `export const shortcutDefinitions = Object.freeze(${JSON.stringify(shortcutDefinitions, null, 2)});\n`);
-  for (const skin of ["SD", "DX"]) {
-    const target = join(output, "notes", skin);
-    mkdirSync(target, { recursive: true });
-    for (const kind of ["tap", "hold", "slide", "touch", "tap_break"]) copyFileSync(join(source, "assets/skin", `skin${skin}`, `${kind}.png`), join(target, `${kind}.png`));
-  }
   console.log(`Synchronized ${Object.keys(data.themes).length} themes and ${Object.keys(data.metrics).length} UI metrics`);
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) syncUi(process.env.MIACODE_UI_SOURCE_DIR);
