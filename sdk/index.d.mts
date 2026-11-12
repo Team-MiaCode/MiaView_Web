@@ -423,7 +423,7 @@ export interface PreviewOptions {
   /** Initialization/load logs and playback-only performance reports sent to the renderer backend. Default true. */
   diagnostics?: boolean;
   resolution?: Resolution;
-  /** Integer >= 30, or "unlimited" to follow browser refresh cadence. Default 60. */
+  /** Integer >= 30, or "unlimited" to follow browser refresh cadence. Default "unlimited". */
   maxFps?: MaxFps;
   /** PV download, integrity verification and first frame preparation deadline. Integer ms >= 10000, or "unlimited". Default 30000. */
   pvTimeoutMs?: PvTimeout;
@@ -529,4 +529,4 @@ export function createPreview(
 export function previewResolution(value?: Resolution): Resolution;
 export const DEFAULT_RESOLUTION: Resolution;
 export function previewMaxFps(value?: MaxFps): MaxFps;
-export const DEFAULT_MAX_FPS: number;
+export const DEFAULT_MAX_FPS: "unlimited";

@@ -1,4 +1,4 @@
-export const DEFAULT_MAX_FPS = 60;
+export const DEFAULT_MAX_FPS = "unlimited";
 
 export function previewMaxFps(value = DEFAULT_MAX_FPS) {
   if (value === "unlimited") return value;

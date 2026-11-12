@@ -263,14 +263,13 @@ test("Font, metadata and intro resources resolve against the embedding page",asy
   assert.equal(messages.find(message=>message.type==="setIntroAudition").payload.introBackground.url,"https://host.example/demo/intro.png");
   await assert.rejects(preview.startExport({introBackground:"file:///private/image.png"}),/HTTP/);preview.destroy();
 });
-test("maximum FPS is validated before mounting and unlimited reaches the renderer", async () => {
+test("maximum FPS is validated before mounting and defaults to unlimited", async () => {
   const { container } = dom();
   for (const maxFps of [29, null, Infinity, 60.5, "60"])
     assert.throws(() => createPreview(container, { maxFps }), /帧率/);
   assert.equal(container.children.length, 0);
   const preview = createPreview(container, {
     rendererUrl: "https://renderer.example/index.html",
-    maxFps: "unlimited",
   });
   await preview.ready;
   assert.equal(

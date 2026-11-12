@@ -9,8 +9,8 @@ import {
 
 test("maximum FPS accepts >=30 integers and unlimited; URL input is strict", () => {
   assert.equal(sdkMaxFps, previewMaxFps);
-  assert.equal(previewMaxFps(), 60);
-  assert.equal(maxFpsFromSearch("?width=720&height=720"), 60);
+  assert.equal(previewMaxFps(), "unlimited");
+  assert.equal(maxFpsFromSearch("?width=720&height=720"), "unlimited");
   for (const value of [30, 45, 60, 120, 144, 240, 1000, "unlimited"]) {
     assert.equal(previewMaxFps(value), value);
     assert.equal(maxFpsFromSearch(`?maxFps=${value}`), value);

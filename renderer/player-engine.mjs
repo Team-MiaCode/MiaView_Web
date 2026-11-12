@@ -10,7 +10,7 @@ import {
 import { pvTimeoutFromSearch } from "./pv-timeout.mjs";
 import { httpUrl } from "./protocol.mjs";
 import { DEFAULT_RESOLUTION, resolutionFromSearch, canvasResolution } from "./resolution.mjs";
-import { PreviewFrameLimiter, maxFpsFromSearch } from "./frame-rate.mjs";
+import { DEFAULT_MAX_FPS, PreviewFrameLimiter, maxFpsFromSearch } from "./frame-rate.mjs";
 import { PreviewDiagnostics } from "./diagnostics.mjs";
 import { PerformanceTransport } from "./performance-transport.mjs";
 import { DEFAULT_PLAYBACK, playbackSettings } from "./playback.mjs";
@@ -180,7 +180,7 @@ export function createPlayerEngine(view) {
     difficultyId: chart?.difficultyId ?? null,
     noteCount: chart?.noteCount ?? 0,
     resolution: { width: WIDTH, height: HEIGHT },
-    maxFps: frameLimiter?.maxFps ?? 60,
+    maxFps: frameLimiter?.maxFps ?? DEFAULT_MAX_FPS,
     pvTimeoutMs,
     hasVideo: Boolean(video.src),
     videoPipeline: video.src ? videoPresentation.decoder ? "software-canvas" : "browser-canvas" : "none",
