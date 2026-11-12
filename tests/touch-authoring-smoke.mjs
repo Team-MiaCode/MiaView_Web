@@ -91,8 +91,8 @@ try {
     await seed("(120){4}C,E", 9); await clickPad("A1", "left", true);
     await expectText("(120){4}C`A1,E");
     const simultaneous = await text();
-    await seed("(120){4}C,E", 9); await clickPad("C", "right");
-    await expectText("(120){4}C,C,E");
+    await seed("(120){4}A1,E", 8); await clickPad("C", "right");
+    await expectText("(120){4}C,A1,E");
     records.push({ viewport, simultaneous, rightButton: await text() });
   }
   await command("preview.toggleFreeAspect");

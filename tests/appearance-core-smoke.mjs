@@ -48,8 +48,11 @@ try {
   result.otherSkin = await upload("skin.import", otherFolder); result.otherOutline = await upload("preview.importJudgeLine", otherOutline);
   await command("preview.values", { skinDirectoryName: result.skin.skinDirectoryName, customOutlineFileName: result.outline.customOutlineFileName });
   await command("page.preview-settings"); await page.locator('.settings-tabs [data-page="skin"]').click();
-  const choices = await page.locator('.settings-tab-content select').evaluateAll(nodes => nodes.slice(0, 3).map(node => ({ selected: node.selectedOptions[0]?.textContent, count: node.options.length })));
-  assert.equal(choices[0].selected, "Green"); assert.equal(choices[0].count, 4); assert.equal(choices[2].selected, "Purple.png"); assert.equal(choices[2].count, 6);
+  const skin = page.getByRole("combobox", { name: "皮肤", exact: true });
+  const judgeLine = page.getByRole("combobox", { name: "判定线", exact: true });
+  const choice = control => control.evaluate(node => ({ selected: node.selectedOptions[0]?.textContent, count: node.options.length }));
+  assert.deepEqual(await choice(skin), { selected: "Green", count: 4 });
+  assert.deepEqual(await choice(judgeLine), { selected: "Purple.png", count: 6 });
   const invalid = await page.evaluate(async path => {
     const editor = document.getElementById("workbench").editor, good = await (await fetch(path)).blob();
     try { await editor.preview.importSkin([{ path: "tap.png", image: good }, { path: "hold.png", image: new Blob(["invalid PNG"]) }]); }
@@ -59,8 +62,8 @@ try {
   await page.reload(); await page.waitForFunction(() => document.getElementById("workbench")?.editor); await ready();
   const restored = await settings(); assert.equal(restored.skinDirectoryName, result.skin.skinDirectoryName); assert.equal(restored.customOutlineFileName, result.outline.customOutlineFileName);
   await command("page.preview-settings"); await page.locator('.settings-tabs [data-page="skin"]').click();
-  await page.locator('.settings-tab-content select').nth(0).selectOption({ label: "Blue" });
-  await page.locator('.settings-tab-content select').nth(2).selectOption({ label: "Orange.png" });
+  await skin.selectOption({ label: "Blue" });
+  await judgeLine.selectOption({ label: "Orange.png" });
   await waitForAsync(page, async names => {
     const settings = (await document.getElementById("workbench").editor.preview.getState()).settings;
     return settings.skinDirectoryName === names[0] && settings.customOutlineFileName === names[1];
