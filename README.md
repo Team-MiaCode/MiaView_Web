@@ -30,7 +30,7 @@ python examples/sdk-preview/serve.py
 | `ui/` | 播放器界面、主题、字体和图标 |
 | `services/` | 预览所需的共享资源服务 |
 
-正式部署使用 HTTPS，本地使用 localhost。静态服务应为 `.mjs` 返回 JavaScript MIME 类型，为 `.wasm` 返回 `application/wasm`。浏览器需要 WebAssembly、WebGL 2 和 WebAudio，播放音频通常由用户点击触发。
+支持 HTTP、HTTPS、localhost 和局域网地址。静态服务应为 `.mjs` 返回 JavaScript MIME 类型，为 `.wasm` 返回 `application/wasm`。浏览器需要 WebAssembly、WebGL 2 和 WebAudio，播放音频通常由用户点击触发。跨域、混合内容与媒体编码权限遵循浏览器策略。
 
 宿主和播放器推荐同源部署。跨域接入时，模块服务器需允许宿主来源读取，播放器页面需允许宿主嵌入，媒体服务器需允许播放器来源读取。需要登录态的素材由宿主获取后传 Blob，或使用签名 URL。纯静态接入使用 `diagnostics: false`。重新挂载或卸载时调用 `destroy()`。
 

@@ -15,7 +15,7 @@
 
 发布流程使用 [`sdk-source.json`](../sdk-source.json) 记录的提交构建 SDK。构建产物过期时，可按同一源码提交重建，详见[构建说明](../README.md#开发与构建)。
 
-部署时保留目录内的文件和相对路径，四个目录按同一版本一起更新。`.mjs` 使用 JavaScript MIME 类型，`.wasm` 使用 `application/wasm`。确认 `/miaview/sdk/index.mjs`、`/miaview/renderer/index.html` 和 `/miaview/renderer/build-identity.json` 可访问。示例采用网站同源 HTTPS 和 `diagnostics: false`，这组配置只需静态文件。
+部署时保留目录内的文件和相对路径，四个目录按同一版本一起更新。`.mjs` 使用 JavaScript MIME 类型，`.wasm` 使用 `application/wasm`。确认 `/miaview/sdk/index.mjs`、`/miaview/renderer/index.html` 和 `/miaview/renderer/build-identity.json` 可访问。支持 HTTP、HTTPS、localhost 和局域网地址；示例使用 `diagnostics: false`，这组配置只需静态文件。跨域资源读取、混合内容和媒体编码能力遵循浏览器策略。
 
 ## 替换现有播放器
 
