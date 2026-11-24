@@ -1,8 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { sha256Digest } from "../renderer/browser-crypto.mjs";
 import { PreviewMediaCache, loadPreviewRuntime } from "../renderer/runtime.mjs";
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
+test("HTTP SHA-256 matches native hashing across padding boundaries and typed-array offsets", async () => {
+  for (const length of [0, 1, 55, 56, 63, 64, 65, 119, 120, 127, 128, 1000000]) {
+    const data = Uint8Array.from({ length: length + 8 }, (_, index) => index % 251);
+    const bytes = data.subarray(4, length + 4);
+    const digest = Buffer.from(await sha256Digest(bytes, {})).toString("hex");
+    assert.equal(digest, hash(bytes), `SHA-256 input length ${length}`);
+    assert.equal(Buffer.from(await sha256Digest(bytes.buffer, {})).toString("hex"), hash(data));
+  }
+});
 const deferred = () => {
   let resolve;
   const promise = new Promise((done) => {

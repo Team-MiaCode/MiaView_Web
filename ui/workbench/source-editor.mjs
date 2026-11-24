@@ -1,3 +1,4 @@
+import { randomUuid } from "../../renderer/browser-crypto.mjs";
 import { element } from "../components/dom.mjs";
 import { FindReplaceBar } from "./find-replace.mjs";
 import { CompletionPopup } from "./completion-popup.mjs";
@@ -15,9 +16,9 @@ export class SourceEditor {
     this.root = element("div", { className: "source-editor" });
     this.gutter = element("pre", { className: "line-numbers", "aria-hidden": "true" });
     this.paint = element("pre", { className: "source-paint", "aria-hidden": "true" });
-    this.followHighlight = `miacode-follow-${crypto.randomUUID()}`;
+    this.followHighlight = `miacode-follow-${randomUuid()}`;
     this.syntaxHighlights = new Map(["keyword", "comment", "duration"].map(kind => {
-      const name = `miacode-${kind}-${crypto.randomUUID()}`, highlight = new Highlight();
+      const name = `miacode-${kind}-${randomUuid()}`, highlight = new Highlight();
       CSS.highlights.set(name, highlight);
       return [kind, { name, highlight }];
     }));
@@ -27,7 +28,7 @@ export class SourceEditor {
       className: "source-input", "aria-label": "Simai 谱面正文", spellcheck: false,
       autocapitalize: "off", autocomplete: "off", autocorrect: "off", wrap: "off",
     });
-    this.input.id = `source-${crypto.randomUUID()}`;
+    this.input.id = `source-${randomUuid()}`;
     this.ruler = element("div", { className: "source-overview-ruler", role: "scrollbar", tabindex: 0,
       "aria-label": "概览标尺", "aria-controls": this.input.id, "aria-orientation": "vertical", "aria-valuemin": "0" });
     this.rulerMarks = element("div", { className: "source-overview-marks", "aria-hidden": "true" });

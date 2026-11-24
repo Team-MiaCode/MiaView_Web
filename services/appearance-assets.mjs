@@ -1,5 +1,7 @@
+import { randomUuid } from "../renderer/browser-crypto.mjs";
+
 export function leaseAppearanceAssets(preview) {
-  const owner = crypto.randomUUID();
+  const owner = randomUuid();
   return {
     importFont: (file, name) => preview.importFont(file, name, owner),
     importSkin: files => preview.importSkin(files, owner),

@@ -1,9 +1,10 @@
 import { previewPvTimeout, scheduleTimeout } from "./pv-timeout.mjs";
+import { sha256Digest } from "./browser-crypto.mjs";
 export const PLAYER_SOURCE = "MiaCodeWebGL";
 export const PROTOCOL_VERSION = 1;
 
 const sha256 = async (bytes) =>
-  [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))]
+  [...new Uint8Array(await sha256Digest(bytes))]
     .map((n) => n.toString(16).padStart(2, "0"))
     .join("");
 
@@ -145,7 +146,7 @@ export async function loadPreviewRuntime(
     };
   };
   const identityHash = [
-    ...new Uint8Array(await crypto.subtle.digest("SHA-256", identityBytes)),
+    ...new Uint8Array(await sha256Digest(identityBytes)),
   ]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");

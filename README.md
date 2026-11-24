@@ -27,7 +27,7 @@ MiaView Web 是面向 maimai 的 Simai 谱面编辑器。工作台包含谱面�
 | `miaview-preview-standalone` | 独立运行或嵌入播放器，包含预览 SDK |
 | `miaview-preview` | 获取与源码提交对应的 `renderer/`，用于本地开发，也包含工作台和配套 SDK 目录 |
 
-静态部署时保留解压后的目录结构。使用 HTTPS 或通过 localhost 调试，静态服务器为 `.mjs` 返回 JavaScript MIME 类型，为 `.wasm` 返回 `application/wasm`。浏览器需支持 WebAssembly、WebGL 2 和 WebAudio。GitHub Pages 的 [部署记录](https://team-miacode.github.io/MiaView_Web/deployment.json) 提供各入口对应的提交号。
+静态部署时保留解压后的目录结构。支持 HTTP、HTTPS、localhost 和局域网地址，静态服务器为 `.mjs` 返回 JavaScript MIME 类型，为 `.wasm` 返回 `application/wasm`。浏览器需支持 WebAssembly、WebGL 2 和 WebAudio。文件系统授权、剪贴板和视频编码能力遵循浏览器的安全上下文要求。GitHub Pages 的 [部署记录](https://team-miacode.github.io/MiaView_Web/deployment.json) 提供各入口对应的提交号。
 
 ## SDK 接入
 

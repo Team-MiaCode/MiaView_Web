@@ -1,3 +1,4 @@
+import { randomUuid } from "./renderer/browser-crypto.mjs";
 import { createPreview } from "./sdk/index.mjs";
 import { ViewState } from "./services/view-state.mjs";
 import { Workbench } from "./ui/workbench/workbench.mjs";
@@ -488,7 +489,7 @@ export function createWorkbench(container, options = {}) {
       catch (error) { previewError = error.message; }
       if (sequence !== loadSequence) return info;
     }
-    const nextProject = savedProject || { id: crypto.randomUUID(), filePath, savedSourceText: snapshot.sourceText,
+    const nextProject = savedProject || { id: randomUuid(), filePath, savedSourceText: snapshot.sourceText,
       input: { audio: input.audio, cover: input.cover, video: input.video }, files: [...folderFiles].filter(([path]) => path !== filePath) };
     nextProject.savedSourceText = snapshot.sourceText;
     nextProject.diskSourceText ??= typeof input.maidata === "string" ? input.maidata
@@ -1129,7 +1130,7 @@ export function createWorkbench(container, options = {}) {
       if (!selected) return;
       if (!await confirmDocumentChange()) return;
       workbench.status(`载入文件夹：${selected.label} · ${files.length} 个文件`);
-      const savedProject = { id: crypto.randomUUID(), filePath: selected.path,
+      const savedProject = { id: randomUuid(), filePath: selected.path,
         binding: { filePath: selected.path, fileHandle: folder.handles.get(selected.path), directoryHandle: folder.directoryHandle },
         input: { audio: selected.chart.audio, cover: selected.chart.cover, video: selected.chart.video },
         files: [...selected.files].filter(([path]) => path !== selected.path) };

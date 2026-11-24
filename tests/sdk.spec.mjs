@@ -146,6 +146,25 @@ test("cover playback observes a stalled renderer and releases the host timer on 
     pulse(true); preview.destroy(); t.mock.timers.tick(1000); await settle(); assert.equal(observations(), 1);
   } finally { preview.destroy(); }
 });
+test("HTTP hosts initialize and control the SDK using cryptographic random values", async () => {
+  const { container, messages } = dom();
+  const window = container.ownerDocument.defaultView;
+  window.crypto = { getRandomValues: bytes => globalThis.crypto.getRandomValues(bytes) };
+  window.location.origin = "http://host.example";
+  container.ownerDocument.baseURI = "http://host.example/demo/";
+  const preview = createPreview(container, { rendererUrl: "http://renderer.example/index.html" });
+  try {
+    await preview.ready;
+    await preview.play();
+    await preview.pause();
+    assert.equal(new URL(preview.iframe.src).searchParams.get("hostOrigin"), "http://host.example");
+    assert.match(preview.sessionId, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    const requests = new Set(messages.map(message => message.requestId));
+    assert.equal(requests.size, messages.length);
+    assert.ok(messages.every(message => message.origin === "http://renderer.example"));
+  } finally { preview.destroy(); }
+});
+
 test("SDK mounts without touching host content, serializes commands and releases its iframe", async () => {
   const { container, messages, listeners } = dom();
   const unrelated = {};

@@ -1,3 +1,4 @@
+import { randomUuid, sha256Digest } from "./browser-crypto.mjs";
 import {
   PreviewAudio,
   PreviewMediaCache,
@@ -1213,7 +1214,7 @@ export function createPlayerEngine(view) {
     if (introSoundResource === settings.introSound) return;
     const resource = settings.introSound;
     const data = resource ? await bytes(resource, signal) : await (await fetch("./sfx/track_start.wav", { signal })).arrayBuffer();
-    const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", data))].join(",");
+    const hash = [...new Uint8Array(await sha256Digest(data))].join(",");
     if (hash === introSoundHash) { introSoundResource = resource; return; }
     const decoded = await audio.context.decodeAudioData(data.slice(0));
     exportSoundBytes.set("track_start.wav", data);
@@ -1418,7 +1419,7 @@ export function createPlayerEngine(view) {
     if(!chart)throw new Error("请打开含谱面的项目");
     if(exportJob?.running)throw new Error("视频导出任务运行中");
     exportSettings(input);
-    const job={jobId:crypto.randomUUID(),running:true,stage:"preparing",progress:0,controller:new AbortController()};
+    const job={jobId:randomUuid(),running:true,stage:"preparing",progress:0,controller:new AbortController()};
     exportJob=job;
     const {signal}=job.controller;
     const saved={width:WIDTH,height:HEIGHT,second:audio.currentSecond(),playing:audio.playing,videoSecond:video.currentTime,
@@ -1594,11 +1595,11 @@ export function createPlayerEngine(view) {
       const prepared = [];
       for (const file of files) {
         const data = new Uint8Array(await bytes(file.image));
-        const hash = hex(await crypto.subtle.digest("SHA-256", data));
+        const hash = hex(await sha256Digest(data));
         prepared.push({ path: file.path, data, hash });
       }
       const key = new TextEncoder().encode(JSON.stringify(prepared.map(({ path, hash }) => [path, hash])));
-      const skinDirectoryName = `skin-${hex(await crypto.subtle.digest("SHA-256", key))}`;
+      const skinDirectoryName = `skin-${hex(await sha256Digest(key))}`;
       const operation = name => exportCall("miacode_appearance_skin", ["string", "string"], [name, skinDirectoryName]);
       if (!operation("begin").ready) {
         try {

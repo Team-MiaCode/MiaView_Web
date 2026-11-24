@@ -1,3 +1,4 @@
+import { randomUuid } from "../../renderer/browser-crypto.mjs";
 import { PreviewFrameLimiter } from "../../renderer/frame-rate.mjs";
 import { frameRateForMode } from "../../renderer/performance-settings.mjs";
 import { timelinePlayheadX, timelineCenteredScroll, timelineSecondAtX } from "./timeline-playback.mjs";
@@ -20,7 +21,7 @@ export class TimelineView {
     this.followProgressEnabled = true;
     this.abort = new AbortController();
     this.root.ownerDocument.addEventListener("visibilitychange", () => this.animate(), { signal: this.abort.signal });
-    this.clipId = `timeline-${crypto.randomUUID()}`;
+    this.clipId = `timeline-${randomUuid()}`;
     this.resize = new ResizeObserver(() => {
       const bounds = this.root.getBoundingClientRect();
       this.visible = bounds.width > 0 && bounds.height > 0;

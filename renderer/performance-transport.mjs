@@ -1,3 +1,5 @@
+import { randomUuid } from "./browser-crypto.mjs";
+
 // Logs go to the renderer's own backend, even when its iframe is cross-origin.
 // Failures are surfaced to the Dev panel, never printed in browser consoles.
 export class PerformanceTransport {
@@ -9,7 +11,7 @@ export class PerformanceTransport {
     this.url = url;
     this.fetcher = fetcher;
     this.publish = publish;
-    this.sessionId = crypto.randomUUID();
+    this.sessionId = randomUuid();
     this.pending = 0;
     this.queue = Promise.resolve();
     this.retryAfter = 0;

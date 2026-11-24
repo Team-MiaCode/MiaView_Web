@@ -2,6 +2,7 @@ import { previewResolution, canvasResolution } from "./resolution.mjs";
 import { TRANSPORT_HEIGHT } from "./layout.mjs";
 import { previewPvTimeout, scheduleTimeout } from "../renderer/pv-timeout.mjs";
 import { previewMaxFps } from "./frame-rate.mjs";
+import { randomUuid } from "../renderer/browser-crypto.mjs";
 import { performanceSettings } from "../renderer/performance-settings.mjs";
 import {
   SDK_PROTOCOL,
@@ -33,8 +34,7 @@ class MiaCodePreview {
       throw new Error("A DOM container is required");
     const document = container.ownerDocument;
     this.window = document.defaultView;
-    if (!this.window || !this.window.crypto?.randomUUID)
-      throw new Error("MiaView Web requires HTTPS or localhost");
+    if (!this.window) throw new Error("MiaView Web requires a browser window");
     const resolution = previewResolution(options.resolution);
     const maxFps = previewMaxFps(options.maxFps);
     const theme = previewTheme(options.theme);
@@ -87,7 +87,7 @@ class MiaCodePreview {
     if (!["renderer", "opener"].includes(audioContextOwner)) throw new Error("Invalid audio context owner");
     this.url.searchParams.set("audioContextOwner", audioContextOwner);
     this.origin = this.url.origin;
-    this.sessionId = this.window.crypto.randomUUID();
+    this.sessionId = randomUuid(this.window.crypto);
     this.pending = new Map();
     this.listeners = new Map();
     this.destroyed = false;
@@ -239,7 +239,7 @@ class MiaCodePreview {
   request(type, payload = {}) {
     if (this.destroyed)
       return Promise.reject(new Error("Preview has been destroyed"));
-    const requestId = this.window.crypto.randomUUID();
+    const requestId = randomUuid(this.window.crypto);
     return new Promise((resolve, reject) => {
       const loading = type === "load" || type === "setCoverChart" || type === "selectDifficulty" || type === "setResources";
       const waitMs = loading ? (this.pvTimeoutMs === "unlimited" ? "unlimited" : Math.min(Number.MAX_SAFE_INTEGER, this.timeout + this.pvTimeoutMs)) : this.timeout;
