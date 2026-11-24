@@ -10,8 +10,12 @@ on:
         type: string
         default: ''
       editor_run_id:
-        description: Successful editor deployment supplying the Main and editor Pages
+        description: Editor run supplying the reviewed Main and editor Pages
         type: string
+      allow_firefox_crash:
+        description: Authorize publication with a recorded Firefox software decoder crash
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -366,17 +370,41 @@ jobs:
         uses: actions/github-script@v7
         env:
           EDITOR_RUN_ID: ${{ inputs.editor_run_id }}
+          ALLOW_FIREFOX_CRASH: ${{ inputs.allow_firefox_crash }}
         with:
           script: |
             const run_id = Number(process.env.EDITOR_RUN_ID);
             if (!Number.isSafeInteger(run_id) || run_id <= 0) throw new Error('Invalid editor run ID');
             const { data: run } = await github.rest.actions.getWorkflowRun({ ...context.repo, run_id });
             if (run.path !== '.github/workflows/web.yml' || run.head_branch !== 'feature/web-editor-migration' ||
-                !['push', 'workflow_dispatch'].includes(run.event) || run.conclusion !== 'success' ||
+                !['push', 'workflow_dispatch'].includes(run.event) || run.status !== 'completed' ||
                 run.head_repository?.full_name !== context.payload.repository.full_name)
-              throw new Error('Expected a successful Web preview run from feature/web-editor-migration');
+              throw new Error('Expected a completed Web preview run from feature/web-editor-migration');
+            if (run.conclusion !== 'success') {
+              if (process.env.ALLOW_FIREFOX_CRASH !== 'true' || run.conclusion !== 'failure')
+                throw new Error('Editor validation must succeed before publication');
+              const { data: { jobs } } = await github.rest.actions.listJobsForWorkflowRun({
+                ...context.repo, run_id, filter: 'latest', per_page: 100,
+              });
+              for (const name of ['source-checks', 'build-preview', 'prepare-pages', 'ui-acceptance', 'functional-acceptance (chromium)'])
+                if (!jobs.some(job => job.name === name && job.conclusion === 'success'))
+                  throw new Error('Required editor validation: ' + name);
+              const failures = jobs.filter(job => job.conclusion === 'failure');
+              if (failures.length !== 1 || failures[0].name !== 'functional-acceptance (firefox)')
+                throw new Error('Manual publication requires an isolated Firefox acceptance crash');
+              const { data } = await github.request('GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs', {
+                ...context.repo, job_id: failures[0].id,
+              });
+              const logs = Buffer.from(data).toString('utf8');
+              for (const signature of ['AssertionError [ERR_ASSERTION]: intro-audition-core-software:', 'Target crashed', 'exited on signal 11'])
+                if (!logs.includes(signature)) throw new Error('Expected Firefox software decoder crash: ' + signature);
+              await core.summary.addHeading('Authorized manual editor publication')
+                .addLink('Source validation and Firefox crash record', run.html_url)
+                .addRaw('\n\nSource, build, Chromium and UI acceptance passed. Firefox software decoding terminated with signal 11.\n')
+                .write();
+            }
             core.setOutput('editor_sha', run.head_sha);
-      - name: Confirm the editor sources match the validated deployment
+      - name: Confirm the editor sources match the reviewed artifact
         env:
           EDITOR_SHA: ${{ steps.source.outputs.editor_sha }}
         run: git diff --exit-code "$EDITOR_SHA" HEAD -- . ':(exclude).github/workflows/web.yml' ':(exclude)scripts/compose-pages.mjs'
