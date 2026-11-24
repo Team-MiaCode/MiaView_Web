@@ -1,5 +1,6 @@
 import { relocatePath } from "./chart-resources.mjs";
 import { projectArchive } from "./zip-store.mjs";
+import { sanitizedZipStem } from "./chart-zip.mjs";
 
 export class BrowserFiles {
   constructor({ readDirectory, pickDirectory = browserPicker("showDirectoryPicker"), pickSaveFile = browserPicker("showSaveFilePicker"), pickOpenFile = browserPicker("showOpenFilePicker"), assets, download = downloadText } = {}) {
@@ -157,6 +158,18 @@ export class BrowserFiles {
     files.set(project.filePath, new File([sourceText], "maidata.txt", { type: "text/plain;charset=utf-8" }));
     const archive = await projectArchive(files);
     await this.download(archive, `${project.resourceRoot || "MiaCode"}.zip`);
+  }
+  async chartZipTarget(title, binding) {
+    const filePath = `${sanitizedZipStem(title)}.zip`;
+    if (this.pickSaveFile) {
+      try {
+        const fileHandle = await this.pickSaveFile({ id: "miacode-chart-zip", suggestedName: filePath,
+          ...(binding?.directoryHandle ? { startIn: binding.directoryHandle } : {}),
+          types: [{ description: "ZIP", accept: { "application/zip": [".zip"] } }] });
+        return { fileHandle, filePath };
+      } catch (error) { if (error.name === "AbortError") return null; if (error.name !== "SecurityError") throw error; }
+    }
+    return { filePath, download: true };
   }
   async write(target, text) {
     if (target.download) { await this.download(text, target.filePath.split(/[\\/]/).at(-1)); return target; }

@@ -114,7 +114,7 @@ body { font: var(--ui-font-size, 13px)/1.45 var(--ui-font-family); color: var(--
 .source-paint::after, .line-numbers::after { content: ""; display: block; height: var(--source-offset-end, 0px); }
 .source-paint::after { width: var(--source-content-width, 0px); }
 .source-input { background: transparent; color: transparent; caret-color: var(--text-editor); resize: none; outline: none !important; -webkit-text-fill-color: transparent; }
-.source-input::selection { background: var(--state-selection-highlight); }
+.source-input::selection { background: transparent; }
 .source-code-line.current-line { background: var(--state-focus-line); }
 .source-editor.wrap .source-paint, .source-editor.wrap .source-input { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all; }
 .preview-host { width: var(--preview-width); min-width: 0; min-height: 0; display: grid; grid-template-rows: 34px minmax(64px, 1fr) auto auto; overflow: auto; background: var(--background-panel); }

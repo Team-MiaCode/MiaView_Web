@@ -285,6 +285,7 @@ export class Workbench extends EventTarget {
         const node = this.pageKey.startsWith("difficulty:") ? this.difficultyEditor : createPage(this.pageKey || "welcome", { viewState: state, documentSession: this.documentSession, command: (id, args) => this.command(id, args), nativeCover: this.nativeCover });
         // Keep the cover iframe connected so tab changes share its WASM heap.
         this.content.insertBefore(node, this.coverPage || null);
+        if (node === this.difficultyEditor) this.sourceEditor.restoreHighlights();
       }
     }
     for (const node of this.bottomTabs.children) {
@@ -315,7 +316,8 @@ export class Workbench extends EventTarget {
       if (focusSelector) this.sidebar.querySelector(focusSelector)?.focus({ preventScroll: true });
       return;
     } else if (state.activeSidebarView === "export") {
-      body.append(section("导出", button("视频导出", () => state.openEditor("export"), { symbol: "video", className: "nav-row" }), button("封面编辑", () => state.openEditor("cover"), { symbol: "image", className: "nav-row" })));
+      body.append(section("导出", button("视频导出", () => state.openEditor("export"), { symbol: "video", className: "nav-row" }), button("封面编辑", () => state.openEditor("cover"), { symbol: "image", className: "nav-row" }),
+        button(translate("export_page.pack_as_zip", state.preferences.languageToken || "zh"), () => this.command("export.packAsZip"), { symbol: "folder-zip", className: "nav-row", disabled: !this.documentSession.hasDocument })));
     }
     this.sidebar.replaceChildren(h("h2", { className: "panel-heading" }, state.activeSidebarView === "chart" ? "谱面" : state.activeSidebarView === "export" ? "导出" : "工具"), body);
   }

@@ -9,11 +9,17 @@ export class PreviewTransport {
     this.loaded = false;
     const t = key => translate(key, viewState.preferences.languageToken || "zh");
     this.seek = h("input", { type: "range", min: 0, max: 0, step: .001, value: 0, "aria-label": "播放位置" });
+    this.rangeMarkers = h("div", { className: "preview-range-markers", "aria-hidden": "true", hidden: true },
+      h("span", { className: "preview-range-start" }), h("span", { className: "preview-range-end" }));
+    this.progress = h("div", { className: "preview-progress" }, this.seek, this.rangeMarkers);
     let scrubbing = false;
     this.seek.addEventListener("pointerdown", () => { scrubbing = true; command("preview.pause"); });
     this.seek.addEventListener("input", () => {
-      this.paintTime(Number(this.seek.value), this.state.duration);
-      command("preview.seek", { second: Number(this.seek.value) });
+      const second = this.boundedSecond(Number(this.seek.value));
+      this.seek.value = second;
+      this.paintProgress(second);
+      this.paintTime(second, this.state.duration);
+      command("preview.seek", { second });
     });
     this.seek.addEventListener("change", () => { scrubbing = false; });
     this.seek.addEventListener("pointercancel", () => { scrubbing = false; });
@@ -39,7 +45,7 @@ export class PreviewTransport {
       this.documentControls.push(...transportActions);
     }
     this.row = h("div", { className: "preview-control-row" }, this.stop, this.play, this.time, this.range, this.rate, ...transportActions);
-    this.root = h("div", { className: "preview-transport", "aria-label": "播放控制", role: "group" }, this.seek, this.row);
+    this.root = h("div", { className: "preview-transport", "aria-label": "播放控制", role: "group" }, this.progress, this.row);
     this.update(this.state);
   }
   setDocument(doc) {
@@ -47,7 +53,12 @@ export class PreviewTransport {
     for (const node of this.documentControls) node.disabled = !this.loaded;
     this.setExportMode(this.viewState.activeEditorKey === "export");
   }
-  setExportMode(enabled) { this.range.hidden = !this.loaded || !enabled; }
+  setExportMode(enabled) {
+    this.exportMode = enabled;
+    this.range.hidden = !this.loaded || !enabled;
+    this.rangeMarkers.hidden = !this.loaded || !enabled;
+    this.paintProgress(Number(this.seek.value));
+  }
   setDetached(detached) {
     this.trailingAction.setAttribute("aria-pressed", String(detached));
     const text = detached ? "嵌回预览" : translate("preview.window.detach", this.viewState.preferences.languageToken || "zh");
@@ -59,6 +70,27 @@ export class PreviewTransport {
     if (this.positionText.textContent !== positionText) this.positionText.textContent = positionText;
     if (this.durationText.textContent !== durationText) this.durationText.textContent = durationText;
   }
+  boundedSecond(second) {
+    if (!this.exportMode || !this.rangeEnabled) return second;
+    const start = this.state.exportStartSeconds <= .01 ? this.state.minimum ?? 0 : this.state.exportStartSeconds;
+    return Math.max(start, Math.min(this.state.exportEndSeconds, second));
+  }
+  paintProgress(second) {
+    const minimum = this.state.minimum ?? 0, duration = this.state.duration;
+    const fraction = value => duration > minimum ? Math.max(0, Math.min(1, (value - minimum) / (duration - minimum))) : 0;
+    const rangeStart = this.state.exportStartSeconds <= .01 ? minimum : this.state.exportStartSeconds ?? 0;
+    const rangeEnd = this.state.exportEndSeconds ?? duration;
+    this.seek.style.setProperty("--range-value", `${fraction(second) * 100}%`);
+    const position = value => `calc(6px + (100% - 12px) * ${fraction(value)})`;
+    this.progress.style.setProperty("--range-start", fraction(rangeStart));
+    this.progress.style.setProperty("--range-end", fraction(rangeEnd));
+    this.seek.style.setProperty("--range-highlight-start", rangeStart <= minimum ? "0%" : position(rangeStart));
+    this.seek.style.setProperty("--range-highlight-end", rangeEnd >= duration ? "100%" : position(rangeEnd));
+    const playedSecond = Math.max(rangeStart, Math.min(rangeEnd, second));
+    const playedPosition = playedSecond <= minimum ? "0%" : playedSecond >= duration ? "100%" : position(playedSecond);
+    this.seek.style.setProperty("--range-playhead", playedPosition);
+    this.seek.classList.toggle("range-playback", Boolean(this.loaded && this.exportMode && this.rangeEnabled));
+  }
   update(state) {
     Object.assign(this.state, state, state.playback);
     const duration = String(this.state.duration), currentTime = String(this.state.currentTime);
@@ -66,8 +98,6 @@ export class PreviewTransport {
     if (this.seek.min !== String(minimum)) this.seek.min = String(minimum);
     if (this.seek.max !== duration) this.seek.max = duration;
     if (!this.scrubbing() && this.seek.value !== currentTime) this.seek.value = currentTime;
-    const fraction = this.state.duration > minimum ? (this.state.currentTime - minimum) / (this.state.duration - minimum) : 0;
-    this.seek.style.setProperty("--range-value", `${fraction * 100}%`);
     this.paintTime(this.state.currentTime, this.state.duration);
     const text = translate(this.state.playing ? "preview.pause" : "preview.play", this.viewState.preferences.languageToken || "zh");
     if (this.play.getAttribute("aria-label") !== text) { this.play.setAttribute("aria-label", text); this.play.title = text; }
@@ -76,10 +106,7 @@ export class PreviewTransport {
     const rate = `${this.state.rate}x`;
     if (this.rate.firstChild.textContent !== rate) this.rate.firstChild.textContent = rate;
     this.rangeEnabled = this.state.rangePlaybackEnabled ?? false;
-    this.seek.classList.toggle("range-playback", this.rangeEnabled);
-    const rangeStart = this.state.exportStartSeconds <= .01 ? minimum : this.state.exportStartSeconds;
-    for (const [key, second] of [["start", rangeStart], ["end", this.state.exportEndSeconds]])
-      this.seek.style.setProperty(`--range-${key}`, `${this.state.duration > minimum ? Math.max(0, Math.min(1, (second - minimum) / (this.state.duration - minimum))) * 100 : 0}%`);
+    this.paintProgress(Number(this.seek.value));
     this.range.setAttribute("aria-pressed", String(this.rangeEnabled));
     const rangeIcon = this.rangeEnabled ? "range-play-active" : "range-play";
     if (this.range.firstChild?.dataset.icon !== rangeIcon) this.range.replaceChildren(icon(rangeIcon, 16));

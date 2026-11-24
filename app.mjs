@@ -28,6 +28,8 @@ import { timelineSecondAtX, timelineCenteredScroll, timelineZoomedScroll } from 
 import { TIMELINE_ZOOM_PRESETS } from "./ui/workbench/timeline-controls.mjs";
 import { exportPreferences } from "./services/export-preferences.mjs";
 import { coverPreferences } from "./services/cover-preferences.mjs";
+import { chartZipFiles } from "./services/chart-zip.mjs";
+import { projectArchive } from "./services/zip-store.mjs";
 
 const MURI_SETTINGS = ["previewMode", "handRadiusPx", "wifiNeedC", "staticTapOnSlideThresholdMs"];
 
@@ -110,6 +112,7 @@ export function createWorkbench(container, options = {}) {
   let coverOutputHandle, coverExportActive = false;
   let introPending=Promise.resolve(),introQueued=0;
   let exportPageActive = false, exportSyncSequence = 0;
+  let zipExportActive = false;
   workbench.documentSession.exportValues = { ...viewState.preferences.exportValues };
   function showFontSamples(settings = workbench.documentSession.previewSettings, values = viewState.preferences.previewValues) {
     const paths = [settings?.hudFontPaths?.[HUD_AREAS[values?.hudFontAreaIndex ?? 0]]];
@@ -651,6 +654,43 @@ export function createWorkbench(container, options = {}) {
       performanceCommands = operation.catch(() => {}); return operation;
     }
     if(id==="preview.detach")return preview.windowRouter.toggle();
+    if (id === "export.packAsZip") {
+      if (!workbench.documentSession.hasDocument || zipExportActive) return;
+      zipExportActive = true;
+      let dialog;
+      const controller = new AbortController();
+      const t = key => translate(key, viewState.preferences.languageToken || "zh");
+      try {
+        const owner = project;
+        const target = await fileService.chartZipTarget(workbench.documentSession.metadataTitle, owner.binding);
+        if (!target) return;
+        await mediaPending; await workbench.sourceEditor.pending; await editPending;
+        if (owner !== project) return;
+        const generation = workbench.documentSession.documentOpenGeneration;
+        const saved = await preview.getDocumentSaveText(0);
+        if (owner !== project || generation !== workbench.documentSession.documentOpenGeneration) return;
+        const progress = h("progress", { max: 1, value: 0, "aria-label": t("export.export_as_zip") });
+        const message = h("p", {}, t("export.preparing_package"));
+        dialog = openDialog(container, { title: t("export.export_as_zip"), height: 250,
+          body: h("div", {}, progress, message), actions: [{ label: t("action.cancel"), value: "cancel" }],
+          close: () => controller.abort() });
+        const files = await chartZipFiles(owner, saved.sourceText, workbench.documentSession.metadataVideoPath, controller.signal);
+        progress.max = files.size;
+        const archive = await projectArchive(files, { signal: controller.signal, onProgress: async (current, total, name) => {
+          progress.value = current - 1;
+          message.textContent = formatMessage(t("export.packaging_1_2_3"), current, total, name);
+          await new Promise(resolve => setTimeout(resolve, 0));
+        } });
+        await fileService.write(target, archive);
+        workbench.status(`${target.filePath} · ${files.size} 个文件`);
+      } catch (error) {
+        if (error.name === "AbortError") workbench.status(t("export.packaging_canceled"));
+        else throw error;
+      } finally {
+        dialog?.close(); zipExportActive = false;
+      }
+      return;
+    }
     if(id==="export.settings") {
       await navigationPending;
       Object.assign(workbench.documentSession.exportValues||={},args);

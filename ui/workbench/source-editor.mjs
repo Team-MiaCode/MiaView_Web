@@ -17,12 +17,17 @@ export class SourceEditor {
     this.gutter = element("pre", { className: "line-numbers", "aria-hidden": "true" });
     this.paint = element("pre", { className: "source-paint", "aria-hidden": "true" });
     this.followHighlight = `miacode-follow-${randomUuid()}`;
+    this.selectionHighlight = { name: `miacode-selection-${randomUuid()}`, highlight: new Highlight() };
+    // Selection supplies the background beneath syntax colors.
+    this.selectionHighlight.highlight.priority = -1;
+    CSS.highlights.set(this.selectionHighlight.name, this.selectionHighlight.highlight);
     this.syntaxHighlights = new Map(["keyword", "comment", "duration"].map(kind => {
       const name = `miacode-${kind}-${randomUuid()}`, highlight = new Highlight();
       CSS.highlights.set(name, highlight);
       return [kind, { name, highlight }];
     }));
     const followStyle = element("style", {}, `.source-paint::highlight(${this.followHighlight}) { background-color: color-mix(in srgb, var(--state-follow-highlight) 25%, transparent); }\n`
+      + `.source-paint::highlight(${this.selectionHighlight.name}) { background-color: var(--state-selection-highlight); }\n`
       + [...this.syntaxHighlights].map(([kind, { name }]) => `.source-paint::highlight(${name}) { color: var(--syntax-${kind}); }`).join("\n"));
     this.input = element("textarea", {
       className: "source-input", "aria-label": "Simai 谱面正文", spellcheck: false,
@@ -107,6 +112,7 @@ export class SourceEditor {
       if(event==="keyup")this.key=null;
       this.cursor();
     });
+    this.input.addEventListener("selectionchange", () => this.updateSelectionHighlight());
     this.resize = new ResizeObserver(entries => {
       if (entries.some(entry => entry.target === this.viewport
         || this.renderedLines?.some(record => record.node === entry.target && record.height !== entry.contentRect.height))) this.draw();
@@ -282,7 +288,17 @@ export class SourceEditor {
       - parseFloat(inputStyle.paddingLeft) - parseFloat(inputStyle.paddingRight))}px`);
     this.drawOverviewMarks();
     this.scroll();
+    this.updateSelectionHighlight(true);
     if (this.followState) this.setFollowState(this.followState, true);
+  }
+  restoreHighlights() {
+    // Removing the editor from the page collapses its live ranges.
+    for (const { highlight } of this.syntaxHighlights.values()) highlight.clear();
+    for (const record of this.visibleSyntax || []) record.ranges = [];
+    this.visibleSyntax = new Set();
+    this.selectionHighlight.highlight.clear();
+    this.selectionBounds = null;
+    this.draw();
   }
   scroll() {
     this.updateRenderedWindow();
@@ -341,6 +357,7 @@ export class SourceEditor {
     const prefix = this.input.value.slice(0, this.input.selectionStart);
     const lines = prefix.split("\n");
     this.updateCurrentLine(lines.length - 1);
+    this.updateSelectionHighlight();
     this.updateOverview(lines.length-1);
     this.onCursor?.({ line: lines.length, column: lines.at(-1).length + 1 });
     this.onSelection?.();
@@ -385,6 +402,19 @@ export class SourceEditor {
       remaining -= node.length;
     }
     return null;
+  }
+  updateSelectionHighlight(force = false) {
+    const start = this.input.selectionStart, end = this.input.selectionEnd;
+    if (!force && this.selectionBounds?.start === start && this.selectionBounds?.end === end) return;
+    this.selectionBounds = { start, end };
+    const { highlight } = this.selectionHighlight;
+    highlight.clear();
+    if (start === end) return;
+    const from = this.textPoint(start), to = this.textPoint(end);
+    if (!from || !to) return;
+    const range = document.createRange();
+    range.setStart(from.node, from.offset); range.setEnd(to.node, to.offset);
+    highlight.add(range);
   }
   setFollowState(state, force = false) {
     const previous = this.followState;
@@ -508,5 +538,5 @@ export class SourceEditor {
     const current=this.renderedLines?.[this.overviewLine ?? 0];
     this.rulerCaret.style.top=`${(current?.top || 0)/height*100}%`;
   }
-  destroy() { CSS.highlights.delete(this.followHighlight); for (const { name, highlight } of this.syntaxHighlights.values()) { CSS.highlights.delete(name); highlight.clear(); } this.visibleSyntax?.clear(); this.renderedLines = []; this.resize.disconnect(); cancelAnimationFrame(this.drawFrame); document.fonts.removeEventListener("loadingdone", this.fontLoaded); this.completion.destroy(); }
+  destroy() { CSS.highlights.delete(this.followHighlight); CSS.highlights.delete(this.selectionHighlight.name); this.selectionHighlight.highlight.clear(); for (const { name, highlight } of this.syntaxHighlights.values()) { CSS.highlights.delete(name); highlight.clear(); } this.visibleSyntax?.clear(); this.renderedLines = []; this.resize.disconnect(); cancelAnimationFrame(this.drawFrame); document.fonts.removeEventListener("loadingdone", this.fontLoaded); this.completion.destroy(); }
 }
