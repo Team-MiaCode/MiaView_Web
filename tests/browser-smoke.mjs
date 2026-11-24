@@ -619,7 +619,7 @@ try {
   finishSlowTrack();
   await page.waitForFunction(() => streamEvents.includes("正在准备背景视频"));
   assert.equal(await page.evaluate(() => streamLoadDone), false);
-  assert.equal(await firstFrame.locator(".preview-transport > input").isDisabled(), true);
+  assert.equal(await firstFrame.locator('.preview-transport input[type="range"]').isDisabled(), true);
   assert.equal(
     await firstFrame.locator("#stage-video").getAttribute("src"),
     null,
@@ -674,7 +674,7 @@ try {
     null,
   );
   assert.equal(await firstFrame.locator("#stage-video").isVisible(), false);
-  assert.equal(await firstFrame.locator(".preview-transport > input").isDisabled(), false);
+  assert.equal(await firstFrame.locator('.preview-transport input[type="range"]').isDisabled(), false);
   const timeoutDiagnostics = await page.evaluate(() => first.getDiagnostics());
   assert.ok(
     timeoutDiagnostics.reports.some((r) => r.counters.videoLoadTimeouts === 1),
