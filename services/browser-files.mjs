@@ -115,6 +115,43 @@ export class BrowserFiles {
     }
     return files;
   }
+  async projectPathExists(record) {
+    const { directoryHandle, fileHandle } = record.binding || {};
+    const handle = directoryHandle || fileHandle;
+    if (!handle) return true;
+    try {
+      if (handle.queryPermission && await handle.queryPermission({ mode: "read" }) !== "granted") return true;
+      const file = directoryHandle
+        ? await (await this.assetDirectory(directoryHandle, record.filePath, false)).getFileHandle(record.filePath.split("/").at(-1))
+        : fileHandle;
+      await file.getFile();
+      return true;
+    } catch (error) {
+      if (error.name === "NotFoundError") return false;
+      throw error;
+    }
+  }
+  async restoreProjectResources(record) {
+    if (!record.binding?.directoryHandle) return record;
+    const restored = new Map();
+    const restore = async ([path, file]) => {
+      if (!file) return [path, file];
+      let pending = restored.get(file);
+      if (!pending) {
+        pending = (async () => {
+          try { await file.slice(0, 1).arrayBuffer(); return file; }
+          catch (error) {
+            if (error.name !== "NotReadableError") throw error;
+            return (await this.readResources(record.binding, [path])).get(path);
+          }
+        })();
+        restored.set(file, pending);
+      }
+      return [path, await pending];
+    };
+    return { ...record, files: await Promise.all(record.files.map(restore)),
+      savedFiles: await Promise.all(record.savedFiles.map(restore)), resourceChanges: await Promise.all(record.resourceChanges.map(restore)) };
+  }
   async downloadProject(project, sourceText) {
     const files = new Map(project.files);
     files.set(project.filePath, new File([sourceText], "maidata.txt", { type: "text/plain;charset=utf-8" }));

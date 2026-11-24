@@ -17,6 +17,7 @@ export class ProjectStore {
       };
     }, onBlocked);
     this.writes = Promise.resolve();
+    this.fileSnapshots = new WeakMap();
   }
   async transaction(mode, operation, stores = ["projects"]) {
     const database = await this.database;
@@ -54,17 +55,59 @@ export class ProjectStore {
     }, ["summaries"]);
   }
   put(record) {
+    const write = this.writes.then(async () => {
+      const snapshot = await this.snapshotProject(record);
+      return this.transaction("readwrite", tx => {
+        const summaries = tx.objectStore("summaries");
+        summaries.get(record.id).onsuccess = ({ target }) => {
+          summaries.put(projectSummary({ ...snapshot, recent: target.result?.recent ?? snapshot.recent }));
+        };
+        return tx.objectStore("projects").put(snapshot);
+      }, ["projects", "summaries"]);
+    });
+    this.writes = write.catch(() => {});
+    return write;
+  }
+  async snapshotProject(record) {
+    const snapshotFile = file => {
+      if (!(file instanceof Blob)) return file;
+      let snapshot = this.fileSnapshots.get(file);
+      if (!snapshot) {
+        // File-backed blobs retain the disk reference until their bytes are read.
+        snapshot = file.arrayBuffer().then(bytes => file instanceof File
+          ? new File([bytes], file.name, { type: file.type, lastModified: file.lastModified })
+          : new Blob([bytes], { type: file.type }));
+        this.fileSnapshots.set(file, snapshot);
+      }
+      return snapshot;
+    };
+    const inputs = values => values && Promise.all(Object.entries(values).map(async ([kind, file]) => [kind, await snapshotFile(file)])).then(Object.fromEntries);
+    const entries = values => values && Promise.all(values.map(async ([path, file]) => [path, await snapshotFile(file)]));
+    const [input, savedInput, files, savedFiles, resourceChanges, coverFiles] = await Promise.all([
+      inputs(record.input), inputs(record.savedInput), entries(record.files), entries(record.savedFiles), entries(record.resourceChanges),
+      record.coverExport?.coverFiles && Promise.all(record.coverExport.coverFiles.map(async asset => ({ ...asset, file: await snapshotFile(asset.file) }))),
+    ]);
+    return { ...record, input, savedInput, files, savedFiles, resourceChanges,
+      ...(record.coverExport ? { coverExport: { ...record.coverExport, coverFiles } } : {}) };
+  }
+  removeRecent(id) {
     const write = this.writes.then(() => this.transaction("readwrite", tx => {
-      tx.objectStore("summaries").put(projectSummary(record));
-      return tx.objectStore("projects").put(record);
+      const summaries = tx.objectStore("summaries"), request = summaries.get(id);
+      request.onsuccess = () => {
+        if (request.result) summaries.put({ ...request.result, recent: false, recentFlag: 0 });
+      };
+    }, ["summaries"]));
+    this.writes = write.catch(() => {});
+    return write;
+  }
+  delete(id) {
+    const write = this.writes.then(() => this.transaction("readwrite", tx => {
+      tx.objectStore("summaries").delete(id);
+      return tx.objectStore("projects").delete(id);
     }, ["projects", "summaries"]));
     this.writes = write.catch(() => {});
     return write;
   }
-  delete(id) { return this.transaction("readwrite", tx => {
-    tx.objectStore("summaries").delete(id);
-    return tx.objectStore("projects").delete(id);
-  }, ["projects", "summaries"]); }
   async close() { await this.writes; (await this.database).close(); }
 }
 

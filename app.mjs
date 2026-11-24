@@ -202,8 +202,17 @@ export function createWorkbench(container, options = {}) {
     if (project && snapshot.hasDocument) await projectStore.put(recordProject(snapshot));
   }
   async function refreshRecent() {
-    const recentDocuments = (await projectStore.recent()).map(record => ({ id: record.id, label: record.title || record.filePath, path: record.filePath }));
+    const recentDocuments = [];
+    for (const record of await projectStore.recent()) {
+      if (await getStoredProject(record.id)) recentDocuments.push({ id: record.id, label: record.title || record.filePath, path: record.filePath });
+    }
     workbench.setDocument({ ...workbench.documentSession, recentDocuments });
+  }
+  async function getStoredProject(id) {
+    const record = await projectStore.get(id);
+    if (!record || await fileService.projectPathExists(record)) return record;
+    await projectStore.delete(id);
+    return null;
   }
   function scheduleRecovery(snapshot) {
     if (!project || !snapshot.hasDocument) return;
@@ -1153,9 +1162,9 @@ export function createWorkbench(container, options = {}) {
         record = records.find(record => record.id === selected);
       }
       if (!await confirmDocumentChange()) return;
-      const saved = await projectStore.get(record.id);
-      if (!saved) return;
-      record = hydrateProjectResources(saved);
+      const saved = await getStoredProject(record.id);
+      if (!saved) { await refreshRecent(); return; }
+      record = hydrateProjectResources(await fileService.restoreProjectResources(saved));
       let restoreEdits = record.dirty;
       const handle = record.binding?.fileHandle;
       if (handle && (!handle.queryPermission || await handle.queryPermission({ mode: "read" }) === "granted")) {
@@ -1204,8 +1213,7 @@ export function createWorkbench(container, options = {}) {
       return;
     }
     if (id === "file.removeRecent") {
-      const record = await projectStore.get(args.id);
-      if (record) await projectStore.put({ ...record, recent: false });
+      await projectStore.removeRecent(args.id);
       if (project?.id === args.id) project.recent = false;
       await refreshRecent(); return;
     }
