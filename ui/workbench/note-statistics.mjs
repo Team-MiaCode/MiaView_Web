@@ -10,25 +10,13 @@ export class NoteStatistics {
       const image = kind === "total" ? icon("chart", 26) : h("img", { alt: "" });
       const name = h("span", { className: "note-stat-name" });
       const value = h("span", { className: "note-stat-value" });
+      const reserve = h("span", { className: "note-stat-reserve", "aria-hidden": "true" });
       const cell = h("div", { className: "note-stat-cell", dataset: { kind } }, h("span", { className: "note-stat-icon" }, image),
-        h("div", { className: "note-stat-text" }, name, value));
-      this.cells.set(kind, { image, name, value });
+        h("div", { className: "note-stat-text" }, name, h("div", { className: "note-stat-count" }, reserve, value)));
+      this.cells.set(kind, { image, name, value, reserve });
       this.root.append(cell);
     }
     this.update([]);
-    this.metrics = document.createElement("canvas").getContext("2d");
-    this.resize = new ResizeObserver(() => this.measureFont());
-    this.resize.observe(this.root);
-    document.fonts.ready.then(() => this.measureFont());
-  }
-  measureFont() {
-    if (!this.root.isConnected) return;
-    const style = getComputedStyle(this.root);
-    const font = `${style.fontSize} ${style.fontFamily}`;
-    if (font === this.font) return;
-    this.font = font;
-    this.metrics.font = font;
-    this.root.style.setProperty("--note-stat-text-width", `${this.metrics.measureText("8888/8888").width}px`);
   }
   update(statistics, { dataAvailable = false, noteSkin = "DX", efficientMode = false } = {}) {
     this.root.classList.toggle("efficient", efficientMode);
@@ -36,13 +24,14 @@ export class NoteStatistics {
       const entry = statistics.find(item => item.kind === kind);
       const name = entry?.name || translate(`note_stats.${kind}`, this.language());
       const value = dataAvailable && entry ? String(entry.value) : "—";
+      const reserve = dataAvailable && entry?.total != null ? `${entry.total}/${entry.total}` : value;
       if (cell.name.textContent !== name) cell.name.textContent = name;
       if (cell.value.textContent !== value) cell.value.textContent = value;
+      if (cell.reserve.textContent !== reserve) cell.reserve.textContent = reserve;
       if (kind !== "total") {
         const url = new URL(`../components/notes/${noteSkin === "SD" ? "SD" : "DX"}/${kind === "break" ? "tap_break" : kind}.png`, import.meta.url).href;
         if (cell.image.src !== url) cell.image.src = url;
       }
     }
   }
-  destroy() { this.resize.disconnect(); }
 }

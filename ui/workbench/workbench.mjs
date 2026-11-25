@@ -348,5 +348,5 @@ export class Workbench extends EventTarget {
     this.bottomKey = null;
     this.update();
   }
-  destroy() { for (const page of this.content.children) page.destroy?.(); this.coverPage = null; this.popups.destroy(); this.abort.abort(); this.editorTabs.destroy(); this.sourceEditor.destroy(); this.timelineView.destroy(); this.noteStatistics.destroy(); this.root.replaceChildren(); }
+  destroy() { for (const page of this.content.children) page.destroy?.(); this.coverPage = null; this.popups.destroy(); this.abort.abort(); this.editorTabs.destroy(); this.sourceEditor.destroy(); this.timelineView.destroy(); this.root.replaceChildren(); }
 }

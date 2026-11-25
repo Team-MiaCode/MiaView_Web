@@ -7,7 +7,7 @@ body:has(> .preview-host) { background: var(--background-surface); }
   margin-inline: auto;
   display: grid;
   grid-template-rows: 34px minmax(0, 1fr) auto auto;
-  overflow: auto;
+  overflow: clip;
   background: var(--background-panel);
 }
 .preview-host-fill { width: 100%; }

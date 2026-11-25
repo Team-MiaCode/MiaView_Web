@@ -117,7 +117,7 @@ body { font: var(--ui-font-size, 13px)/1.45 var(--ui-font-family); color: var(--
 .source-input::selection { background: transparent; }
 .source-code-line.current-line { background: var(--state-focus-line); }
 .source-editor.wrap .source-paint, .source-editor.wrap .source-input { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all; }
-.preview-host { width: var(--preview-width); min-width: 0; min-height: 0; display: grid; grid-template-rows: 34px minmax(64px, 1fr) auto auto; overflow: auto; background: var(--background-panel); }
+.preview-host { width: var(--preview-width); min-width: 0; min-height: 0; display: grid; grid-template-rows: 34px minmax(0, 1fr) auto auto; overflow: clip; background: var(--background-panel); }
 .preview-divider { width: 1px; }
 .preview-on-left .preview-host { order: -2; }
 .preview-on-left .preview-divider { order: -1; }

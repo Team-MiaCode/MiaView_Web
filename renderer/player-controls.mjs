@@ -336,7 +336,6 @@ export function attachPlayerControls(controller, engine, parameters) {
       lifetime.abort();
       resize.disconnect();
       popups.destroy();
-      statistics.destroy();
       fonts.destroy();
       unsubscribe();
       void assets.close().catch(() => {});

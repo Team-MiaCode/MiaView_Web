@@ -256,7 +256,7 @@ class PreviewWindow {
     } finally { this.attaching = false; }
   }
   closePopup(popup) {
-    popup.abort.abort(); popup.resize?.disconnect(); popup.menus?.destroy(); popup.statistics?.destroy(); popup.preview?.destroy();
+    popup.abort.abort(); popup.resize?.disconnect(); popup.menus?.destroy(); popup.preview?.destroy();
     if (!popup.window.closed) popup.window.close();
   }
   destroy() { this.destroyed = true; if (this.popup) this.closePopup(this.popup); this.popup = null; this.presenting = false; this.owner.destroy(); }
