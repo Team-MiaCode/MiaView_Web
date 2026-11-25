@@ -32,6 +32,7 @@ import { chartZipFiles } from "./services/chart-zip.mjs";
 import { projectArchive } from "./services/zip-store.mjs";
 
 const MURI_SETTINGS = ["previewMode", "handRadiusPx", "wifiNeedC", "staticTapOnSlideThresholdMs"];
+const editorText = text => (text ?? "").replace(/\r\n?/g, "\n");
 
 export function createWorkbench(container, options = {}) {
   const viewState = new ViewState(options.storage ?? localStorage);
@@ -191,7 +192,7 @@ export function createWorkbench(container, options = {}) {
   }
   function recordProject(snapshot = workbench.documentSession, { owner = project, chartText = workbench.sourceEditor.input.value,
     session = workbench.documentSession, activeEditorKey = viewState.activeEditorKey } = {}) {
-    return { ...owner, sourceText: snapshot.sourceText, chartText, dirty: snapshot.sourceText !== owner.savedSourceText || owner.mediaDirty || chartText !== snapshot.chartText,
+    return { ...owner, sourceText: snapshot.sourceText, chartText, dirty: Boolean(snapshot.dirty || owner.mediaDirty || editorText(chartText) !== editorText(snapshot.chartText)),
       inputPaths: inputPaths(owner.input), savedInputPaths: inputPaths(owner.savedInput),
       activeDifficultyId: snapshot.activeDifficultyId, title: snapshot.title, updatedAt: Date.now(),
       unifiedDesignerEnabled: snapshot.unifiedDesignerEnabled,
@@ -1182,7 +1183,8 @@ export function createWorkbench(container, options = {}) {
       if (!selected) return;
       if (!await confirmDocumentChange()) return;
       workbench.status(`载入文件夹：${selected.label} · ${files.length} 个文件`);
-      const savedProject = { id: randomUuid(), filePath: selected.path,
+      const previous = (await projectStore.listSummaries()).find(record => record.filePath === selected.path);
+      const savedProject = { id: previous && !previous.dirty && previous.recent !== false ? previous.id : randomUuid(), filePath: selected.path,
         binding: { filePath: selected.path, fileHandle: folder.handles.get(selected.path), directoryHandle: folder.directoryHandle },
         input: { audio: selected.chart.audio, cover: selected.chart.cover, video: selected.chart.video },
         files: [...selected.files].filter(([path]) => path !== selected.path) };
@@ -1204,10 +1206,19 @@ export function createWorkbench(container, options = {}) {
       }
       if (!await confirmDocumentChange()) return;
       const saved = await projectStore.get(record.id);
-      if (!saved) { await projectStore.removeRecent(record.id); await refreshRecent(); return; }
+      const diskBytes = saved ? await fileService.readProjectSource(saved) : null;
+      if (!saved || !diskBytes && (saved.binding?.fileHandle || saved.binding?.directoryHandle)) {
+        const choice = await new Promise(resolve => openDialog(container, {
+          title: "谱面路径无法打开", height: 260,
+          body: h("p", {}, `${record.filePath}。是否删除此最近记录？`),
+          actions: [{ label: "取消", value: "cancel" }, { label: "删除记录", value: "remove" },
+            ...(saved ? [{ label: "打开恢复副本", value: "recover", primary: true }] : [])], close: resolve,
+        }));
+        if (choice === "remove") await command("file.removeRecent", { id: record.id });
+        if (choice !== "recover") return;
+      }
       record = hydrateProjectResources(await fileService.restoreProjectResources(saved));
       let restoreEdits = record.dirty;
-      const diskBytes = await fileService.readProjectSource(record);
       if (diskBytes) {
         const diskSource = decodeMaidata(diskBytes);
         if (diskSource !== record.diskSourceText) {
@@ -1243,7 +1254,7 @@ export function createWorkbench(container, options = {}) {
         if (!isCurrent()) return;
         applyDocument(result.document);
       }
-      if (restoreEdits && record.chartText !== workbench.documentSession.chartText) {
+      if (restoreEdits && editorText(record.chartText) !== editorText(workbench.documentSession.chartText)) {
         const result = await preview.documentCommand("document.replaceActiveDifficultyChart", { value: record.chartText,
           difficulty: record.activeDifficultyId, documentOpenGeneration: generation });
         if (!isCurrent()) return;

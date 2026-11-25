@@ -44,12 +44,15 @@ export class ProjectStore {
   recent() {
     return this.transaction("readonly", (tx, setResult) => {
       const records = [];
+      const paths = new Set();
       setResult(records);
       const range = IDBKeyRange.bound([1, -Infinity], [1, Infinity]);
       tx.objectStore("summaries").index("recent").openCursor(range, "prev").onsuccess = ({ target }) => {
         const cursor = target.result;
         if (!cursor) return;
-        records.push(cursor.value);
+        const path = recentPath(cursor.value);
+        if (!path || !paths.has(path)) records.push(cursor.value);
+        if (path) paths.add(path);
         if (records.length < 10) cursor.continue();
       };
     }, ["summaries"]);
@@ -94,7 +97,16 @@ export class ProjectStore {
     const write = this.writes.then(() => this.transaction("readwrite", tx => {
       const summaries = tx.objectStore("summaries"), request = summaries.get(id);
       request.onsuccess = () => {
-        if (request.result) summaries.put({ ...request.result, recent: false, recentFlag: 0 });
+        const record = request.result;
+        if (!record) return;
+        const path = recentPath(record);
+        if (!path) { summaries.put({ ...record, recent: false, recentFlag: 0 }); return; }
+        summaries.openCursor().onsuccess = ({ target }) => {
+          const cursor = target.result;
+          if (!cursor) return;
+          if (recentPath(cursor.value) === path) cursor.update({ ...cursor.value, recent: false, recentFlag: 0 });
+          cursor.continue();
+        };
       };
     }, ["summaries"]));
     this.writes = write.catch(() => {});
@@ -111,6 +123,11 @@ export class ProjectStore {
   async close() { await this.writes; (await this.database).close(); }
 }
 
-function projectSummary({ id, title, filePath, updatedAt, recent, dirty }) {
-  return { id, title, filePath, updatedAt: updatedAt ?? 0, recent, dirty, recentFlag: recent === false ? 0 : 1 };
+function recentPath({ filePath, boundToPath }) {
+  return boundToPath || filePath?.includes("/") ? filePath : null;
+}
+
+function projectSummary({ id, title, filePath, binding, updatedAt, recent, dirty }) {
+  const boundToPath = Boolean(binding && !binding.download);
+  return { id, title, filePath, boundToPath, updatedAt: updatedAt ?? 0, recent, dirty, recentFlag: recent === false ? 0 : 1 };
 }
