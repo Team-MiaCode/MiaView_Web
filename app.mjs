@@ -189,16 +189,16 @@ export function createWorkbench(container, options = {}) {
       values.outputPath=handle.name;exportFileHandle=handle;refreshExport();return handle;
     } catch(error){if(error.name==="AbortError")return undefined;throw error;}
   }
-  function recordProject(snapshot = workbench.documentSession) {
-    const chartText = workbench.sourceEditor.input.value;
-    return { ...project, sourceText: snapshot.sourceText, chartText, dirty: snapshot.sourceText !== project.savedSourceText || project.mediaDirty || chartText !== snapshot.chartText,
-      inputPaths: inputPaths(project.input), savedInputPaths: inputPaths(project.savedInput),
+  function recordProject(snapshot = workbench.documentSession, { owner = project, chartText = workbench.sourceEditor.input.value,
+    session = workbench.documentSession, activeEditorKey = viewState.activeEditorKey } = {}) {
+    return { ...owner, sourceText: snapshot.sourceText, chartText, dirty: snapshot.sourceText !== owner.savedSourceText || owner.mediaDirty || chartText !== snapshot.chartText,
+      inputPaths: inputPaths(owner.input), savedInputPaths: inputPaths(owner.savedInput),
       activeDifficultyId: snapshot.activeDifficultyId, title: snapshot.title, updatedAt: Date.now(),
       unifiedDesignerEnabled: snapshot.unifiedDesignerEnabled,
-      audioSettings: workbench.documentSession.audio?.settings,
-      introPvStartSeconds: workbench.documentSession.exportValues?.introPvStartSeconds ?? 0,
-      coverExport: { coverValues: workbench.documentSession.coverValues, coverLayers: workbench.documentSession.coverLayers, coverFiles: workbench.documentSession.coverFiles },
-      editorState: { activeEditorKey: viewState.activeEditorKey, openEditorTabs: [...viewState.openEditorTabs] } };
+      audioSettings: session.audio?.settings,
+      introPvStartSeconds: session.exportValues?.introPvStartSeconds ?? 0,
+      coverExport: { coverValues: session.coverValues, coverLayers: session.coverLayers, coverFiles: session.coverFiles },
+      editorState: { activeEditorKey, openEditorTabs: [...new Set([...viewState.openEditorTabs, activeEditorKey])] } };
   }
   async function flushRecovery(snapshot = workbench.documentSession) {
     clearTimeout(recoveryTimer); recoveryTimer = null;
@@ -516,25 +516,35 @@ export function createWorkbench(container, options = {}) {
     if (storedAudio) await preview.audioCommand("audio.restoreSettings", { settings: storedAudio });
     const playback = await preview.getState();
     if (sequence !== loadSequence) return info;
-    project = nextProject; loadingDocument = false; workbench.sourceEditor.input.readOnly = false;
-    viewState.setPreference("lastSessionProjectId", project.id);
-    coverOutputHandle = null;
-    workbench.sourceEditor.setFollowState({ active: false });
-    workbench.setDocument({ ...info, ...snapshot, previewError, folderFiles,
+    const activeEditorKey = snapshot.activeDifficultyId ? `difficulty:${snapshot.activeDifficultyId}` : "metadata";
+    const session = { ...info, ...snapshot, previewError, folderFiles,
       ...Object.fromEntries(["userFonts", "userSkins", "userOutlines", "shortcutRows", "recentDocuments"].map(key => [key, workbench.documentSession[key]])),
       introSoundFileName: introSound?.name,
       exportValues: { ...viewState.preferences.exportValues, introPvStartSeconds: nextProject.introPvStartSeconds ?? 0 },
       coverValues: { ...cover.coverValues }, coverLayers: cover.coverLayers,
       coverFiles: cover.coverFiles || [], coverDirty: false,
       audio: playback.audio,
-      previewSettings: playback.settings, previewValues: { ...viewState.preferences.previewValues, ...previewValuesFromSettings(playback.settings) },
-      ...mediaSnapshot(snapshot) });
+      previewSettings: playback.settings, previewValues: { ...viewState.preferences.previewValues, ...previewValuesFromSettings(playback.settings) } };
+    const restoringProject = savedProject?.sourceText != null;
+    let recoveryError;
+    if (snapshot.hasDocument && !restoringProject) {
+      // Commit the recent entry before the editor becomes visible; closing the tab can interrupt later writes.
+      try {
+        await projectStore.put(recordProject(snapshot, { owner: nextProject, chartText: snapshot.chartText, session, activeEditorKey }));
+      } catch (error) { recoveryError = error; }
+    }
+    if (sequence !== loadSequence) return info;
+    project = nextProject; loadingDocument = false; workbench.sourceEditor.input.readOnly = false;
+    viewState.setPreference("lastSessionProjectId", project.id);
+    coverOutputHandle = null;
+    workbench.sourceEditor.setFollowState({ active: false });
+    workbench.setDocument({ ...session, ...mediaSnapshot(snapshot) });
     scheduleAnalysis();
-    viewState.openEditor(snapshot.activeDifficultyId ? `difficulty:${snapshot.activeDifficultyId}` : "metadata");
+    viewState.openEditor(activeEditorKey);
     applyPlaybackState(playback);
     timelineOptions.horizontalScrollValue = 0; timelineOptions.cursorSeconds = 0; timelineOptions.playbackEntrySeconds = 0;
     await refreshTimeline();
-    await flushRecovery(snapshot);
+    if (recoveryError || restoringProject) await flushRecovery(snapshot);
     await refreshRecent();
     workbench.status(previewError || `${snapshot.title || filePath} · ${info?.noteCount ?? 0} 个音符`);
     return info;
@@ -1184,8 +1194,6 @@ export function createWorkbench(container, options = {}) {
         input: { audio: selected.chart.audio, cover: selected.chart.cover, video: selected.chart.video },
         files: [...selected.files].filter(([path]) => path !== selected.path) };
       await open(selected.chart, selected.path, selected.files, savedProject);
-      savedProject.savedSourceText = workbench.documentSession.sourceText;
-      await flushRecovery();
       return;
     }
     if (id === "file.save" || id === "file.saveAll" || id === "file.saveAs") return save(id === "file.saveAll", id === "file.saveAs");
