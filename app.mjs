@@ -521,7 +521,7 @@ export function createWorkbench(container, options = {}) {
     coverOutputHandle = null;
     workbench.sourceEditor.setFollowState({ active: false });
     workbench.setDocument({ ...info, ...snapshot, previewError, folderFiles,
-      ...Object.fromEntries(["userFonts", "userSkins", "userOutlines", "shortcutRows"].map(key => [key, workbench.documentSession[key]])),
+      ...Object.fromEntries(["userFonts", "userSkins", "userOutlines", "shortcutRows", "recentDocuments"].map(key => [key, workbench.documentSession[key]])),
       introSoundFileName: introSound?.name,
       exportValues: { ...viewState.preferences.exportValues, introPvStartSeconds: nextProject.introPvStartSeconds ?? 0 },
       coverValues: { ...cover.coverValues }, coverLayers: cover.coverLayers,
@@ -1233,18 +1233,24 @@ export function createWorkbench(container, options = {}) {
       Object.defineProperty(source, "webkitRelativePath", { value: record.filePath });
       files.set(record.filePath, source);
       await open({ ...record.input, maidata: record.savedSourceText, difficulty: record.activeDifficultyId }, record.filePath, files, record);
+      if (project !== record || loadingDocument) return;
+      const generation = workbench.documentSession.documentOpenGeneration;
+      const isCurrent = () => project === record && !loadingDocument && generation === workbench.documentSession.documentOpenGeneration;
       if (restoreEdits && record.sourceText !== record.savedSourceText) {
         const result = await preview.documentCommand("document.replaceSource", { sourceText: record.sourceText,
-          documentOpenGeneration: workbench.documentSession.documentOpenGeneration });
+          documentOpenGeneration: generation });
+        if (!isCurrent()) return;
         applyDocument(result.document);
       }
       if (restoreEdits && record.chartText !== workbench.documentSession.chartText) {
         const result = await preview.documentCommand("document.replaceActiveDifficultyChart", { value: record.chartText,
-          difficulty: record.activeDifficultyId, documentOpenGeneration: workbench.documentSession.documentOpenGeneration });
+          difficulty: record.activeDifficultyId, documentOpenGeneration: generation });
+        if (!isCurrent()) return;
         applyDocument(result.document);
       }
       if (record.editorState) {
         const restored = await preview.documentCommand("document.restorePreferences", { unifiedDesignerEnabled: Boolean(record.unifiedDesignerEnabled) });
+        if (!isCurrent()) return;
         applyDocument(restored.document);
         viewState.openEditorTabs = [...record.editorState.openEditorTabs];
         viewState.openEditor(record.editorState.activeEditorKey);
