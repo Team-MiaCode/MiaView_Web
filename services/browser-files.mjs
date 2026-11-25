@@ -116,19 +116,18 @@ export class BrowserFiles {
     }
     return files;
   }
-  async projectPathExists(record) {
+  async readProjectSource(record) {
     const { directoryHandle, fileHandle } = record.binding || {};
     const handle = directoryHandle || fileHandle;
-    if (!handle) return true;
+    if (!handle) return null;
     try {
-      if (handle.queryPermission && await handle.queryPermission({ mode: "read" }) !== "granted") return true;
+      if (handle.queryPermission && await handle.queryPermission({ mode: "read" }) !== "granted") return null;
       const file = directoryHandle
         ? await (await this.assetDirectory(directoryHandle, record.filePath, false)).getFileHandle(record.filePath.split("/").at(-1))
         : fileHandle;
-      await file.getFile();
-      return true;
+      return await (await file.getFile()).arrayBuffer();
     } catch (error) {
-      if (error.name === "NotFoundError") return false;
+      if (["NotFoundError", "NotAllowedError", "NotReadableError", "SecurityError"].includes(error.name)) return null;
       throw error;
     }
   }
