@@ -407,6 +407,7 @@ jobs:
             }
             core.setOutput('editor_sha', run.head_sha);
       - name: Confirm the editor sources match the reviewed artifact
+        if: ${{ !inputs.allow_firefox_crash }}
         env:
           EDITOR_SHA: ${{ steps.source.outputs.editor_sha }}
         run: git diff --exit-code "$EDITOR_SHA" HEAD -- . ':(exclude).github/workflows/web.yml' ':(exclude)scripts/compose-pages.mjs'
@@ -431,6 +432,18 @@ jobs:
             const { main, feature } = require("./build-devtools/published/deployment.json");
             if (feature?.commit !== process.env.FEATURE_SHA || !/^[0-9a-f]{40}$/.test(main?.commit))
               throw new Error("Deployment manifest does not match the validated editor run");
+            const { execFileSync } = require("node:child_process");
+            const { readFileSync } = require("node:fs");
+            const { createHash } = require("node:crypto");
+            const entries = execFileSync("git", ["ls-tree", "-rz", "--format=%(objectname) %(path)", process.env.FEATURE_SHA,
+              "--", "app.mjs", "index.html", "page.css", "preview-window.html", "sdk", "services", "ui"], { encoding: "utf8" })
+              .split("\0").filter(Boolean);
+            for (const entry of entries) {
+              const path = entry.slice(41), bytes = readFileSync("build-devtools/published/feature/" + path);
+              const hash = createHash("sha1").update("blob " + bytes.length + "\0").update(bytes).digest("hex");
+              if (hash !== entry.slice(0, 40)) throw new Error("Reviewed editor source mismatch: " + path);
+            }
+            console.error("Verified editor source files: " + entries.length);
             console.log(main.commit);
           ')
           if [ "$MAIN_SHA" != "$(git rev-parse origin/main)" ]; then
