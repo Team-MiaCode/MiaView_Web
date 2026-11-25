@@ -354,7 +354,7 @@ jobs:
 
   prepare-verified-pages:
     needs: source-checks
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feature/web-editor-migration' && inputs.editor_run_id != ''
+    if: github.event_name == 'workflow_dispatch' && inputs.editor_run_id != ''
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -396,7 +396,9 @@ jobs:
                 ...context.repo, job_id: failures[0].id,
               });
               const logs = Buffer.from(data).toString('utf8');
-              for (const signature of ['AssertionError [ERR_ASSERTION]: intro-audition-core-software:', 'Target crashed', 'exited on signal 11'])
+              if (!/AssertionError \[ERR_ASSERTION\]: [a-z-]+-software:/.test(logs))
+                throw new Error('Expected Firefox software decoder acceptance failure');
+              for (const signature of ['Target crashed', 'exited on signal 11'])
                 if (!logs.includes(signature)) throw new Error('Expected Firefox software decoder crash: ' + signature);
               await core.summary.addHeading('Authorized manual editor publication')
                 .addLink('Source validation and Firefox crash record', run.html_url)
@@ -445,7 +447,8 @@ jobs:
     needs: [prepare-pages, prepare-verified-pages, ui-acceptance, functional-acceptance]
     if: >-
       always() && !cancelled() && github.event_name != 'pull_request' &&
-      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/web-editor-migration') &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/web-editor-migration' ||
+      (github.event_name == 'workflow_dispatch' && inputs.editor_run_id != '')) &&
       (needs.prepare-verified-pages.result == 'success' ||
       (needs.prepare-pages.result == 'success' && needs.ui-acceptance.result == 'success' && needs.functional-acceptance.result == 'success'))
     runs-on: ubuntu-24.04
