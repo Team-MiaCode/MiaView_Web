@@ -162,16 +162,19 @@ class MiaCodePreview {
     return () => listeners.delete(listener);
   }
   handleMessage(event) {
+    const requestId = event.data?.requestId;
     const message = trustedResponse(
       event,
       this.iframe.contentWindow,
       this.origin,
       this.sessionId,
+      this.pending.get(requestId)?.type === "initialize" ? requestId : undefined,
     );
     if (!message || this.destroyed || !this.identity) return;
     if (
-      message.playerVersion !== this.identity.version ||
-      message.sourceRevision !== this.identity.sourceRevision
+      message.playerVersion !== undefined &&
+      (message.playerVersion !== this.identity.version ||
+        message.sourceRevision !== this.identity.sourceRevision)
     ) {
       for (const { reject, timer } of this.pending.values()) {
         timer();
@@ -205,7 +208,7 @@ class MiaCodePreview {
         this.pending.delete(requestId);
         reject(new Error(`Preview command timed out: ${type}`));
       }, waitMs);
-      this.pending.set(requestId, { resolve, reject, timer });
+      this.pending.set(requestId, { type, resolve, reject, timer });
       try {
         this.iframe.contentWindow.postMessage(
           {

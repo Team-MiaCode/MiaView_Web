@@ -54,14 +54,28 @@ export function trustedRequest(event, parent, origin, sessionId) {
     return null;
   return message;
 }
-export function trustedResponse(event, frame, origin, sessionId) {
+export function trustedResponse(event, frame, origin, sessionId, startupRequestId) {
   const message = event.data;
   if (
     event.source !== frame ||
     event.origin !== origin ||
     message?.source !== FRAME_SOURCE ||
     message.protocolVersion !== SDK_PROTOCOL ||
-    message.sessionId !== sessionId ||
+    message.sessionId !== sessionId
+  )
+    return null;
+  if (
+    message.type === "response" &&
+    message.ok === false &&
+    uuid.test(startupRequestId ?? "") &&
+    message.requestId === startupRequestId &&
+    message.playerVersion === undefined &&
+    message.sourceRevision === undefined &&
+    typeof message.error?.message === "string" &&
+    message.error.message.length > 0
+  )
+    return message;
+  if (
     typeof message.playerVersion !== "string" ||
     !/^[a-f0-9]{64}$/.test(message.sourceRevision ?? "")
   )
