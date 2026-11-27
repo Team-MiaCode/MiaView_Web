@@ -40,12 +40,21 @@ const staticHost = staticServer(root, {
   performanceLogDir: logDirectory,
   performanceOutput: (text) => terminalLogs.push(text),
 });
-let finishSlowTrack, finishBufferedVideo;
-let timedVideoRequests = 0,
-  timedVideoClosed = false;
+let finishSlowTrack;
+let timedVideoRequests = 0;
+let finishTimedVideo;
+const timedVideoClose = new Promise(resolve => { finishTimedVideo = resolve; });
 const streamingVideo = readFileSync(join(root, "tests/fixtures/bg-stream.mp4"));
 let slowTrackFinished = false,
   bufferedVideoFinished = false;
+const videoRanges = [];
+const pendingVideo = new Set();
+let bufferedVideoLimit = 0;
+function sendVideoThrough(limit) {
+  bufferedVideoLimit = limit;
+  bufferedVideoFinished = limit === streamingVideo.length;
+  for (const send of pendingVideo) send();
+}
 const host = createServer((req, res) => {
   const path = new URL(req.url, "http://localhost").pathname;
   if (path === "/__slow-track") {
@@ -62,39 +71,36 @@ const host = createServer((req, res) => {
     return;
   }
   if (path === "/__buffered-video") {
-    const start = Number(
-      /^bytes=(\d+)-/.exec(req.headers.range ?? "")?.[1] ?? 0,
-    );
-    if (start > 0) {
-      res.writeHead(206, {
-        "Content-Type": "video/mp4",
-        "Access-Control-Allow-Origin": "*",
-        "Content-Range": `bytes ${start}-${streamingVideo.length - 1}/${streamingVideo.length}`,
-        "Content-Length": streamingVideo.length - start,
-      });
-      res.end(streamingVideo.subarray(start));
-      return;
-    }
-    res.writeHead(206, {
+    const range = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range ?? "");
+    const start = Number(range?.[1] ?? 0);
+    const end = Math.min(Number(range?.[2] || streamingVideo.length - 1), streamingVideo.length - 1);
+    videoRanges.push(req.headers.range ?? null);
+    res.writeHead(range ? 206 : 200, {
       "Content-Type": "video/mp4",
       "Access-Control-Allow-Origin": "*",
-      "Content-Length": streamingVideo.length,
-      "Content-Range": `bytes 0-${streamingVideo.length - 1}/${streamingVideo.length}`,
+      "Content-Length": end - start + 1,
+      "Cache-Control": "no-store",
       "Accept-Ranges": "bytes",
+      ...(range && { "Content-Range": `bytes ${start}-${end}/${streamingVideo.length}` }),
     });
-    const split = Math.floor(streamingVideo.length * 0.8);
-    res.write(streamingVideo.subarray(0, split));
-    finishBufferedVideo = () => {
-      bufferedVideoFinished = true;
-      res.end(streamingVideo.subarray(split));
+    let position = start;
+    const send = () => {
+      const limit = Math.min(bufferedVideoLimit, end + 1);
+      if (position < limit) {
+        res.write(streamingVideo.subarray(position, limit));
+        position = limit;
+      }
+      if (position > end) res.end();
     };
+    res.on("close", () => pendingVideo.delete(send));
+    res.flushHeaders();
+    pendingVideo.add(send);
+    send();
     return;
   }
   if (path === "/__timeout-video") {
     timedVideoRequests++;
-    res.on("close", () => {
-      timedVideoClosed = true;
-    });
+    res.on("close", finishTimedVideo);
     res.writeHead(200, {
       "Content-Type": "video/mp4",
       "Access-Control-Allow-Origin": "*",
@@ -147,6 +153,16 @@ try {
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("request", (request) => requests.push(request.url()));
   await page.addInitScript(() => {
+    const mediaTime = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "currentTime");
+    window.pvSeeks = [];
+    Object.defineProperty(HTMLMediaElement.prototype, "currentTime", {
+      ...mediaTime,
+      set(second) {
+        if (this.src.endsWith("/__buffered-video"))
+          window.pvSeeks.push({ second, readyState: this.readyState });
+        mediaTime.set.call(this, second);
+      },
+    });
     // Observe the real native filesystem without changing the shipped module.
     // The script's load event runs before the renderer's module script boots Qt.
     document.addEventListener("load", (event) => {
@@ -293,7 +309,7 @@ try {
       `Missing load metric: ${name}`,
     );
   }
-  assert.equal(diagnostics.reports.filter((r) => r.logKind === "initialization").length, 3);
+  assert.ok(diagnostics.reports.filter((r) => r.logKind === "initialization").length >= 3);
   const playbackReports = diagnostics.reports.filter((r) => r.logKind === "performance");
   assert.ok(playbackReports.length > 0, "Default playback must produce performance reports");
   assert.ok(playbackReports.every((r) => r.loaded && r.playing && r.metrics.hostWork && r.metrics.wasmTick && r.metrics.audioSchedule));
@@ -593,7 +609,7 @@ try {
     (await page.evaluate(() => first.getState())).loaded,
     "Maidata URL loading must work without a website manifest",
   );
-  // Parsing stays parallel, but play remains disabled until the PV transfer ends.
+  // The audio and notes can start before a frame is available from the PV URL.
   await page.evaluate(
     ({ chart, base }) => {
       window.streamEvents = [];
@@ -623,24 +639,41 @@ try {
     "Parsing must start while audio is downloading",
   );
   assert.ok(finishSlowTrack);
+  assert.equal(videoRanges.length, 0, "PV must not compete with the initial music load");
   finishSlowTrack();
-  await page.waitForFunction(() => streamEvents.includes("正在准备背景视频"));
-  assert.equal(await page.evaluate(() => streamLoadDone), false);
-  assert.equal(await firstFrame.locator("#play").isDisabled(), true);
-  assert.equal(
-    await firstFrame.locator("#stage-video").getAttribute("src"),
-    null,
-  );
-  assert.equal(bufferedVideoFinished, false);
-  assert.ok(finishBufferedVideo);
-  finishBufferedVideo();
   await page.waitForFunction(() => streamLoadDone || streamLoadError);
   assert.equal(await page.evaluate(() => streamLoadError), null);
-  assert.ok(
-    (await firstFrame.locator("#stage-video").getAttribute("src")).startsWith(
-      "blob:",
-    ),
-  );
+  const streamedPv = firstFrame.locator("#stage-video");
+  await firstFrame.locator("#stage-video[src$='/__buffered-video']").waitFor({ state: "attached" });
+  assert.equal(await streamedPv.getAttribute("src"), base + "/__buffered-video");
+  assert.equal(await streamedPv.isVisible(), false);
+  assert.equal(await firstFrame.locator("#play").isDisabled(), false);
+  assert.equal(bufferedVideoFinished, false);
+  await page.evaluate(() => first.seek(2));
+  await page.locator("#host-play").click();
+  await page.evaluate(() => playResult);
+  assert.equal((await page.evaluate(() => first.getState())).playing, true);
+  sendVideoThrough(streamingVideo.indexOf(Buffer.from("mdat")) + 4 + 32 * 1024);
+  await firstFrame.locator("body").evaluate(() => new Promise((resolve, reject) => {
+    const deadline = performance.now() + 5000;
+    function check() {
+      if (window.pvSeeks.length) resolve();
+      else if (performance.now() > deadline) reject(new Error("PV did not seek at metadata"));
+      else requestAnimationFrame(check);
+    }
+    check();
+  }));
+  const initialSeek = await streamedPv.evaluate(() => window.pvSeeks[0]);
+  assert.equal(initialSeek.readyState, 1, "Seek before the video's first decoded frame");
+  assert.ok(initialSeek.second >= 2);
+  assert.equal(await streamedPv.isVisible(), false);
+  assert.ok(videoRanges.some(range => range?.startsWith("bytes=")), "Decode URL through the media Range request");
+  sendVideoThrough(streamingVideo.length);
+  await streamedPv.waitFor({ state: "visible" });
+  const streamTime = await streamedPv.evaluate(video => video.currentTime);
+  const streamState = await page.evaluate(() => first.getState());
+  assert.equal(streamState.playing, true);
+  assert.ok(Math.abs(streamTime - streamState.currentTime) < 0.45);
   assert.equal((await page.evaluate(() => first.getState())).loaded, true);
 
   await page.evaluate(
@@ -670,12 +703,19 @@ try {
     timeout: 40000,
   });
   assert.equal(await page.evaluate(() => timeoutLoadError), null);
-  assert.equal(timedVideoRequests, 1);
-  assert.equal(
-    timedVideoClosed,
-    true,
-    "Timeout must actually close the network transfer",
-  );
+  await firstFrame.locator("#stage-video[src$='/__timeout-video']").waitFor({ state: "attached" });
+  assert.equal(await firstFrame.locator("#play").isDisabled(), false);
+  await firstFrame.locator("#stage-video:not([src])").waitFor({ state: "attached", timeout: 15000 });
+  const closed = await Promise.race([
+    timedVideoClose.then(() => true),
+    new Promise(resolve => {
+      const timer = setTimeout(() => resolve(false), 3000);
+      timer.unref();
+    }),
+  ]);
+  assert.equal(closed, true, "Timeout must close the network transfer");
+  assert.ok(timedVideoRequests > 0);
+  const timeoutRequestCount = timedVideoRequests;
   assert.equal(
     await firstFrame.locator("#stage-video").getAttribute("src"),
     null,
@@ -689,7 +729,7 @@ try {
   await page.evaluate(() => first.selectDifficulty(3));
   assert.equal(
     timedVideoRequests,
-    1,
+    timeoutRequestCount,
     "Difficulty change must not retry a timed-out PV",
   );
   await page.evaluate(
@@ -704,7 +744,7 @@ try {
   );
   assert.equal(
     timedVideoRequests,
-    1,
+    timeoutRequestCount,
     "Explicit reload of the same PV must also skip it for this instance",
   );
   const missingResourceMessage = await page.evaluate(async () => {
@@ -773,14 +813,15 @@ try {
     null, { timeout: 90000 });
   await page.locator("#files").setInputFiles(folder);
   await waitLoaded();
+  const devFrame = page.frameLocator("#preview iframe");
+  await devFrame.locator("#stage-video").waitFor();
   const downloads = devRequests.filter((request) => request.method === "GET" && request.url.includes("/__dev-charts/"));
   for (const name of ["maidata.txt", "audio.wav", "video.webm"]) {
     assert.ok(downloads.some((request) => request.url.endsWith("/" + name)), `${name} must be fetched through its uploaded HTTP URL`);
   }
   const uploadedPvUrl = downloads.find((request) => request.url.endsWith("/video.webm")).url;
   assert.deepEqual(Buffer.from(await (await fetch(uploadedPvUrl)).arrayBuffer()), video);
-  const devFrame = page.frameLocator("#preview iframe");
-  assert.ok((await devFrame.locator("#stage-video").getAttribute("src")).startsWith("blob:"));
+  assert.equal(await devFrame.locator("#stage-video").getAttribute("src"), uploadedPvUrl);
   await page.waitForFunction(() => document.getElementById("performance-output").textContent.includes("PV 首帧准备"));
   const panelText = await page.locator("#performance-output").textContent();
   assert.ok(terminalLogs.some((text) => panelText.includes(text)));

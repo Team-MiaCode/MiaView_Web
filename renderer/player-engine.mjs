@@ -24,19 +24,50 @@ export function createPlayerEngine(view) {
     chart,
     generation = 0,
     abort,
-    videoUrl;
+    videoUrl,
+    coverBytes;
   let audio, defaultSettings;
   const video = $("stage-video");
+  let videoHasMetadata = false,
+    videoPresented = false,
+    videoShouldPlay = false,
+    nextVideoSync = 0,
+    nextVideoCorrection = 0;
+  function videoTarget(second) {
+    return Number.isFinite(video.duration) ? Math.min(second, video.duration) : second;
+  }
+  function syncVideo(force = false, now = performance.now()) {
+    if (!audio || !videoHasMetadata) return;
+    const position = audio.currentSecond();
+    const target = videoTarget(position);
+    const canCorrect = videoPresented && audio.playing && !video.seeking &&
+      video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA && now >= nextVideoCorrection;
+    if ((force || canCorrect) && Math.abs(video.currentTime - target) > (force ? 0.01 : 0.3)) {
+      video.currentTime = target;
+      nextVideoCorrection = now + 1000;
+      if (!force) playbackDiagnostics.count("videoResyncs");
+    }
+    const shouldPlay = audio.playing && (!Number.isFinite(video.duration) || position < video.duration);
+    if (shouldPlay !== videoShouldPlay || (force && shouldPlay && video.paused)) {
+      videoShouldPlay = shouldPlay;
+      if (shouldPlay) void video.play().catch(() => {});
+      else video.pause();
+    }
+  }
+  video.addEventListener("seeked", () => {
+    if (videoHasMetadata) nextVideoCorrection = performance.now() + 800;
+  });
+  video.addEventListener("error", () => {
+    if (!videoPresented) return;
+    dropVideo();
+    call("miacode_external_video", null, ["number"], [0]);
+    setBackground(coverBytes);
+  });
   const pvTimeoutMs = pvTimeoutFromSearch(location.search);
   const mediaCache = new PreviewMediaCache({
     videoTimeoutMs: pvTimeoutMs,
     onVideoTimeout: () => {
       diagnostics.count("videoLoadTimeouts");
-      diagnostics.flush();
-      emit("progress", {
-        stage: `PV 加载超过 ${pvTimeoutMs / 1000} 秒，已停止加载并跳过`,
-        progress: 0.65,
-      });
     },
   });
   let frameLimiter,
@@ -250,6 +281,7 @@ export function createPlayerEngine(view) {
     playbackDiagnostics.setEnabled(false);
     audio.pause();
     video.pause();
+    videoShouldPlay = false;
     if (ready && chart) {
       call("miacode_seek", null, ["number"], [audio.offset]);
       $("seek").value = String(audio.offset);
@@ -266,29 +298,34 @@ export function createPlayerEngine(view) {
     playbackDiagnostics.setEnabled(diagnostics.enabled);
     status("");
     $("play").textContent = "暂停";
-    if (video.src) {
-      video.currentTime = audio.offset;
-      void video.play().catch(() => {});
-    }
+    syncVideo(true);
     emit("playing", { elapsedMs: elapsed() });
   }
   function seek(second) {
     if (!chart) return;
     audio.seek(second);
     call("miacode_seek", null, ["number"], [audio.offset]);
-    if (video.src) video.currentTime = audio.offset;
+    syncVideo(true);
     $("seek").value = String(audio.offset);
     updateTransport();
+  }
+  function dropVideo() {
+    videoHasMetadata = videoPresented = videoShouldPlay = false;
+    nextVideoSync = nextVideoCorrection = 0;
+    video.hidden = true;
+    video.pause();
+    if (video.hasAttribute("src")) {
+      video.removeAttribute("src");
+      video.load();
+    }
+    if (videoUrl?.startsWith("blob:")) URL.revokeObjectURL(videoUrl);
+    videoUrl = null;
   }
   function clearInput() {
     playbackDiagnostics.setEnabled(false);
     audio?.reset();
-    video.hidden = true;
-    video.pause();
-    video.removeAttribute("src");
-    video.load();
-    if (videoUrl) URL.revokeObjectURL(videoUrl);
-    videoUrl = null;
+    dropVideo();
+    coverBytes = null;
     chart = null;
     view.chart?.(null);
     updateTransport();
@@ -315,36 +352,83 @@ export function createPlayerEngine(view) {
   async function prepareVideo(resource, signal) {
     if (!resource) return;
     signal.throwIfAborted();
-    videoUrl = URL.createObjectURL(resource);
+    videoUrl = resource instanceof Blob ? URL.createObjectURL(resource) : httpUrl(resource.url);
     video.crossOrigin = "anonymous";
     video.preload = "auto";
     await new Promise((resolve, reject) => {
-      const loaded = () => finish();
+      const frameEvents = ["loadeddata", "seeked", "canplay", "playing"];
+      let caughtUp = false;
+      const metadata = () => {
+        videoHasMetadata = true;
+        try {
+          syncVideo(true);
+          frameReady();
+        } catch (error) {
+          finish(error);
+        }
+      };
+      const frameReady = () => {
+        if (!videoHasMetadata || video.seeking || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+        try {
+          if (!caughtUp && audio.playing && Math.abs(video.currentTime - videoTarget(audio.currentSecond())) > 0.4) {
+            caughtUp = true;
+            syncVideo(true);
+            if (video.seeking) return;
+          }
+          finish();
+        } catch (error) {
+          finish(error);
+        }
+      };
       const failed = () =>
         finish(new Error("背景视频无法解码，请换用浏览器支持的视频或图片"));
       const cancelled = () => {
         finish(signal.reason ?? new DOMException("Aborted", "AbortError"));
-        video.pause();
-        video.removeAttribute("src");
-        video.load();
-        if (videoUrl) URL.revokeObjectURL(videoUrl);
-        videoUrl = null;
+        dropVideo();
       };
       function finish(error) {
-        video.removeEventListener("loadeddata", loaded);
+        video.removeEventListener("loadedmetadata", metadata);
+        for (const event of frameEvents) video.removeEventListener(event, frameReady);
         video.removeEventListener("error", failed);
         signal.removeEventListener("abort", cancelled);
         if (error) reject(error);
         else resolve();
       }
-      video.addEventListener("loadeddata", loaded, { once: true });
+      video.addEventListener("loadedmetadata", metadata, { once: true });
+      for (const event of frameEvents) video.addEventListener(event, frameReady);
       video.addEventListener("error", failed, { once: true });
       signal.addEventListener("abort", cancelled, { once: true });
       video.src = videoUrl;
       video.load();
     });
   }
-  async function setBackground(data) {
+  async function loadOptionalVideo(resource, token, signal, measure) {
+    const current = () => token === generation && !signal.aborted;
+    try {
+      const source = await mediaCache.loadVideo(
+        resource,
+        signal,
+        async (videoSignal) => {
+          if (resource instanceof Blob)
+            return measure("videoAssetRead", () => resource);
+          if (!resource.sha256 && resource.byteSize === undefined) return resource;
+          const data = await measure("videoAssetRead", () => bytes(resource, videoSignal));
+          return new Blob([data], { type: resource.contentType ?? "" });
+        },
+        (input, videoSignal) => measure("videoReady", () => prepareVideo(input, videoSignal)),
+      );
+      if (!source || !current()) return;
+      call("miacode_external_video", null, ["number"], [1]);
+      videoPresented = true;
+      video.hidden = false;
+    } catch {
+      if (!current()) return;
+      dropVideo();
+    } finally {
+      if (current()) diagnostics.flush();
+    }
+  }
+  function setBackground(data) {
     if (!data) return;
     const pointer = module._malloc(data.byteLength);
     try {
@@ -408,17 +492,12 @@ export function createPlayerEngine(view) {
         resourceSteps.has(name) ? step(name, "", action) : action(),
       );
     const prepared = mediaCache.load(
-      resources,
+      { ...resources, video: null },
       audio.context,
       bytes,
       signal,
       measure,
-      (blob, videoSignal) =>
-        measure("videoReady", () => prepareVideo(blob, videoSignal)),
     );
-    const videoReady = prepared.video;
-    // Parsing can fail before the concurrently buffered video is awaited.
-    void videoReady.catch(() => {});
     const text = await prepared.text;
     if (token !== generation) return;
     status("正在解析谱面…");
@@ -438,7 +517,7 @@ export function createPlayerEngine(view) {
     if (parsed.touchholdSegments.length) bufferFiles.push("touch_Hold_riser.wav");
     status("正在加载音乐、音效和背景…");
     emit("progress", { stage: "正在加载音乐、音效和背景", progress: 0.3 });
-    const [{ track, coverBytes }] = await measure("musicAndSfxReady", () =>
+    const [{ track, coverBytes: background }] = await measure("musicAndSfxReady", () =>
       Promise.all([
         prepared.music,
         ...bufferFiles
@@ -459,19 +538,8 @@ export function createPlayerEngine(view) {
       ]),
     );
     if (token !== generation) return;
-    if (resources.video) {
-      status("正在准备背景视频…");
-      emit("progress", { stage: "正在准备背景视频", progress: 0.65 });
-    }
-    const [, videoBlob] = await Promise.all([
-      setBackground(coverBytes),
-      videoReady,
-    ]);
-    if (token !== generation) return;
-    if (videoBlob) {
-      call("miacode_external_video", null, ["number"], [1]);
-      video.hidden = false;
-    }
+    setBackground(background);
+    coverBytes = background;
     chart = parsed;
     view.chart?.(parsed);
     audio.track = track;
@@ -489,6 +557,7 @@ export function createPlayerEngine(view) {
     if (token !== generation) return;
     for (const id of ["play", "restart", "seek"])
       $(id).disabled = false;
+    if (resources.video) void loadOptionalVideo(resources.video, token, signal, measure);
   }
 
   document.addEventListener("visibilitychange", () => {
@@ -527,15 +596,9 @@ export function createPlayerEngine(view) {
           emit("ended", { elapsedMs: elapsed() });
         }
       }
-      if (video.readyState >= 2 && !video.seeking) {
-        const audioSecond = audio.currentSecond();
-        const videoSecond = Number.isFinite(video.duration)
-          ? Math.min(audioSecond, video.duration)
-          : audioSecond;
-        if (Math.abs(video.currentTime - videoSecond) > 0.25) {
-          playbackDiagnostics.count("videoResyncs");
-          video.currentTime = videoSecond;
-        }
+      if (videoHasMetadata && audio.playing && now >= nextVideoSync) {
+        nextVideoSync = now + 150;
+        syncVideo(false, now);
       }
     });
   }
