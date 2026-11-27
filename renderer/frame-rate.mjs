@@ -23,11 +23,15 @@ export class PreviewFrameLimiter {
   constructor(maxFps = DEFAULT_MAX_FPS) {
     this.maxFps = previewMaxFps(maxFps);
     this.interval = this.maxFps === "unlimited" ? 0 : 1000 / this.maxFps;
+    this.tolerance = Math.min(2, this.interval / 8);
+    this.reset();
+  }
+  reset() {
     this.nextFrameTime = -Infinity;
   }
   accept(now) {
     if (!this.interval) return true;
-    if (now + Math.min(0.5, this.interval / 2) < this.nextFrameTime) return false;
+    if (now + this.tolerance < this.nextFrameTime) return false;
     // Keep fractional deadlines on high-refresh screens; skip catch-up after
     // a stall instead of accumulating frames that can no longer be presented.
     this.nextFrameTime =

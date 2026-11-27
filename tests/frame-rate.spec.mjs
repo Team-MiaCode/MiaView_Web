@@ -46,4 +46,19 @@ test("frame limiter drops missed frames after stalls and instances are independe
   assert.equal(slow.accept(5000), true);
   assert.equal(slow.accept(5001), false);
   assert.equal(slow.accept(5034), true);
+  slow.reset();
+  assert.equal(slow.accept(5040), true);
+});
+
+test("frame limiter does not drop due display frames with uneven callback timestamps", () => {
+  const jitter = [0.8, -0.9, -0.7, 0.6, 0.1, -0.4];
+  for (const [refreshRate, maxFps] of [[60, 60], [120, 60], [60, 30]]) {
+    const limiter = new PreviewFrameLimiter(maxFps);
+    const accepted = [];
+    for (let frame = 0; frame < refreshRate * 2; frame++) {
+      const timestamp = frame * 1000 / refreshRate + jitter[frame % jitter.length];
+      if (limiter.accept(timestamp)) accepted.push(frame);
+    }
+    assert.deepEqual(accepted, Array.from({length: maxFps * 2}, (_, index) => index * refreshRate / maxFps));
+  }
 });
