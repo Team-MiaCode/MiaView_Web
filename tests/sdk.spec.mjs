@@ -3,7 +3,7 @@ import test from "node:test";
 import { createPreview } from "../sdk/index.mjs";
 import { FRAME_SOURCE } from "../sdk/protocol.mjs";
 
-function dom({ invalidIdentity = false, respond = true } = {}) {
+function dom({ invalidIdentity = false, respond = true, replyFor = (_message, response) => response } = {}) {
   const messages = [],
     listeners = new Set();
   const identity = {
@@ -46,7 +46,7 @@ function dom({ invalidIdentity = false, respond = true } = {}) {
         postMessage(message, origin) {
           messages.push({ ...message, origin });
           if (!respond && message.type !== "initialize") return;
-          const data = {
+          const data = replyFor(message, {
             source: FRAME_SOURCE,
             protocolVersion: 1,
             sessionId: message.sessionId,
@@ -56,7 +56,7 @@ function dom({ invalidIdentity = false, respond = true } = {}) {
             value: { type: message.type },
             playerVersion: identity.version,
             sourceRevision: identity.sourceRevision,
-          };
+          });
           queueMicrotask(() => {
             for (const listener of listeners)
               listener({ source: element.contentWindow, origin, data });
@@ -124,6 +124,40 @@ test("startup failure and early disposal do not leak a widget or message listene
   second.destroy();
   await assert.rejects(second.ready, /destroyed/);
   assert.equal(early.listeners.size, 0);
+});
+test("renderer startup failures are surfaced directly when the build identity never loaded", async () => {
+  const failure = "播放器文件加载或校验失败，请刷新页面";
+  const fixture = dom({
+    replyFor(_message, response) {
+      return { ...response, ok: false, playerVersion: undefined, sourceRevision: undefined, error: { message: failure } };
+    },
+  });
+  const preview = createPreview(fixture.container, {
+    rendererUrl: "https://renderer.example/index.html",
+    timeoutMs: 250,
+  });
+  await assert.rejects(preview.ready, { message: failure });
+  assert.equal(fixture.container.children.length, 0);
+  assert.equal(fixture.listeners.size, 0);
+});
+test("already initialized commands still require an authenticated build identity", async () => {
+  const fixture = dom({
+    replyFor(message, response) {
+      return message.type === "initialize" ? response : {
+        ...response, ok: false, playerVersion: undefined, sourceRevision: undefined, error: { message: "fake load failure" },
+      };
+    },
+  });
+  const preview = createPreview(fixture.container, {
+    rendererUrl: "https://renderer.example/index.html",
+    timeoutMs: 30,
+  });
+  await preview.ready;
+  try {
+    await assert.rejects(preview.getState(), /timed out: getState/);
+  } finally {
+    preview.destroy();
+  }
 });
 test("command timeouts reject callers; invalid API arguments never reach the renderer", async () => {
   const { container, messages } = dom({ respond: false });

@@ -53,10 +53,13 @@ try {
   await page.locator("#difficulty").selectOption("3");
   await page.waitForFunction(() => document.getElementById("status").textContent === "");
   await page.locator("#local-pv").setInputFiles({ name: "unsupported.webm", mimeType: "video/webm", buffer: Buffer.from("invalid video") });
-  await page.waitForFunction(() => document.getElementById("status").textContent.includes("无法解码"));
+  await page.locator("#play:not([disabled])").waitFor();
+  await frame.locator("#stage-video:not([src])").waitFor({ state: "attached" });
+  assert.equal(await frame.locator("#stage-video").isVisible(), false);
   assert.equal(await page.locator("#local-pv").isEnabled(), true, "A failed PV must remain replaceable");
   await page.locator("#local-pv").setInputFiles(join(root, "tests/fixtures/bg-pattern.webm"));
   await page.locator("#play:not([disabled])").waitFor();
+  await frame.locator("#stage-video").waitFor();
   assert.equal(await page.locator("#difficulty").inputValue(), "3");
   assert.ok((await page.locator("#media-status").textContent()).includes("bg-pattern.webm"));
   const wave = Buffer.alloc(44 + 24000 * 12 * 2);

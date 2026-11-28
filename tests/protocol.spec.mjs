@@ -78,6 +78,34 @@ test("SDK responses reject unrelated frames and malformed replies", () => {
     false,
   );
 });
+test("only the pending startup request can report failure before identity is available", () => {
+  const frame = {}, origin = "https://renderer.example";
+  const data = {
+    source: FRAME_SOURCE,
+    sessionId,
+    requestId,
+    protocolVersion: 1,
+    type: "response",
+    ok: false,
+    error: { message: "WASM integrity check failed" },
+  };
+  const event = { source: frame, origin, data };
+  assert.equal(trustedResponse(event, frame, origin, sessionId, requestId), data);
+  assert.equal(trustedResponse(event, frame, origin, sessionId), null);
+  assert.equal(trustedResponse(event, frame, origin, sessionId, sessionId), null);
+  for (const other of [
+    { ...event, source: {} },
+    { ...event, origin: origin + ".bad" },
+    { ...event, data: { ...data, sessionId: requestId } },
+    { ...event, data: { ...data, protocolVersion: 2 } },
+    { ...event, data: { ...data, ok: true } },
+    { ...event, data: { ...data, playerVersion: "v1" } },
+    { ...event, data: { ...data, sourceRevision: "a".repeat(64) } },
+    { ...event, data: { ...data, error: { message: "" } } },
+    { ...event, data: { ...data, type: "ready", payload: {} } },
+  ])
+    assert.equal(trustedResponse(other, frame, origin, sessionId, requestId), null);
+});
 test("resource interface accepts text, Blobs and URLs without website manifests", () => {
   const base = "https://host.example/charts/one/";
   const file = new Blob(["audio"], { type: "audio/wav" });
